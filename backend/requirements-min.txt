@@ -1,0 +1,29 @@
+# FastAPI
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# 数据库
+sqlalchemy>=2.0.0
+pymysql>=1.1.0
+pydantic>=2.9.0
+pydantic-settings>=2.5.0
+alembic>=1.13.0
+
+# 数据采集
+akshare>=1.14.0
+pandas>=2.2.0
+numpy>=2.1.0
+
+# AI / LangGraph
+langgraph>=0.2.0
+langchain>=0.3.0
+
+# 向量数据库
+qdrant-client>=1.11.0
+
+# 定时任务
+apscheduler>=3.10.0
+pytz>=2024.0
+
+# Redis
+redis>=5.0.0
