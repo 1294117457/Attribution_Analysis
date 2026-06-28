@@ -1,0 +1,15 @@
+{
+    "sqltools.connections": [
+        {
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "223.109.49.63",
+            "port": 5432,
+            "driver": "PostgreSQL",
+            "database": "attribution",
+            "username": "postgres",
+            "password": "zhouchenhui",
+            "name": "posgre"
+        }
+    ]
+}
