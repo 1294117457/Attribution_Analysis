@@ -3,12 +3,14 @@ FastAPI 应用入口。
 """
 
 from fastapi import FastAPI
-from app.api.v1 import klines
+from app.api.v1 import klines, collector, detector
 
 app = FastAPI(title="Attribution Analysis API")
 
 # 注册路由
 app.include_router(klines.router)
+app.include_router(collector.router)
+app.include_router(detector.router)
 
 
 @app.get("/health")
