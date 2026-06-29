@@ -96,3 +96,118 @@ docker run -d --name attribution-redis \
   redis-server --requirepass zhouchenhui --appendonly yes
 ```
 
+##### architecture
+
+```
+app/
+├── models/                      # 业务模型（Stock, User 等）
+│   ├── __init__.py
+│   ├── stock.py
+│   └── user.py
+│
+├── langgraph/                   # LangGraph 专用
+│   ├── __init__.py
+│   ├── state.py                # State 定义
+│   ├── models.py               # LangGraph 专用模型（输入/输出/结果）
+│   ├── graph.py                # 图定义
+│   ├── config.py               # LLM 配置
+│   └── nodes/                  # 节点实现
+│       ├── __init__.py
+│       ├── retrieve.py
+│       ├── analyze.py
+│       ├── report.py
+│       └── tools.py
+│
+├── services/
+├── api/
+└── main.py
+```
+
+结合ML,RAG
+
+```
+backend/
+│
+├── core/                    # 核心共享层
+│   ├── __init__.py
+│   ├── config.py
+│   ├── types.py
+│   └── models/
+│
+├── app/                    # API 应用层
+│   ├── __init__.py
+│   ├── main.py
+│   ├── api/
+│   ├── models/
+│   ├── database/
+│   ├── services/
+│   └── scripts/            # app 专用脚本
+│
+├── data/                   # 数据采集层
+│   ├── __init__.py
+│   ├── fetchers/
+│   ├── collectors/
+│   ├── parsers/
+│   └── scripts/            # data 专用脚本
+│
+├── ml/                    # 机器学习层
+│   ├── __init__.py
+│   ├── predictor/
+│   ├── detector/
+│   ├── classifier/
+│   ├── features/
+│   └── scripts/            # ml 专用脚本
+│
+├── rag/                   # RAG 层
+│   ├── __init__.py
+│   ├── embeddings/
+│   ├── vector_store/
+│   ├── knowledge_base.py
+│   └── scripts/            # rag 专用脚本
+│
+├── graph/                 # Graph 编排层
+│   ├── __init__.py
+│   ├── models/
+│   ├── agent/
+│   ├── tools/
+│   ├── nodes/
+│   └── workflows/
+│
+└── tests/                 # 测试
+    ├── test_app/
+    ├── test_data/
+    ├── test_ml/
+    ├── test_rag/
+    └── test_graph/
+```
+
+## 文档索引
+
+详细开发文档位于 `docs/backend/` 目录：
+
+### ✅ 已完成
+- [core 模块开发步骤](./backend/core/step/01_create_core.md)
+- [core 模块设计分析](./backend/core/analysis/01_core_design.md)
+- [app 模块开发步骤](./backend/app/step/01_create_app.md)
+- [app 模块设计分析](./backend/app/analysis/01_app_design.md)
+- [data 模块开发步骤](./backend/data/step/01_create_data.md)
+- [data 模块设计分析](./backend/data/analysis/01_data_design.md)
+- [ml 模块开发步骤](./backend/ml/step/01_create_ml.md)
+- [ml 异常检测开发步骤](./backend/ml/step/01_create_detector.md)
+- [ml 模块设计分析](./backend/ml/analysis/01_ml_design.md)
+- [ml 异常检测设计分析](./backend/ml/analysis/01_detector_design.md)
+
+### ⏳ 待开发
+- rag 模块
+- graph 模块
+
+### 开发顺序
+1. **core** → 配置和类型
+2. **app** → FastAPI 骨架
+3. **data** → 数据采集
+4. **ml/detector** → 异常检测 ✅
+5. ml/classifier → 情感分析
+6. ml/predictor → 价格预测
+7. rag → 知识检索
+8. graph → 工作流编排
+
