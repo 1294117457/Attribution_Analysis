@@ -26,12 +26,17 @@ BaseModel
 ##### 3sqlalchemy
 
 ```
+服务器配置好数据库
+代码中实现数据库、表操作等
+```
+
+
+
+```
 create_engine,sessionmaker,declarative_base
 
-# 1. 数据库配置（清晰可见）
 SQLALCHEMY_DATABASE_URL = "sqlite:///./stocks.db"
 
-# 2. 创建 engine（可以添加各种配置）
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False},  # SQLite 专用
@@ -58,5 +63,58 @@ def get_db():
     finally:
         db.close()
 
+@app.on_event("startup")
+def init_db():
+    """启动时初始化数据库"""
+    db = SessionLocal()
+    try:
+```
+
+##### 4middleware
+
+```
+
+```
+
+##### 5architeture
+
+```
+Stock是全局模型，
+StockDB是数据库操作需要的映射模型并且实现对应方法
+StockApi,StockService实现接收、处理数据，并且从StockDB获取Stock的数据库操作
+
+pydantic的模型和StockDB分别放在
+	app/models
+	app/database/models
+	
+app/
+├── models/                      # Pydantic 模型（全局数据模型）
+│   ├── __init__.py
+│   ├── stock.py                 # Stock (Pydantic)
+│   ├── user.py                  # User (Pydantic)
+│   └── order.py                 # Order (Pydantic)
+│
+├── database/                    # 或 db/
+│   ├── __init__.py
+│   ├── base.py                  # SQLAlchemy Base
+│   ├── session.py               # 数据库连接
+│   └── models/                  # SQLAlchemy 模型（数据库映射）
+│       ├── __init__.py
+│       ├── stock.py             # StockDB
+│       ├── user.py              # UserDB
+│       └── order.py             # OrderDB
+│
+├── services/                    # 业务逻辑层
+│   ├── __init__.py
+│   ├── stock_service.py
+│   └── user_service.py
+│
+├── api/                         # 路由层
+│   └── v1/
+│       ├── __init__.py
+│       ├── stock.py             # StockApi
+│       └── user.py
+│
+└── main.py                      # FastAPI 入口
 ```
 
