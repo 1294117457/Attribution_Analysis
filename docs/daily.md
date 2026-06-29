@@ -58,5 +58,41 @@ docker run -d --name attribution-postgres \
 ```
 整体还是一个postgre数据库，只是带了pgvector扩展
 然后内部数据表可以带embedding字段
+
+DATABASE_URL=postgresql://postgres:zhouchenhui@223.109.49.63:5432/attribution
+DATABASE_URL_ASYNC=postgresql+asyncpg://postgres:zhouchenhui@223.109.49.63:5432/attribution
+REDIS_URL=redis://localhost:6379/0
+```
+
+```
+建议按这个顺序来：
+
+app/config.py — 读取 .env 配置
+app/db/database.py — 创建数据库引擎
+app/db/session.py — 数据库会话管理
+app/models/base.py — SQLAlchemy Base 类
+app/models/kline.py — K 线数据模型（定义表结构）
+app/main.py — FastAPI 入口，先写个 /health 接口
+启动 uvicorn app.main:app --reload 验证能跑起来
+alembic init alembic — 初始化 alembic
+修改 alembic/env.py — 导入你的模型
+alembic revision --autogenerate -m "create klines table" — 自动生成迁移
+alembic upgrade head — 建表
+app/schemas/kline.py — Pydantic 请求/响应模型
+app/services/ — 业务逻辑
+app/api/v1/klines.py — API 路由
+scripts/collect_data.py — 数据采集脚本
+```
+
+##### redis
+
+```
+docker run -d --name attribution-redis \
+  -e REDIS_PASSWORD=zhouchenhui \
+  -p 6379:6379 \
+  -v /home/project/redis/data:/data \
+  --restart unless-stopped \
+  redis:7.2-alpine \
+  redis-server --requirepass zhouchenhui --appendonly yes
 ```
 
