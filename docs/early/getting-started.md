@@ -1,7 +1,8 @@
 # 快速开始指南
 
-**版本**：v2.0  
-**日期**：2026年6月
+**版本**：v4.0  
+**日期**：2026年6月  
+**技术栈**：Vue-ts + Python LangGraph FastAPI + PostgreSQL pgvector + Redis + Docker
 
 ---
 
@@ -9,11 +10,10 @@
 
 1. [环境要求](#1-环境要求)
 2. [项目初始化](#2-项目初始化)
-3. [后端开发环境](#3-后端开发环境)
-4. [前端开发环境](#4-前端开发环境)
-5. [一键启动](#5-一键启动)
-6. [第一个分析示例](#6-第一个分析示例)
-7. [常见问题](#7-常见问题)
+3. [Docker 一键启动（推荐）](#3-docker-一键启动推荐)
+4. [本地开发](#4-本地开发)
+5. [第一个分析示例](#5-第一个分析示例)
+6. [常见问题](#6-常见问题)
 
 ---
 
@@ -21,33 +21,34 @@
 
 ### 1.1 必需环境
 
-| 软件 | 版本 | 说明 |
-|------|------|------|
-| Node.js | >= 20.0.0 | 建议使用 LTS 版本 |
-| pnpm | >= 8.0.0 | 包管理器（更快） |
-| PostgreSQL | >= 15 | 数据库 |
-| Docker | >= 24 | 容器化（可选） |
 
-### 1.2 检查环境
+| 软件             | 版本      | 说明      |
+| -------------- | ------- | ------- |
+| Docker         | >= 24   | 容器化（必需） |
+| Docker Compose | >= 2.20 | 容器编排    |
+| Git            | -       | 代码版本管理  |
+
+
+### 1.2 可选环境（本地开发需要）
+
+
+| 软件       | 版本      | 说明    |
+| -------- | ------- | ----- |
+| Python   | >= 3.11 | 后端开发  |
+| Node.js  | >= 20   | 前端开发  |
+| npm/pnpm | -       | 前端包管理 |
+
+
+### 1.3 检查环境
 
 ```bash
-# 检查 Node.js 版本
-node --version
-# v20.x.x
-
-# 检查 pnpm 版本
-pnpm --version
-# 8.x.x
-
-# 检查 Docker（可选）
+# 检查 Docker 版本
 docker --version
 # Docker version 24.x.x
-```
 
-### 1.3 安装 pnpm
-
-```bash
-npm install -g pnpm
+# 检查 Docker Compose 版本
+docker-compose --version
+# Docker Compose version v2.x.x
 ```
 
 ---
@@ -65,132 +66,104 @@ cd attribution-analysis
 
 ```
 attribution-analysis/
-├── backend/              # Node.js 后端
-├── frontend/             # Vue 3 前端
-├── docker-compose.yml    # Docker 配置
-└── .env.example          # 环境变量示例
+├── backend/                     # Python 后端 (FastAPI)
+│   ├── app/
+│   │   ├── api/               # API 路由
+│   │   ├── models/            # SQLAlchemy 模型
+│   │   ├── schemas/           # Pydantic DTO
+│   │   ├── services/          # 业务逻辑
+│   │   ├── agents/            # LangGraph Agent
+│   │   ├── db/                # 数据库连接
+│   │   └── cache/             # Redis 缓存
+│   ├── scripts/                # 脚本
+│   ├── alembic/               # 数据库迁移
+│   └── requirements.txt       # 依赖
+│
+├── frontend/                    # Vue 3 + TypeScript 前端
+│   ├── src/
+│   │   ├── views/            # 页面
+│   │   ├── components/       # 组件
+│   │   ├── stores/           # Pinia 状态
+│   │   └── api/              # API 调用
+│   └── package.json
+│
+├── docker-compose.yml          # Docker Compose 配置
+├── .env.example               # 环境变量示例
+└── README.md
 ```
 
-### 2.3 安装依赖
-
-```bash
-# 安装后端依赖
-cd backend
-pnpm install
-
-# 安装前端依赖
-cd ../frontend
-pnpm install
-```
-
----
-
-## 3. 后端开发环境
-
-### 3.1 配置环境变量
+### 2.3 配置环境变量
 
 ```bash
 # 复制环境变量文件
-cd backend
 cp .env.example .env
 ```
 
 编辑 `.env` 文件：
 
 ```env
-# 应用配置
-NODE_ENV=development
-PORT=3000
+# ============ 应用配置 ============
+APP_ENV=development
+APP_HOST=0.0.0.0
+APP_PORT=8000
 
-# 数据库
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/attribution
+# ============ 数据库 (PostgreSQL) ============
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=attribution
+DATABASE_USER=postgres
+DATABASE_PASSWORD=postgres123
 
-# 向量数据库 (Qdrant)
-VECTOR_DB_URL=http://localhost:6333
-VECTOR_DB_COLLECTION=experiences
+# ============ Redis ============
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
 
-# LLM 配置 (OpenAI)
-LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-your-api-key
-OPENAI_MODEL=gpt-4o-mini
+# ============ LLM 配置 (通义千问) ============
+LLM_PROVIDER=qianfan
+QWEN_API_KEY=sk-your-api-key
+QWEN_MODEL=qwen-turbo
 
-# LLM 配置 (通义千问，可选)
-# QWEN_API_KEY=sk-your-api-key
+# ============ Embedding 配置 ============
+EMBEDDING_PROVIDER=qianfan
+EMBEDDING_MODEL=text-embedding-v3
 
-# JWT
-JWT_SECRET=your-super-secret-jwt-key
-JWT_EXPIRES_IN=7d
-
-# CORS
-CORS_ORIGIN=http://localhost:5173
+# ============ CORS ============
+CORS_ORIGINS=http://localhost:5173,http://localhost:3000
 ```
 
-### 3.2 启动 PostgreSQL
+---
 
-**方式一：使用 Docker（推荐）**
+## 3. Docker 一键启动（推荐）
+
+### 3.1 启动所有服务
 
 ```bash
-docker run -d \
-  --name attribution-postgres \
-  -e POSTGRES_DB=attribution \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=postgres \
-  -p 5432:5432 \
-  postgres:16-alpine
+# 启动所有服务（前端、后端、数据库、Redis）
+docker-compose up -d
+
+# 查看服务状态
+docker-compose ps
 ```
 
-**方式二：本地安装**
+### 3.2 服务说明
 
-参考 [PostgreSQL 官方安装指南](https://www.postgresql.org/download/)
+启动后会自动运行：
 
-### 3.3 启动 Qdrant 向量数据库
 
-```bash
-docker run -d \
-  --name attribution-qdrant \
-  -p 6333:6333 \
-  -p 6334:6334 \
-  qdrant/qdrant:latest
-```
+| 服务         | 端口                                             | 说明              |
+| ---------- | ---------------------------------------------- | --------------- |
+| Frontend   | [http://localhost](http://localhost)           | Vue 3 前端        |
+| Backend    | [http://localhost:8000](http://localhost:8000) | FastAPI 后端      |
+| PostgreSQL | localhost:5432                                 | 主数据库 + pgvector |
+| Redis      | localhost:6379                                 | 缓存              |
 
-### 3.4 初始化数据库
 
-```bash
-cd backend
-
-# 生成 Prisma Client
-pnpm prisma generate
-
-# 推送数据库 schema
-pnpm prisma db push
-
-# 创建初始管理员用户（可选）
-pnpm prisma db seed
-```
-
-### 3.5 启动后端开发服务器
-
-```bash
-cd backend
-pnpm dev
-```
-
-后端启动成功后会看到：
-
-```
-$ fastify start -l info dist/index.js
-
-Server listening at http://localhost:3000
-✓ Database connected
-✓ Vector DB connected
-✓ LangGraph initialized
-```
-
-### 3.6 验证后端
+### 3.3 验证服务
 
 ```bash
 # 健康检查
-curl http://localhost:3000/api/health
+curl http://localhost:8000/health
 ```
 
 响应：
@@ -198,37 +171,120 @@ curl http://localhost:3000/api/health
 ```json
 {
   "status": "healthy",
-  "version": "2.0.0",
+  "version": "4.0.0",
   "services": {
     "database": "connected",
-    "vectorDb": "connected",
-    "llm": "available"
+    "redis": "connected",
+    "pgvector": "connected"
   }
 }
 ```
 
+### 3.4 查看日志
+
+```bash
+# 查看后端日志
+docker-compose logs -f backend
+
+# 查看前端日志
+docker-compose logs -f frontend
+```
+
+### 3.5 停止服务
+
+```bash
+docker-compose down
+
+# 停止并删除数据卷（慎用）
+docker-compose down -v
+```
+
 ---
 
-## 4. 前端开发环境
+## 4. 本地开发
 
-### 4.1 配置环境变量
+### 4.1 启动基础设施（Docker）
+
+```bash
+# 只启动数据库和 Redis
+docker-compose up -d postgres rediss
+```
+
+### 4.2 后端开发
+
+#### 4.2.1 安装依赖
+
+```bash
+cd backend
+
+# 创建虚拟环境 (Windows)
+python -m venv venv
+.\venv\Scripts\activate
+
+# 安装依赖
+pip install -r requirements.txt
+```
+
+#### 4.2.2 初始化数据库
+
+```bash
+# 运行数据库迁移
+alembic upgrade head
+
+# 或者自动迁移
+python scripts/init_db.py
+```
+
+#### 4.2.3 启动后端
+
+```bash
+# 开发模式启动（热重载）
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# 或者使用 FastAPI 自动生成
+fastapi dev app/main.py --port 8000
+```
+
+后端启动成功后会看到：
+
+```
+INFO:     Uvicorn running on http://0.0.0.0:8000
+INFO:     Database connected
+INFO:     Redis connected
+INFO:     pgvector extension enabled
+INFO:     Application startup complete.
+```
+
+#### 4.2.4 验证后端
+
+```bash
+# 健康检查
+curl http://localhost:8000/health
+
+# 访问 API 文档
+# http://localhost:8000/docs
+# http://localhost:8000/redoc
+```
+
+### 4.3 前端开发
+
+#### 4.3.1 安装依赖
 
 ```bash
 cd frontend
-cp .env.example .env
+
+# 使用 npm
+npm install
+
+# 或使用 pnpm（更快）
+pnpm install
 ```
 
-编辑 `.env` 文件：
-
-```env
-VITE_API_BASE_URL=http://localhost:3000/api
-VITE_APP_TITLE=智能金融归因分析平台
-```
-
-### 4.2 启动前端开发服务器
+#### 4.3.2 启动前端
 
 ```bash
-cd frontend
+npm run dev
+# 或
 pnpm dev
 ```
 
@@ -239,81 +295,23 @@ VITE v5.x.x  ready in 500 ms
 
 ➜  Local:   http://localhost:5173/
 ➜  Network: use --host to expose
-➜  press h + enter to show help
 ```
 
-### 4.3 访问前端
+#### 4.3.3 访问前端
 
-打开浏览器访问 http://localhost:5173
+打开浏览器访问 [http://localhost:5173](http://localhost:5173)
 
 ---
 
-## 5. 一键启动
+## 5. 第一个分析示例
 
-### 5.1 使用 Docker Compose（推荐）
-
-```bash
-# 启动所有服务
-docker-compose up -d
-
-# 查看服务状态
-docker-compose ps
-```
-
-这将启动：
-- PostgreSQL 数据库
-- Qdrant 向量数据库
-- 后端 API 服务 (http://localhost:3000)
-- 前端应用 (http://localhost:5173)
-
-### 5.2 使用 Makefile
+### 5.1 采集股票数据
 
 ```bash
-# 安装依赖
-make install
-
-# 开发模式启动
-make dev
-
-# 生产模式构建
-make build
-
-# 一键启动（生产）
-make start
-```
-
----
-
-## 6. 第一个分析示例
-
-### 6.1 准备测试数据
-
-创建 `demo.csv` 文件：
-
-```csv
-date,region,price,volume
-2025-06-01,亚洲,45000,2500000
-2025-06-02,亚洲,44800,2600000
-2025-06-03,亚洲,44500,2800000
-2025-06-04,亚洲,43000,3500000
-2025-06-05,亚洲,42000,4000000
-2025-06-01,美国,45500,2300000
-2025-06-02,美国,45300,2400000
-2025-06-03,美国,45000,2550000
-2025-06-04,美国,43500,3200000
-2025-06-05,美国,42800,3800000
-```
-
-### 6.2 上传数据
-
-```bash
-curl -X POST http://localhost:3000/api/data/upload \
-  -H "Authorization: Bearer <your-token>" \
-  -F "file=@demo.csv" \
-  -F "name=比特币测试数据" \
-  -F "dateColumn=date" \
-  -F "metricColumns=price,volume" \
-  -F "dimensionColumns=region"
+# 采集单只股票（贵州茅台）
+curl -X POST http://localhost:8000/api/v1/klines/collect \
+  -H "Content-Type: application/json" \
+  -d '{"symbol": "600519", "period": "daily", "start_date": "2024-01-01"}'
 ```
 
 响应：
@@ -322,53 +320,150 @@ curl -X POST http://localhost:3000/api/data/upload \
 {
   "success": true,
   "data": {
-    "id": "ds_20240625_001",
-    "name": "比特币测试数据",
-    "recordCount": 10
+    "symbol": "600519",
+    "records_collected": 365,
+    "date_range": {
+      "start": "2024-01-01",
+      "end": "2024-12-31"
+    }
   }
 }
 ```
 
-### 6.3 发起分析
+### 5.2 查询 K 线数据
 
 ```bash
-curl -X POST http://localhost:3000/api/analyze \
-  -H "Authorization: Bearer <your-token>" \
-  -F "dataSourceId=ds_20240625_001" \
-  -F "metric=price" \
-  -F "dimensions=region" \
-  -F "compareType=PERIOD_OVER_PERIOD"
+# 获取 K 线数据
+curl "http://localhost:8000/api/v1/klines?symbol=600519&start_date=2024-06-01&end_date=2024-06-25"
 ```
 
-### 6.4 查看分析结果
-
-响应将包含：
-
-- **anomaly**: 异常检测结果
-- **attribution**: 归因分析结果
-- **report**: AI 生成的分析报告
-- **experience**: 匹配的历史经验
-
-### 6.5 提交反馈
+### 5.3 获取技术指标
 
 ```bash
-curl -X POST http://localhost:3000/api/feedback \
-  -H "Authorization: Bearer <your-token>" \
+# 获取技术指标
+curl "http://localhost:8000/api/v1/indicators?symbol=600519&date=2024-06-25&indicators=ma,ema,rsi"
+```
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "symbol": "600519",
+    "date": "2024-06-25",
+    "indicators": {
+      "ma5": 1680.50,
+      "ma10": 1675.20,
+      "ma20": 1668.30,
+      "ema12": 1685.40,
+      "ema26": 1672.10,
+      "rsi": 58.5
+    }
+  }
+}
+```
+
+### 5.4 发起分析
+
+```bash
+# 发起归因分析
+curl -X POST http://localhost:8000/api/v1/analyze \
   -H "Content-Type: application/json" \
   -d '{
-    "analysisId": "analysis_xxx",
-    "experienceId": "exp_xxx",
-    "isHelpful": true,
+    "symbol": "600519",
+    "trade_date": "2024-06-25",
+    "include_news": true
+  }'
+```
+
+响应：
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "analysis_20240625_001",
+    "status": "completed",
+    "created_at": "2024-06-25T10:00:00Z",
+
+    "anomaly": {
+      "is_anomaly": true,
+      "score": 0.85,
+      "methods": [
+        {
+          "name": "rsi",
+          "result": true,
+          "value": 58.5,
+          "threshold": 70,
+          "description": "RSI 进入超买区域"
+        }
+      ],
+      "signal": {
+        "direction": "down",
+        "velocity": -0.02,
+        "inflection": true
+      }
+    },
+
+    "sentiment": {
+      "label": "negative",
+      "score": -0.3,
+      "news_count": 5,
+      "key_events": ["业绩预期下调", "资金流出"]
+    },
+
+    "attribution": {
+      "top_drivers": ["北向资金净流出", "板块轮动"],
+      "top_draggers": [],
+      "conclusion": "茅台下跌主要由资金面因素驱动"
+    },
+
+    "experience": {
+      "matched": {
+        "id": 123,
+        "similarity": 0.87,
+        "confidence": 0.82,
+        "conclusion": "2024-03-15 类似情况，当时原因是..."
+      },
+      "is_reused": true
+    },
+
+    "report": {
+      "summary": "贵州茅台今日出现调整，RSI 指标显示超买，短期资金面偏紧",
+      "insights": [
+        "北向资金连续净流出是主要拖累因素",
+        "与历史相似案例匹配度 87%，参考历史走势"
+      ],
+      "suggestions": [
+        "建议关注北向资金动向",
+        "等待 RSI 回落至合理区间"
+      ]
+    }
+  }
+}
+```
+
+### 5.5 提交反馈
+
+```bash
+# 提交用户反馈
+curl -X POST http://localhost:8000/api/v1/feedback \
+  -H "Content-Type: application/json" \
+  -d '{
+    "analysis_id": "analysis_20240625_001",
+    "experience_id": 123,
+    "is_helpful": true,
     "rating": 5,
-    "comment": "分析准确"
+    "comment": "分析准确，与实际情况吻合"
   }'
 ```
 
 ---
 
-## 7. 常见问题
+## 6. 常见问题
 
-### 7.1 数据库连接失败
+### 6.1 数据库连接失败
 
 **错误**：`Connection refused to localhost:5432`
 
@@ -379,106 +474,138 @@ curl -X POST http://localhost:3000/api/feedback \
 docker ps | grep postgres
 
 # 启动 PostgreSQL
-docker start attribution-postgres
+docker-compose up -d postgres
 
-# 或本地检查
-pg_isready -h localhost -p 5432
+# 测试连接
+docker exec -it attribution-postgres pg_isready -U postgres
 ```
 
-### 7.2 向量数据库连接失败
+### 6.2 Redis 连接失败
 
-**错误**：`Failed to connect to vector DB`
+**错误**：`Failed to connect to Redis`
 
 **解决**：
 
 ```bash
-# 检查 Qdrant 是否运行
-docker ps | grep qdrant
+# 检查 Redis 是否运行
+docker ps | grep redis
 
-# 启动 Qdrant
-docker start attribution-qdrant
+# 启动 Redis
+docker-compose up -d redis
+
+# 测试连接
+docker exec -it attribution-redis redis-cli ping
 ```
 
-### 7.3 OpenAI API 密钥无效
+### 6.3 pgvector 扩展未启用
+
+**错误**：`extension "vector" not found`
+
+**解决**：
+
+```bash
+# 在 PostgreSQL 容器中执行
+docker exec -it attribution-postgres psql -U postgres -d attribution -c "CREATE EXTENSION IF NOT EXISTS vector;"
+```
+
+### 6.4 通义千问 API 密钥无效
 
 **错误**：`Invalid API key`
 
 **解决**：
 
-1. 访问 https://platform.openai.com/api-keys
+1. 访问 [https://qianfan.ai/console/apikey](https://qianfan.ai/console/apikey)
 2. 创建新的 API Key
-3. 更新 `backend/.env` 中的 `OPENAI_API_KEY`
+3. 更新 `.env` 中的 `QWEN_API_KEY`
 4. 重启后端服务
 
-### 7.4 前端无法访问后端 API
+```bash
+docker-compose restart backend
+```
+
+### 6.5 前端无法访问后端 API
 
 **错误**：`CORS error`
 
 **解决**：
 
-1. 确认后端 `CORS_ORIGIN` 配置正确
+1. 确认后端 `CORS_ORIGINS` 配置正确
 2. 检查前端 `VITE_API_BASE_URL` 配置
 
 ```env
 # backend/.env
-CORS_ORIGIN=http://localhost:5173
+CORS_ORIGINS=http://localhost:5173,http://localhost:3000
 ```
 
-```env
-# frontend/.env
-VITE_API_BASE_URL=http://localhost:3000/api
-```
+### 6.6 依赖安装失败
 
-### 7.5 依赖安装失败
-
-**解决**：
+**Python 依赖**：
 
 ```bash
+cd backend
+
 # 清理缓存
-rm -rf node_modules pnpm-lock.yaml
+rm -rf venv
+pip cache purge
+
+# 重新安装
+python -m venv venv
+.\venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+**前端依赖**：
+
+```bash
+cd frontend
+
+# 清理缓存
+rm -rf node_modules pnpm-lock.yaml package-lock.json
 
 # 重新安装
 pnpm install
 ```
 
-### 7.6 Prisma 生成失败
-
-**错误**：`Cannot find Prisma Client`
-
-**解决**：
-
-```bash
-cd backend
-pnpm prisma generate
-pnpm prisma db push
-```
-
-### 7.7 端口被占用
+### 6.7 端口被占用
 
 **错误**：`EADDRINUSE: address already in use`
 
 **解决**：
 
 ```bash
-# 查找占用端口的进程
-# Windows
-netstat -ano | findstr :3000
+# Windows - 查找占用端口的进程
+netstat -ano | findstr :8000
 
 # 结束进程
 taskkill /PID <PID> /F
 ```
 
+### 6.8 Docker 构建失败
+
+**解决**：
+
+```bash
+# 清理 Docker 缓存
+docker system prune -a
+
+# 重新构建
+docker-compose build --no-cache
+docker-compose up -d
+```
+
 ---
 
-## 8. 下一步
+## 7. 下一步
 
 - 阅读 [架构文档](./architecture.md) 了解系统设计
 - 阅读 [API 文档](./api.md) 了解接口详情
 - 阅读 [部署指南](./deployment.md) 了解生产部署
+- 阅读 [数据源说明](./data-source.md) 了解 AkShare 接入
 
 ---
 
 ## 技术支持
 
-- 提交 Issue：https://github.com/your-org/attribution-analysis/issues
+- 提交 Issue：[https://github.com/your-org/attribution-analysis/issues](https://github.com/your-org/attribution-analysis/issues)
 - 文档更新：欢迎提交 PR 完善文档
+
