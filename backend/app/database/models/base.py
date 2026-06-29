@@ -1,10 +1,16 @@
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import DateTime
-from datetime import datetime
-class Base(DeclarativeBase):
-  pass
+"""数据库模型混入类"""
 
-class TimestamMixin:
-  created_at=Column(DateTime,default=datetime.utcnow)
-  updated_at=Column(DateTime,default=datetime.utcnow,onupdate=datetime.utcnow)
-  
+from sqlalchemy import Column, DateTime
+from datetime import datetime
+
+
+class TimestampMixin:
+    """时间戳混入"""
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
