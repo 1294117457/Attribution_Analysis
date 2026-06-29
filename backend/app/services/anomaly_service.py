@@ -1,8 +1,28 @@
+"""异常服务"""
+
+from sqlalchemy import Column, String, Float, Integer, Date, Index
 from sqlalchemy.orm import Session
-from typing import list
-from app.database.models.anomaly_db import AnomalyDB
-from app.models.anomaly import AnomalyCreate, AnomalyResponse
-from core.models.anomaly import AnomalyRecord
+from app.database.base import Base
+from app.database.models.mixins import TimestampMixin
+from app.schemas.anomaly import AnomalyCreate, AnomalyResponse
+
+
+class AnomalyDB(Base, TimestampMixin):
+    """异常数据 ORM 模型"""
+
+    __tablename__ = "anomalies"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(10), nullable=False, index=True)
+    date = Column(Date, nullable=False)
+    type = Column(String(50), nullable=False)
+    value = Column(Float, nullable=False)
+    threshold = Column(Float, nullable=False)
+    score = Column(Float, nullable=False)
+    description = Column(String(500), nullable=True)
+
+    __table_args__ = (Index("idx_symbol_date", "symbol", "date"),)
+
 
 class AnomalyService:
     """异常服务"""
@@ -33,16 +53,3 @@ class AnomalyService:
             query = query.filter(AnomalyDB.date <= end_date)
 
         return [AnomalyResponse.model_validate(r) for r in query.all()]
-
-    def to_record(self, response: AnomalyResponse) -> AnomalyRecord:
-        """转换为核心领域模型"""
-        return AnomalyRecord(
-            id=str(response.id),
-            symbol=response.symbol,
-            date=response.date,
-            type=response.type,
-            value=response.value,
-            threshold=response.threshold,
-            score=response.score,
-            description=response.description,
-        )

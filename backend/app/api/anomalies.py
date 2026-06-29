@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
 from app.services.anomaly_service import AnomalyService
-from app.models.anomaly import (
+from app.schemas.anomaly import (
     AnomalyCreate,
     AnomalyResponse,
     AnomalyListResponse,
@@ -10,6 +10,7 @@ from app.models.anomaly import (
 from datetime import date
 
 router = APIRouter(prefix="/anomalies", tags=["异常"])
+
 
 @router.post("", response_model=AnomalyResponse)
 def create_anomaly(
@@ -19,6 +20,7 @@ def create_anomaly(
     """创建异常记录"""
     service = AnomalyService(db)
     return service.create(data)
+
 
 @router.get("/stock/{symbol}", response_model=AnomalyListResponse)
 def list_anomalies(
