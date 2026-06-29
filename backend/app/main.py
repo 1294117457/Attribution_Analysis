@@ -1,23 +1,16 @@
-"""
-FastAPI 应用入口。
-"""
-
 from fastapi import FastAPI
-from app.api.v1 import klines, collector, detector
+from app.api.router import api_router
+from app.api.database.connection import engine
+from app.database.models.base import Base
 
-app = FastAPI(title="Attribution Analysis API")
+app=FastAPI(
+  title="智能金融数据归因分析平台",
+  version="1.0.0",
+)
 
-# 注册路由
-app.include_router(klines.router)
-app.include_router(collector.router)
-app.include_router(detector.router)
+app.include_router(api_router)
 
-
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
-
-
-@app.get("/")
-async def root():
-    return {"message": "Attribution Analysis API", "docs": "/docs"}
+@app.on_event("startup")
+def on_startup()
+  Base.metadata.create_all(bind=engine)
+  
