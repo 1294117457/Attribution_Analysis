@@ -1,10 +1,12 @@
 """
-数据采集脚本：从 AkShare 获取 K 线数据，写入数据库。
-调用 app.data.akshare_client 获取数据，写入 PostgreSQL。
+数据采集脚本。
+使用模块化的 CollectorService 采集 K 线数据。
 
 用法：
-    python scripts/collect_data.py
-    python scripts/collect_data.py 600519 20200101 20250626
+    python scripts/collect_data.py                       # 采集默认股票
+    python scripts/collect_data.py 600519 20200101 20250626  # 采集单只股票
+    python scripts/collect_data.py --index 000300          # 采集沪深300成分股
+    python scripts/collect_data.py --incremental            # 增量采集
 """
 
 import sys
@@ -12,12 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import time
-from typing import Optional
+from app.modules.collector.service import CollectorService
 
-from sqlalchemy import create_engine, text
-from app.config import settings
-from app.data.akshare_client import AkShareClient, get_client
 
 # 默认采集的股票列表
 DEFAULT_STOCKS = [
@@ -29,106 +27,96 @@ DEFAULT_STOCKS = [
 ]
 
 
-def save_klines(code: str, name: str, klines: list[dict]) -> int:
-    """将 K 线数据批量写入数据库"""
-    if not klines:
-        return 0
+def main():
+    import argparse
 
-    engine = create_engine(settings.DATABASE_URL, pool_pre_ping=True)
+    parser = argparse.ArgumentParser(description="数据采集脚本")
+    parser.add_argument("code", nargs="?", help="股票代码")
+    parser.add_argument("start_date", nargs="?", help="开始日期 YYYYMMDD")
+    parser.add_argument("end_date", nargs="?", help="结束日期 YYYYMMDD")
+    parser.add_argument("--index", type=str, help="指数代码（如 000300）")
+    parser.add_argument("--incremental", action="store_true", help="增量采集")
 
-    with engine.connect() as conn:
-        for kline in klines:
-            conn.execute(
-                text("""
-                    INSERT INTO klines (code, name, date, open, high, low, close, volume, amount, change_pct, turnover_rate)
-                    VALUES (:code, :name, :date, :open, :high, :low, :close, :volume, :amount, :change_pct, :turnover_rate)
-                    ON CONFLICT (code, date) DO UPDATE SET
-                        name = EXCLUDED.name,
-                        open = EXCLUDED.open,
-                        high = EXCLUDED.high,
-                        low = EXCLUDED.low,
-                        close = EXCLUDED.close,
-                        volume = EXCLUDED.volume,
-                        amount = EXCLUDED.amount,
-                        change_pct = EXCLUDED.change_pct,
-                        turnover_rate = EXCLUDED.turnover_rate
-                """),
-                {
-                    "code": kline["code"],
-                    "name": name,
-                    "date": kline["date"],
-                    "open": kline["open"],
-                    "high": kline["high"],
-                    "low": kline["low"],
-                    "close": kline["close"],
-                    "volume": kline["volume"],
-                    "amount": kline["amount"],
-                    "change_pct": kline["change_pct"],
-                    "turnover_rate": kline["turnover_rate"],
-                },
-            )
-        conn.commit()
+    args = parser.parse_args()
 
-    return len(klines)
+    service = CollectorService()
 
+    if args.code:
+        # 单只股票采集
+        code = args.code
+        name = code  # 使用代码作为名称
+        result = service.collect_single(code, name, args.start_date, args.end_date)
 
-def collect_stock(client: AkShareClient, code: str, name: str, start_date: str, end_date: str) -> int:
-    """采集单只股票数据"""
-    print(f"正在采集 {code} {name}...")
+        print("=" * 50)
+        print(f"采集 {code} 结果：")
+        print(f"  采集数量: {result.collected}")
+        print(f"  保存数量: {result.saved}")
+        print(f"  状态: {'成功' if result.success else '失败'}")
+        if result.error:
+            print(f"  错误: {result.error}")
+        print("=" * 50)
 
-    try:
-        klines = client.fetch_klines(code, start_date, end_date)
+    elif args.index:
+        # 指数成分股采集
+        print("=" * 50)
+        print(f"开始采集指数 {args.index} 成分股...")
+        print("=" * 50)
 
-        if not klines:
-            print(f"  ✗ {code} 数据为空，跳过")
-            return 0
+        result = service.collect_index(args.index, args.start_date, args.end_date)
 
-        # 注入股票名称
-        for kline in klines:
-            kline["name"] = name
+        print("=" * 50)
+        print(f"指数 {args.index} 采集完成：")
+        print(f"  总数: {result.total}")
+        print(f"  成功: {result.success}")
+        print(f"  失败: {result.failed}")
+        print(f"  采集数据: {result.total_collected}")
+        print(f"  保存数据: {result.total_saved}")
+        print("=" * 50)
 
-        saved = save_klines(code, name, klines)
-        print(f"  ✓ {code} 写入 {saved} 条数据")
-        return saved
+        # 显示失败列表
+        if result.failed > 0:
+            failed_list = [r for r in result.results if not r.success]
+            if failed_list:
+                print("失败列表：")
+                for r in failed_list[:5]:
+                    print(f"  {r.code}: {r.error}")
+                if len(failed_list) > 5:
+                    print(f"  ... 还有 {len(failed_list) - 5} 只")
 
-    except Exception as e:
-        print(f"  ✗ {code} 采集失败: {e}")
-        return 0
+    elif args.incremental:
+        # 增量采集
+        print("=" * 50)
+        print("开始增量采集...")
+        print("=" * 50)
 
+        result = service.incremental_collect(DEFAULT_STOCKS)
 
-def main(
-    stocks: Optional[list[tuple[str, str]]] = None,
-    start_date: str = "20200101",
-    end_date: str = "20500101",
-):
-    """主函数"""
-    if stocks is None:
-        stocks = DEFAULT_STOCKS
+        print("=" * 50)
+        print(f"增量采集完成：")
+        print(f"  总数: {result.total}")
+        print(f"  成功: {result.success}")
+        print(f"  采集数据: {result.total_collected}")
+        print(f"  保存数据: {result.total_saved}")
+        print("=" * 50)
 
-    print("=" * 50)
-    print(f"开始采集股票数据 ({start_date} ~ {end_date})")
-    print(f"股票列表: {[s[0] for s in stocks]}")
-    print("=" * 50)
+    else:
+        # 默认采集
+        print("=" * 50)
+        print("开始采集默认股票列表...")
+        print(f"股票: {[s[0] for s in DEFAULT_STOCKS]}")
+        print("=" * 50)
 
-    client = get_client(request_delay=1.0)
-    total = 0
+        result = service.collect_batch(DEFAULT_STOCKS)
 
-    for code, name in stocks:
-        count = collect_stock(client, code, name, start_date, end_date)
-        total += count
-
-    print("=" * 50)
-    print(f"采集完成，共写入 {total} 条数据")
-    print("=" * 50)
+        print("=" * 50)
+        print(f"采集完成：")
+        print(f"  总数: {result.total}")
+        print(f"  成功: {result.success}")
+        print(f"  失败: {result.failed}")
+        print(f"  采集数据: {result.total_collected}")
+        print(f"  保存数据: {result.total_saved}")
+        print("=" * 50)
 
 
 if __name__ == "__main__":
-    # 支持命令行参数：代码 开始日期 结束日期
-    # python scripts/collect_data.py 600519 20200101 20250626
-    if len(sys.argv) >= 4:
-        code = sys.argv[1]
-        start = sys.argv[2]
-        end = sys.argv[3]
-        main(stocks=[(code, code)], start_date=start, end_date=end)
-    else:
-        main()
+    main()
