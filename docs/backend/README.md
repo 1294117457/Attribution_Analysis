@@ -1,197 +1,139 @@
-# Backend 模块文档索引
+# Backend 开发文档
 
 ## 概述
 
-本文档描述智能金融数据归因分析平台的后端模块开发。
+智能金融数据归因分析平台后端开发指南，以**数据采集**为核心展开。
 
 ---
 
-## 模块列表
+## 文档结构
 
-### 1. Core 模块
-**定位**：核心共享层，所有其他模块的基础
-
-**文档**：
-- [开发步骤](./core/step/01_create_core.md) - 创建 core 模块
-- [设计分析](./core/analysis/01_core_design.md) - 核心设计详解
-
-**内容**：
-- 全局配置管理
-- 基础枚举/类型定义
-- 核心领域模型（Stock, Anomaly, Attribution）
-
----
-
-### 2. App 模块
-**定位**：FastAPI 应用层，提供 API 接口
-
-**文档**：
-- [开发步骤](./app/step/01_create_app.md) - 创建 app 模块
-- [设计分析](./app/analysis/01_app_design.md) - API 设计详解
-
-**内容**：
-- FastAPI 入口和路由
-- 数据库 ORM 模型
-- 业务服务封装
-- API DTO 定义
-
----
-
-### 3. Data 模块
-**定位**：数据采集层
-
-**文档**：
-- [开发步骤](./data/step/01_create_data.md) - 创建 data 模块
-- [设计分析](./data/analysis/01_data_design.md) - 数据采集设计详解
-
-**内容**：
-- AkShare 数据获取
-- 股票采集器
-- 新闻采集器
-- 数据解析和转换
-
----
-
-### 4. ML 模块
-**定位**：机器学习层
-
-**文档**：
-- [ML 开发步骤](./ml/step/01_create_ml.md) - 创建 ml 模块
-- [异常检测开发步骤](./ml/step/01_create_detector.md) - 异常检测实现
-- [ML 设计分析](./ml/analysis/01_ml_design.md) - ML 设计详解
-- [异常检测设计分析](./ml/analysis/01_detector_design.md) - 异常检测设计详解
-
-**内容**：
-- 异常检测（Z-Score、IQR、波动率）
-- 价格预测（LSTM、XGBoost）
-- 情感分类（VADER）
-- 技术指标计算
-
----
-
-### 5. RAG 模块
-**状态**：待开发
-
-**计划内容**：
-- Embedding 处理
-- 向量存储（PGVector）
-- 知识检索
-
----
-
-### 6. Graph 模块
-**状态**：待开发
-
-**计划内容**：
-- LangGraph 工作流
-- Agent 节点定义
-- 工具封装
+```
+docs/backend/
+├── README.md              # 本文档
+│
+├── data/                  # 数据采集模块 (核心)
+│   ├── README.md          # data 模块概览
+│   ├── step/              # 开发步骤
+│   │   ├── 01_env_setup.md        # 环境配置
+│   │   ├── 02_core_setup.md       # core 模块
+│   │   ├── 03_database_setup.md   # 数据库配置
+│   │   ├── 04_app_setup.md        # app 模块
+│   │   ├── 05_data_module.md      # data 模块
+│   │   └── 06_detector_module.md  # 异常检测
+│   │
+│   └── code/               # 完整代码文件
+│       ├── .env.example
+│       ├── core/
+│       │   ├── __init__.py
+│       │   ├── config.py
+│       │   └── types.py
+│       ├── app/
+│       │   ├── __init__.py
+│       │   ├── main.py
+│       │   ├── config.py
+│       │   ├── dependencies.py
+│       │   ├── database/
+│       │   │   ├── __init__.py
+│       │   │   ├── base.py
+│       │   │   └── connection.py
+│       │   ├── models/
+│       │   │   ├── __init__.py
+│       │   │   ├── base.py
+│       │   │   └── stock.py
+│       │   ├── services/
+│       │   │   ├── __init__.py
+│       │   │   └── stock_service.py
+│       │   └── api/
+│       │       ├── __init__.py
+│       │       ├── router.py
+│       │       └── v1/
+│       │           ├── __init__.py
+│       │           ├── stocks.py
+│       │           └── health.py
+│       ├── data/
+│       │   ├── __init__.py
+│       │   ├── akshare_client.py
+│       │   ├── schemas.py
+│       │   ├── service.py
+│       │   └── storage.py
+│       └── detector/
+│           ├── __init__.py
+│           ├── base.py
+│           ├── price_detector.py
+│           ├── volume_detector.py
+│           └── service.py
+│
+├── ml/                    # ML 模块 (待开发)
+│
+└── rag/                   # RAG 模块 (待开发)
+```
 
 ---
 
 ## 开发顺序
 
 ### 第一阶段：基础框架
-1. **Core** → 定义配置和类型
-2. **App** → FastAPI 骨架
-3. **Data** → 数据采集
 
-### 第二阶段：核心功能
-4. **ML/Detector** → 异常检测
-5. **ML/Classifier** → 情感分析
-6. **ML/Predictor** → 价格预测
-
-### 第三阶段：高级功能
-7. **RAG** → 知识检索
-8. **Graph** → 工作流编排
+| 步骤 | 文档 | 内容 |
+|------|------|------|
+| 1 | [环境配置](./data/step/01_env_setup.md) | Python 环境、依赖安装、.env |
+| 2 | [Core 模块](./data/step/02_core_setup.md) | 配置、类型定义 |
+| 3 | [数据库配置](./data/step/03_database_setup.md) | SQLAlchemy 模型、连接 |
+| 4 | [App 模块](./data/step/04_app_setup.md) | FastAPI 入口、API 路由 |
+| 5 | [Data 模块](./data/step/05_data_module.md) | AkShare 数据采集 |
+| 6 | [Detector 模块](./data/step/06_detector_module.md) | 异常检测 |
 
 ---
 
-## 目录结构
+## 当前状态
 
 ```
-backend/
-├── core/                    ✅ 完成
-│   ├── step/
-│   └── analysis/
-│
-├── app/                     ✅ 完成
-│   ├── step/
-│   └── analysis/
-│
-├── data/                    ✅ 完成
-│   ├── step/
-│   └── analysis/
-│
-├── ml/                      ✅ 完成
-│   ├── step/
-│   │   ├── 01_create_ml.md
-│   │   └── 01_create_detector.md
-│   └── analysis/
-│       ├── 01_ml_design.md
-│       └── 01_detector_design.md
-│
-├── rag/                     ⏳ 待开发
-│
-└── graph/                   ⏳ 待开发
-    └── analysis/
+✅ 完成
+├── 环境配置
+├── Core 模块基础
+├── 数据库连接
+└── App 模块骨架
+
+⏳ 进行中
+└── Data 数据采集模块
+
+📋 待开发
+├── 异常检测模块
+├── ML 模块
+└── RAG 模块
 ```
 
 ---
 
 ## 快速开始
 
-### 1. 创建 Core 模块
+### 1. 安装依赖
 
 ```bash
 cd backend
-mkdir -p core/models
-touch core/__init__.py core/config.py core/types.py
-touch core/models/__init__.py core/models/stock.py core/models/anomaly.py core/models/attribution.py
+pip install -r requirements.txt
 ```
 
-参考：[core/step/01_create_core.md](./core/step/01_create_core.md)
-
-### 2. 创建 App 模块
+### 2. 配置环境变量
 
 ```bash
-mkdir -p app/api app/models app/database/models app/services app/scripts
+cp .env.example .env
+# 编辑 .env 填入数据库信息
 ```
 
-参考：[app/step/01_create_app.md](./app/step/01_create_app.md)
-
-### 3. 创建 Data 模块
+### 3. 启动服务
 
 ```bash
-mkdir -p data/models data/fetchers data/collectors data/parsers data/scripts
+cd backend
+uvicorn app.main:app --reload
 ```
 
-参考：[data/step/01_create_data.md](./data/step/01_create_data.md)
-
-### 4. 创建 ML 模块
-
-```bash
-mkdir -p ml/models ml/detector ml/predictor ml/classifier ml/features ml/scripts
-```
-
-参考：
-- [ml/step/01_create_ml.md](./ml/step/01_create_ml.md)
-- [ml/step/01_create_detector.md](./ml/step/01_create_detector.md)
-
----
-
-## 依赖关系
+### 4. 访问 API
 
 ```
-core (最底层)
-  ↑
-  ├── app
-  ├── data
-  ├── ml
-  ├── rag
-  └── graph
-
-无循环依赖！
+http://localhost:8000/docs  # Swagger 文档
+http://localhost:8000/health  # 健康检查
 ```
 
 ---
@@ -201,4 +143,3 @@ core (最底层)
 - [系统架构](../architecture.md)
 - [API 文档](../api.md)
 - [数据源说明](../data-source.md)
-- [部署指南](../deployment.md)
