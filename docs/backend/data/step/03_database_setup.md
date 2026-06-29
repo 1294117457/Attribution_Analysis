@@ -5,15 +5,29 @@
 ```
 backend/
 ├── app/
-│   ├── database/
+│   ├── database/           # 数据库相关
 │   │   ├── __init__.py
-│   │   ├── base.py
-│   │   └── connection.py
-│   ├── models/
+│   │   ├── base.py        # SQLAlchemy Base
+│   │   ├── connection.py  # 连接管理
+│   │   └── models/        # ORM 模型
+│   │       ├── __init__.py
+│   │       ├── mixins.py  # 混入类 (TimestampMixin)
+│   │       └── stock.py   # 股票模型
+│   │
+│   ├── schemas/            # Pydantic 业务模型
 │   │   ├── __init__.py
-│   │   ├── base.py
-│   │   └── stock.py
+│   │   └── anomaly.py     # 异常相关模型
+│   │
+│   └── ...
 ```
+
+### 命名规范
+
+| 目录 | 类型 | 说明 |
+|------|------|------|
+| `database/` | SQLAlchemy | ORM 模型、数据库连接 |
+| `database/models/` | ORM | 数据库表映射 |
+| `schemas/` | Pydantic | 请求/响应模型 |
 
 ---
 
@@ -68,22 +82,13 @@ def get_db() -> Session:
         yield db
     finally:
         db.close()
-
-
-def get_db_session() -> Session:
-    """获取数据库会话 (用于依赖注入)"""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 ```
 
 ---
 
-## 3. 创建数据模型
+## 3. 创建 ORM 模型
 
-### 3.1 app/models/base.py
+### 3.1 app/database/models/mixins.py
 
 ```python
 """数据库模型混入类"""
@@ -104,14 +109,14 @@ class TimestampMixin:
     )
 ```
 
-### 3.2 app/models/stock.py
+### 3.2 app/database/models/stock.py
 
 ```python
-"""股票数据模型"""
+"""股票数据 ORM 模型"""
 
 from sqlalchemy import Column, String, Float, Integer, Date, Index
 from app.database.base import Base
-from app.models.base import TimestampMixin
+from app.database.models.mixins import TimestampMixin
 
 
 class StockKlineDB(Base, TimestampMixin):
@@ -140,33 +145,86 @@ class StockKlineDB(Base, TimestampMixin):
         return f"<StockKlineDB {self.symbol} {self.date} close={self.close}>"
 ```
 
-### 3.3 app/models/__init__.py
+### 3.3 app/database/models/__init__.py
 
 ```python
-"""数据库模型"""
+"""ORM 模型"""
 
-from app.models.base import TimestampMixin
-from app.models.stock import StockKlineDB
+from app.database.models.mixins import TimestampMixin
+from app.database.models.stock import StockKlineDB
 
 __all__ = ["TimestampMixin", "StockKlineDB"]
 ```
 
-### 3.4 app/database/__init__.py
+---
+
+## 4. 创建 Pydantic 业务模型
+
+### 4.1 app/schemas/anomaly.py
 
 ```python
-"""数据库模块"""
+"""异常业务模型 (Pydantic)"""
 
-from app.database.base import Base
-from app.database.connection import engine, get_db, SessionLocal
+from pydantic import BaseModel, Field
+from datetime import date
+from core.types import AnomalyType
 
-__all__ = ["Base", "engine", "get_db", "SessionLocal"]
+
+class AnomalyCreate(BaseModel):
+    """创建异常请求"""
+    symbol: str
+    date: date
+    type: AnomalyType
+    value: float
+    threshold: float
+    score: float = Field(..., ge=0, le=1)
+    description: str | None = None
+
+
+class AnomalyResponse(BaseModel):
+    """异常响应"""
+    id: int
+    symbol: str
+    date: date
+    type: AnomalyType
+    value: float
+    threshold: float
+    score: float
+    description: str | None
+
+    class Config:
+        from_attributes = True  # 支持从 ORM 模型转换
+
+
+class AnomalyListResponse(BaseModel):
+    """异常列表响应"""
+    total: int
+    items: list[AnomalyResponse]
+```
+
+### 4.2 app/schemas/__init__.py
+
+```python
+"""Pydantic 业务模型"""
+
+from app.schemas.anomaly import (
+    AnomalyCreate,
+    AnomalyResponse,
+    AnomalyListResponse,
+)
+
+__all__ = [
+    "AnomalyCreate",
+    "AnomalyResponse",
+    "AnomalyListResponse",
+]
 ```
 
 ---
 
-## 4. 初始化数据库表
+## 5. 更新 main.py
 
-### 4.1 app/main.py (更新)
+### app/main.py
 
 ```python
 """FastAPI 应用入口"""
@@ -199,12 +257,12 @@ def health_check():
 
 ---
 
-## 5. 验证数据库连接
+## 6. 验证数据库连接
 
 ```python
 # test_db.py
 from app.database.connection import engine, SessionLocal
-from app.models.stock import StockKlineDB
+from app.database.models.stock import StockKlineDB
 
 # 测试连接
 with engine.connect() as conn:
@@ -228,7 +286,26 @@ python test_db.py
 
 ---
 
-## 6. 常见问题
+## 7. ORM vs Pydantic 对比
+
+| 特性 | ORM 模型 | Pydantic 模型 |
+|------|----------|---------------|
+| 位置 | `database/models/` | `schemas/` |
+| 用途 | 数据库表映射 | 请求/响应 |
+| 基类 | `Base` (DeclarativeBase) | `BaseModel` |
+| 字段类型 | `Column(...)` | 类型标注 |
+| 示例 | `StockKlineDB` | `AnomalyCreate` |
+
+### 数据流转
+
+```
+请求 JSON → AnomalyCreate (Pydantic) → AnomalyDB (ORM) → 数据库
+数据库 → AnomalyDB (ORM) → AnomalyResponse (Pydantic) → 响应 JSON
+```
+
+---
+
+## 8. 常见问题
 
 ### Q: 数据库连接失败？
 

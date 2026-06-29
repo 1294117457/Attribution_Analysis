@@ -2,7 +2,7 @@
 
 from sqlalchemy import Column, String, Float, Integer, Date, Index
 from app.database.base import Base
-from app.database.models.base import TimestampMixin
+from app.database.models.mixins import TimestampMixin
 
 
 class StockKlineDB(Base, TimestampMixin):
