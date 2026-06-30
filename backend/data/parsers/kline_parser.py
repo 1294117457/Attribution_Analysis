@@ -36,7 +36,7 @@ class KlineParser:
                 kline = DailyKline(
                     symbol=symbol,
                     name="",
-                    date=kline_date,
+                    trade_date=kline_date,
                     open=float(row["开盘"]),
                     high=float(row["最高"]),
                     low=float(row["最低"]),

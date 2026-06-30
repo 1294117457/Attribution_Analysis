@@ -1,14 +1,18 @@
 """应用配置"""
 
 from functools import lru_cache
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# backend 目录路径
+BACKEND_DIR = Path(__file__).parent.parent
 
 
 class Settings(BaseSettings):
     """应用配置"""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=BACKEND_DIR / ".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
     )
