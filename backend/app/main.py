@@ -6,8 +6,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
-from app.middleware import LoggingMiddleware, TimingMiddleware
-from app.handlers import register_exception_handlers
 from infra.database.base import Base
 from infra.database.connection import engine
 
@@ -32,9 +30,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # 中间件（注册顺序 = 执行顺序的逆序）
-    app.add_middleware(TimingMiddleware)
-    app.add_middleware(LoggingMiddleware)
+    # CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -42,9 +38,6 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    # 全局异常处理
-    register_exception_handlers(app)
 
     # 路由
     app.include_router(api_router)

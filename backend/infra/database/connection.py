@@ -4,8 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
 
-# TODO: 后续将 config 提取到顶层共享模块，消除 infra → app 的依赖
-from app.config import get_settings
+from infra.config import get_settings
 
 settings = get_settings()
 
