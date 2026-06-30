@@ -10,7 +10,7 @@
 |------|------|
 | 后端 | Python 3.12 + FastAPI + SQLAlchemy |
 | 前端 | Vue 3 + Vite + Axios + Vue Router |
-| 数据库 | SQLite (开发) / PostgreSQL (生产) |
+| 数据库 | PostgreSQL |
 | 数据源 | AkShare (东方财富) |
 
 ## 三、项目结构
@@ -250,14 +250,20 @@ npm run dev
 ### 11.1 数据库配置 (.env)
 
 ```bash
-# SQLite (开发)
-DATABASE_URL=sqlite:///attribution.db
-
-# PostgreSQL (生产)
-DATABASE_URL=postgresql://user:pass@host:5432/attribution
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/attribution
+DATABASE_URL_ASYNC=postgresql+asyncpg://postgres:postgres@localhost:5432/attribution
+REDIS_URL=redis://localhost:6379/0
 ```
 
-### 11.2 数据源配置
+### 11.2 数据库初始化
+
+首次启动前需要创建数据库：
+
+```sql
+CREATE DATABASE attribution;
+```
+
+### 11.3 数据源配置
 
 当前使用 AkShare (东方财富)，无需额外配置 API Key。
 
@@ -275,5 +281,5 @@ DATABASE_URL=postgresql://user:pass@host:5432/attribution
 
 1. AkShare 依赖网络访问，确保服务器能访问东方财富 API
 2. 采集频率不要过高，避免被限流
-3. 生产环境建议使用 PostgreSQL
+3. 确保 PostgreSQL 已安装并运行
 4. 前端代理已配置 `/api` → `localhost:8000`
