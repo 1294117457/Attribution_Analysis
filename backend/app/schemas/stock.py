@@ -1,9 +1,11 @@
-"""日K线 API Pydantic 模型"""
+"""股票 API Pydantic 模型"""
 
 from pydantic import BaseModel, Field
 from datetime import date
 from typing import Optional
 
+
+# ============ K线相关 ============
 
 class DailyKlineResponse(BaseModel):
     """日K线响应"""
@@ -45,5 +47,59 @@ class CollectResponse(BaseModel):
 
     status: str
     symbol: str
+    name: Optional[str] = None
     count: int
+    message: str
+
+
+# ============ 股票信息相关 ============
+
+class StockInfoResponse(BaseModel):
+    """股票信息响应"""
+
+    symbol: str
+    name: Optional[str] = None
+    industry: Optional[str] = None
+    market: Optional[str] = None
+    list_date: Optional[str] = None
+    total_shares: Optional[str] = None
+    record_count: int = 0
+    kline_start: Optional[date] = None
+    kline_end: Optional[date] = None
+
+    class Config:
+        from_attributes = True
+
+
+class StockListResponse(BaseModel):
+    """股票列表响应"""
+
+    total: int
+    items: list[StockInfoResponse]
+
+
+class StockInventoryItem(BaseModel):
+    """数据清单 - 单只股票（兼容旧接口）"""
+
+    symbol: str
+    name: Optional[str] = None
+    record_count: int
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+
+
+class StockInventoryResponse(BaseModel):
+    """数据清单响应（兼容旧接口）"""
+
+    total_stocks: int
+    total_records: int
+    stocks: list[StockInventoryItem]
+
+
+class DeleteResponse(BaseModel):
+    """删除响应"""
+
+    status: str
+    symbol: str
+    deleted_count: int
     message: str
