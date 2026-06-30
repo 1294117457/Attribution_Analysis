@@ -138,7 +138,7 @@ backend/
 │   ├── __init__.py
 │   ├── main.py
 │   ├── api/
-│   ├── models/
+│   ├── schemas/
 │   ├── database/
 │   ├── services/
 │   └── scripts/            # app 专用脚本

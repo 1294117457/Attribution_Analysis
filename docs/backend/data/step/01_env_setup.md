@@ -31,18 +31,18 @@ source .venv/bin/activate  # Linux/Mac
 ```
 # 文件: backend/requirements.txt
 
+# Web 框架
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
+
+# 数据库
 sqlalchemy==2.0.35
 pydantic-settings==2.5.2
+psycopg2-binary==2.9.10
 
 # 数据采集
 akshare==1.18.64
 pandas==2.2.3
-
-# 数据库
-psycopg2-binary==2.9.10
-alembic==1.13.3
 
 # 工具
 python-dotenv==1.0.1
@@ -69,12 +69,12 @@ cp .env.example .env
 ```bash
 # 文件: backend/.env
 
-# 数据库 (PostgreSQL + pgvector)
-DATABASE_URL=postgresql://postgres:zhouchenhui@223.109.49.63:5432/attribution
-DATABASE_URL_ASYNC=postgresql+asyncpg://postgres:zhouchenhui@223.109.49.63:5432/attribution
+# 数据库 (PostgreSQL)
+DATABASE_URL=postgresql://postgres:password@localhost:5432/attribution
+DATABASE_URL_ASYNC=postgresql+asyncpg://postgres:password@localhost:5432/attribution
 
-# Redis
-REDIS_URL=redis://223.109.49.63:6379/0
+# Redis (可选)
+REDIS_URL=redis://localhost:6379/0
 
 # API
 API_V1_PREFIX=/api/v1
@@ -82,20 +82,42 @@ API_V1_PREFIX=/api/v1
 
 ---
 
-## 5. 目录结构
+## 5. 项目结构
 
 ```
 backend/
 ├── .env                  # 环境变量 (不要提交到 git)
 ├── .env.example          # 环境变量模板
-├── requirements.txt     # Python 依赖
-├── app/                  # API 应用
+├── requirements.txt      # Python 依赖
+│
+├── app/                  # FastAPI 应用
+│   ├── api/             # API 路由
+│   ├── database/        # 数据库 (SQLAlchemy ORM)
+│   ├── schemas/         # Pydantic 业务模型
+│   ├── services/       # 业务逻辑
+│   └── main.py          # 应用入口
+│
 ├── core/                 # 核心模块
-├── data/                 # 数据采集
-├── detector/             # 异常检测
-├── scripts/              # 脚本
+│   ├── config.py        # 配置管理
+│   └── types.py         # 类型定义
+│
+├── data/                 # 数据采集模块 (重点)
+│   ├── akshare_client.py  # AkShare 客户端
+│   ├── schemas.py         # 数据模型
+│   └── service.py         # 采集服务
+│
+├── detector/             # 异常检测模块
+│
 └── tests/               # 测试
 ```
+
+### 命名规范
+
+| 目录 | 类型 | 说明 |
+|------|------|------|
+| `app/database/` | SQLAlchemy | ORM 模型、数据库连接 |
+| `app/schemas/` | Pydantic | 请求/响应模型 |
+| `data/` | 数据采集 | AkShare 客户端、服务 |
 
 ---
 
