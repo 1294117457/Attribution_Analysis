@@ -1,7 +1,7 @@
 """K线数据 Schema"""
 
 from pydantic import Field
-from datetime import date
+import datetime
 from typing import Optional
 
 from data.schemas.base import BaseData
@@ -12,7 +12,7 @@ class DailyKline(BaseData):
 
     symbol: str = Field(..., description="股票代码")
     name: str = Field("", description="股票名称")
-    date: date = Field(..., description="日期")
+    trade_date: datetime.date = Field(..., alias="date", description="交易日期")
     open: float = Field(..., description="开盘价")
     high: float = Field(..., description="最高价")
     low: float = Field(..., description="最低价")
@@ -20,6 +20,9 @@ class DailyKline(BaseData):
     volume: int = Field(..., description="成交量")
     amount: float = Field(..., description="成交额")
     change_pct: Optional[float] = Field(None, description="涨跌幅 %")
+
+    class Config:
+        populate_by_name = True
 
 
 class StockInfo(BaseData):
@@ -29,4 +32,4 @@ class StockInfo(BaseData):
     name: str
     industry: Optional[str] = None
     market: Optional[str] = None
-    list_date: Optional[date] = None
+    list_date: Optional[datetime.date] = None
