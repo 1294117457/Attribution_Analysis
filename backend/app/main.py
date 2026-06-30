@@ -40,7 +40,7 @@ def create_app() -> FastAPI:
     )
 
     # 路由
-    app.include_router(api_router)
+    app.include_router(api_router, prefix="/api/v1")
 
     return app
 
@@ -48,7 +48,7 @@ def create_app() -> FastAPI:
 app = create_app()
 
 
-@app.get("/health")
-def health_check():
-    """健康检查"""
+@app.get("/health", tags=["系统"])
+def root_health_check():
+    """根路径健康检查"""
     return {"status": "ok", "service": "attribution-analysis"}
