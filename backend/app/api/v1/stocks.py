@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.database.connection import get_db_session
+from infra.database.connection import get_db_session
 from app.schemas.stock import (
     DailyKlineResponse,
     DailyKlineListResponse,

@@ -12,7 +12,7 @@ from pathlib import Path
 # 添加 backend 目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from app.database import get_db_session
+from infra.database import get_db_session
 from data.services import StockService
 
 

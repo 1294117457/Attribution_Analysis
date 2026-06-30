@@ -1,19 +1,26 @@
 """FastAPI 应用入口"""
 
+import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.router import api_router
-from app.database.base import Base
-from app.database.connection import engine
-from contextlib import asynccontextmanager
+from app.middleware import LoggingMiddleware, TimingMiddleware
+from app.handlers import register_exception_handlers
+from infra.database.base import Base
+from infra.database.connection import engine
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # startup: 创建数据库表
     Base.metadata.create_all(bind=engine)
     yield
-    # shutdown: 这里可以做清理工作（关连接等）
 
 
 def create_app() -> FastAPI:
@@ -25,6 +32,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # 中间件（注册顺序 = 执行顺序的逆序）
+    app.add_middleware(TimingMiddleware)
+    app.add_middleware(LoggingMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -33,6 +43,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # 全局异常处理
+    register_exception_handlers(app)
+
+    # 路由
     app.include_router(api_router)
 
     return app
