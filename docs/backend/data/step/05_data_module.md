@@ -5,11 +5,10 @@
 ```
 backend/
 ├── data/
-│   ├── __init__.py
-│   ├── schemas.py          # 数据模型
-│   ├── akshare_client.py  # AkShare 客户端
-│   ├── service.py         # 业务逻辑
-│   └── storage.py         # 存储服务
+│   ├── __init__.py          # 模块导出
+│   ├── schemas.py           # Pydantic 数据模型
+│   ├── akshare_client.py    # AkShare 客户端
+│   └── service.py           # 采集服务
 ```
 
 ---
@@ -42,7 +41,7 @@ class StockKline(BaseModel):
 
 
 class StockKlineResponse(BaseModel):
-    """K 线数据响应"""
+    """K 线数据响应 (从数据库读取)"""
 
     id: int
     symbol: str
@@ -60,13 +59,6 @@ class StockKlineResponse(BaseModel):
         from_attributes = True
 
 
-class StockListResponse(BaseModel):
-    """股票列表响应"""
-
-    total: int
-    items: list[StockKlineResponse]
-
-
 class CollectResponse(BaseModel):
     """采集响应"""
 
@@ -74,6 +66,23 @@ class CollectResponse(BaseModel):
     symbol: str
     count: int
     message: str
+```
+
+### 2.2 data/__init__.py
+
+```python
+"""数据采集模块"""
+
+from data.schemas import StockKline, StockKlineResponse
+from data.akshare_client import AkShareClient
+from data.service import DataService
+
+__all__ = [
+    "StockKline",
+    "StockKlineResponse",
+    "AkShareClient",
+    "DataService",
+]
 ```
 
 ---
@@ -87,7 +96,7 @@ class CollectResponse(BaseModel):
 
 import akshare as ak
 import pandas as pd
-from datetime import date, timedelta
+from datetime import date
 from typing import Optional
 
 from data.schemas import StockKline
@@ -95,9 +104,6 @@ from data.schemas import StockKline
 
 class AkShareClient:
     """AkShare 数据客户端"""
-
-    def __init__(self):
-        self.session = None  # 可复用 session
 
     def get_stock_kline(
         self,
@@ -118,92 +124,45 @@ class AkShareClient:
         Returns:
             list[StockKline]
         """
-        # 格式化日期
         start_str = start_date.strftime("%Y%m%d")
         end_str = end_date.strftime("%Y%m%d")
 
-        try:
-            # 调用 AkShare 获取数据
-            df = ak.stock_zh_a_hist(
-                symbol=symbol,
-                start_date=start_str,
-                end_date=end_str,
-                adjust=adjust,
-            )
+        df = ak.stock_zh_a_hist(
+            symbol=symbol,
+            start_date=start_str,
+            end_date=end_str,
+            adjust=adjust,
+        )
 
-            # 转换 DataFrame 为 list[StockKline]
-            return self._parse_dataframe(df, symbol)
-
-        except Exception as e:
-            raise RuntimeError(f"获取股票 {symbol} 数据失败: {e}")
-
-    def get_stock_info(self, symbol: str) -> Optional[dict]:
-        """
-        获取股票基本信息
-
-        Args:
-            symbol: 股票代码
-
-        Returns:
-            dict 或 None
-        """
-        try:
-            df = ak.stock_individual_info_em(symbol=symbol)
-            info = dict(zip(df["Item"], df["Content"]))
-            return info
-        except Exception:
-            return None
+        return self._parse_dataframe(df, symbol)
 
     def get_stock_name(self, symbol: str) -> str:
-        """
-        获取股票名称
-
-        Args:
-            symbol: 股票代码
-
-        Returns:
-            股票名称
-        """
-        try:
-            df = ak.stock_zh_a_spot_em()
-            row = df[df["代码"] == symbol]
-            if not row.empty:
-                return row.iloc[0]["名称"]
-        except Exception:
-            pass
-
+        """获取股票名称"""
+        df = ak.stock_zh_a_spot_em()
+        row = df[df["代码"] == symbol]
+        if not row.empty:
+            return row.iloc[0]["名称"]
         return ""
 
     def _parse_dataframe(self, df: pd.DataFrame, symbol: str) -> list[StockKline]:
-        """
-        解析 DataFrame 为 StockKline 列表
-
-        Args:
-            df: AkShare 返回的 DataFrame
-            symbol: 股票代码
-
-        Returns:
-            list[StockKline]
-        """
+        """解析 DataFrame 为 StockKline 列表"""
         klines = []
 
         for _, row in df.iterrows():
             try:
-                # 获取日期
                 raw_date = row["日期"]
                 if isinstance(raw_date, str):
                     kline_date = date.fromisoformat(raw_date)
                 else:
                     kline_date = pd.to_datetime(raw_date).date()
 
-                # 获取涨跌幅
                 change_pct = row.get("涨跌幅")
                 if change_pct == "--":
                     change_pct = None
 
                 kline = StockKline(
                     symbol=symbol,
-                    name="",  # 名称单独获取
+                    name="",
                     date=kline_date,
                     open=float(row["开盘"]),
                     high=float(row["最高"]),
@@ -214,9 +173,7 @@ class AkShareClient:
                     change_pct=float(change_pct) if change_pct else None,
                 )
                 klines.append(kline)
-
-            except Exception as e:
-                # 跳过解析失败的行
+            except Exception:
                 continue
 
         return klines
@@ -251,18 +208,7 @@ class DataService:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
     ) -> list[StockKline]:
-        """
-        采集股票数据
-
-        Args:
-            symbol: 股票代码
-            days: 采集天数（如果 start_date 未指定）
-            start_date: 开始日期（优先使用）
-            end_date: 结束日期（默认为今天）
-
-        Returns:
-            list[StockKline]
-        """
+        """采集股票数据"""
         if end_date is None:
             end_date = date.today()
 
@@ -286,16 +232,7 @@ class DataService:
         symbols: list[str],
         days: int = 30,
     ) -> dict[str, list[StockKline]]:
-        """
-        批量采集股票数据
-
-        Args:
-            symbols: 股票代码列表
-            days: 采集天数
-
-        Returns:
-            dict[symbol, list[StockKline]]
-        """
+        """批量采集股票数据"""
         results = {}
 
         for symbol in symbols:

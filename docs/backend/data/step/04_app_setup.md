@@ -7,37 +7,36 @@ backend/
 ├── app/
 │   ├── __init__.py
 │   ├── main.py
-│   ├── config.py
-│   ├── dependencies.py
 │   │
 │   ├── api/
 │   │   ├── __init__.py
 │   │   ├── router.py
-│   │   └── v1/
+│   │   ├── anomalies.py
+│   │   └── health.py
+│   │
+│   ├── database/           # SQLAlchemy ORM
+│   │   ├── __init__.py
+│   │   ├── base.py        # Base = declarative_base()
+│   │   ├── connection.py  # 连接管理
+│   │   └── models/       # ORM 模型
 │   │       ├── __init__.py
-│   │       ├── health.py
-│   │       └── stocks.py
+│   │       ├── mixins.py # TimestampMixin
+│   │       └── stock.py  # StockKlineDB
 │   │
-│   ├── database/
+│   ├── schemas/           # Pydantic 业务模型
 │   │   ├── __init__.py
-│   │   ├── base.py
-│   │   └── connection.py
-│   │
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── base.py
-│   │   └── stock.py
+│   │   └── anomaly.py    # AnomalyCreate/Response
 │   │
 │   └── services/
 │       ├── __init__.py
-│       └── stock_service.py
+│       └── anomaly_service.py
 ```
 
 ---
 
 ## 2. 创建 API 模块
 
-### 2.1 app/api/v1/health.py
+### 2.1 app/api/health.py
 
 ```python
 """健康检查 API"""
@@ -59,89 +58,21 @@ def ping():
     return "pong"
 ```
 
-### 2.2 app/api/v1/stocks.py
-
-```python
-"""股票数据 API"""
-
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from datetime import date
-from typing import Optional
-
-from app.database.connection import get_db
-from app.services.stock_service import StockService
-from data.schemas import StockKlineResponse, StockListResponse, CollectResponse
-
-router = APIRouter(prefix="/stocks", tags=["股票"])
-
-
-@router.get("/{symbol}", response_model=StockKlineResponse)
-def get_stock(
-    symbol: str,
-    start_date: Optional[date] = None,
-    end_date: Optional[date] = None,
-    db: Session = Depends(get_db),
-):
-    """获取股票 K 线数据"""
-    service = StockService(db)
-    data = service.get_stock(symbol, start_date, end_date)
-
-    if not data:
-        raise HTTPException(status_code=404, detail="股票数据不存在")
-
-    return data
-
-
-@router.get("/", response_model=StockListResponse)
-def list_stocks(
-    limit: int = Query(100, ge=1, le=1000),
-    db: Session = Depends(get_db),
-):
-    """获取股票列表"""
-    service = StockService(db)
-    items = service.list_stocks(limit)
-    return StockListResponse(total=len(items), items=items)
-
-
-@router.post("/collect", response_model=CollectResponse)
-def collect_stock(
-    symbol: str,
-    days: int = Query(365, ge=1, le=3650),
-    db: Session = Depends(get_db),
-):
-    """采集股票数据"""
-    service = StockService(db)
-    result = service.collect_stock(symbol, days)
-    return result
-```
-
-### 2.3 app/api/v1/__init__.py
-
-```python
-"""API v1 路由"""
-
-from fastapi import APIRouter
-from app.api.v1 import health, stocks
-
-router = APIRouter()
-router.include_router(health.router)
-router.include_router(stocks.router)
-```
-
-### 2.4 app/api/router.py
+### 2.2 app/api/router.py
 
 ```python
 """路由汇总"""
 
 from fastapi import APIRouter
-from app.api.v1 import router as v1_router
+from app.api import health, anomalies
 
 api_router = APIRouter(prefix="/api/v1")
-api_router.include_router(v1_router)
+
+api_router.include_router(health.router)
+api_router.include_router(anomalies.router)
 ```
 
-### 2.5 app/api/__init__.py
+### 2.3 app/api/__init__.py
 
 ```python
 """API 模块"""
@@ -151,132 +82,64 @@ api_router.include_router(v1_router)
 
 ## 3. 创建服务层
 
-### 3.1 app/services/stock_service.py
+### 3.1 app/services/anomaly_service.py
 
 ```python
-"""股票服务"""
+"""异常服务"""
 
+from sqlalchemy import Column, String, Float, Integer, Date, Index
 from sqlalchemy.orm import Session
-from sqlalchemy.dialects.postgresql import insert
-from datetime import date, timedelta
-from typing import Optional
-
-from app.models.stock import StockKlineDB
-from data.schemas import (
-    StockKlineResponse,
-    StockKline as StockKlineSchema,
-    CollectResponse,
-)
-from data.akshare_client import AkShareClient
+from app.database.base import Base
+from app.database.models.mixins import TimestampMixin
+from app.schemas.anomaly import AnomalyCreate, AnomalyResponse
 
 
-class StockService:
-    """股票服务"""
+class AnomalyDB(Base, TimestampMixin):
+    """异常数据 ORM 模型"""
+
+    __tablename__ = "anomalies"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(10), nullable=False, index=True)
+    date = Column(Date, nullable=False)
+    type = Column(String(50), nullable=False)
+    value = Column(Float, nullable=False)
+    threshold = Column(Float, nullable=False)
+    score = Column(Float, nullable=False)
+    description = Column(String(500), nullable=True)
+
+    __table_args__ = (Index("idx_symbol_date", "symbol", "date"),)
+
+
+class AnomalyService:
+    """异常服务"""
 
     def __init__(self, db: Session):
         self.db = db
 
-    def get_stock(
+    def create(self, data: AnomalyCreate) -> AnomalyResponse:
+        """创建异常记录"""
+        db_obj = AnomalyDB(**data.model_dump())
+        self.db.add(db_obj)
+        self.db.commit()
+        self.db.refresh(db_obj)
+        return AnomalyResponse.model_validate(db_obj)
+
+    def list_by_symbol(
         self,
         symbol: str,
-        start_date: Optional[date] = None,
-        end_date: Optional[date] = None,
-    ) -> list[StockKlineResponse]:
-        """获取股票数据"""
-        query = self.db.query(StockKlineDB).filter(StockKlineDB.symbol == symbol)
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[AnomalyResponse]:
+        """查询股票的异常记录"""
+        query = self.db.query(AnomalyDB).filter(AnomalyDB.symbol == symbol)
 
         if start_date:
-            query = query.filter(StockKlineDB.date >= start_date)
+            query = query.filter(AnomalyDB.date >= start_date)
         if end_date:
-            query = query.filter(StockKlineDB.date <= end_date)
+            query = query.filter(AnomalyDB.date <= end_date)
 
-        query = query.order_by(StockKlineDB.date.desc())
-
-        return [StockKlineResponse.model_validate(r) for r in query.all()]
-
-    def list_stocks(self, limit: int = 100) -> list[StockKlineResponse]:
-        """获取股票列表"""
-        query = (
-            self.db.query(StockKlineDB)
-            .distinct(StockKlineDB.symbol)
-            .order_by(StockKlineDB.symbol)
-            .limit(limit)
-        )
-        return [StockKlineResponse.model_validate(r) for r in query.all()]
-
-    def collect_stock(self, symbol: str, days: int = 365) -> CollectResponse:
-        """采集股票数据"""
-        client = AkShareClient()
-
-        end_date = date.today()
-        start_date = end_date - timedelta(days=days)
-
-        try:
-            # 获取数据
-            klines = client.get_stock_kline(symbol, start_date, end_date)
-
-            if not klines:
-                return CollectResponse(
-                    status="failed",
-                    symbol=symbol,
-                    count=0,
-                    message="未获取到数据",
-                )
-
-            # 存储数据
-            count = 0
-            for kline in klines:
-                self._upsert_kline(kline)
-                count += 1
-
-            self.db.commit()
-
-            return CollectResponse(
-                status="success",
-                symbol=symbol,
-                count=count,
-                message=f"成功采集 {count} 条数据",
-            )
-
-        except Exception as e:
-            self.db.rollback()
-            return CollectResponse(
-                status="failed",
-                symbol=symbol,
-                count=0,
-                message=f"采集失败: {str(e)}",
-            )
-
-    def _upsert_kline(self, kline: StockKlineSchema) -> None:
-        """Upsert K 线数据"""
-        stmt = insert(StockKlineDB).values(
-            symbol=kline.symbol,
-            name=kline.name,
-            date=kline.date,
-            open=kline.open,
-            high=kline.high,
-            low=kline.low,
-            close=kline.close,
-            volume=kline.volume,
-            amount=kline.amount,
-            change_pct=kline.change_pct,
-        )
-
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["symbol", "date"],
-            set_={
-                "name": stmt.excluded.name,
-                "open": stmt.excluded.open,
-                "high": stmt.excluded.high,
-                "low": stmt.excluded.low,
-                "close": stmt.excluded.close,
-                "volume": stmt.excluded.volume,
-                "amount": stmt.excluded.amount,
-                "change_pct": stmt.excluded.change_pct,
-            },
-        )
-
-        self.db.execute(stmt)
+        return [AnomalyResponse.model_validate(r) for r in query.all()]
 ```
 
 ### 3.2 app/services/__init__.py
@@ -287,30 +150,9 @@ class StockService:
 
 ---
 
-## 4. 创建依赖注入
+## 4. 创建 FastAPI 入口
 
-### 4.1 app/dependencies.py
-
-```python
-"""依赖注入"""
-
-from fastapi import Depends
-from sqlalchemy.orm import Session
-
-from app.database.connection import get_db
-from app.services.stock_service import StockService
-
-
-def get_stock_service(db: Session = Depends(get_db)) -> StockService:
-    """获取股票服务"""
-    return StockService(db)
-```
-
----
-
-## 5. 创建 FastAPI 入口
-
-### 5.1 app/main.py
+### 4.1 app/main.py
 
 ```python
 """FastAPI 应用入口"""
@@ -344,29 +186,26 @@ def health_check():
 
 ---
 
-## 6. 验证 API
+## 5. 验证 API
 
-### 6.1 启动服务
+### 5.1 启动服务
 
 ```bash
 cd backend
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 6.2 测试 API
+### 5.2 测试 API
 
 ```bash
 # 健康检查
 curl http://localhost:8000/api/v1/health
 
-# 获取股票数据
-curl http://localhost:8000/api/v1/stocks/000001
-
-# 采集股票数据
-curl -X POST "http://localhost:8000/api/v1/stocks/collect?symbol=000001&days=30"
+# Ping
+curl http://localhost:8000/api/v1/ping
 ```
 
-### 6.3 访问 Swagger
+### 5.3 访问 Swagger
 
 ```
 http://localhost:8000/docs
@@ -374,34 +213,45 @@ http://localhost:8000/docs
 
 ---
 
-## 7. 目录结构确认
+## 6. 目录结构确认
 
 ```
 app/
 ├── __init__.py
-├── main.py           ← 更新
-├── config.py
-├── dependencies.py
+├── main.py           ← 创建
 │
 ├── api/
 │   ├── __init__.py
 │   ├── router.py
-│   └── v1/
-│       ├── __init__.py
-│       ├── health.py      ← 新建
-│       └── stocks.py      ← 新建
+│   ├── health.py     ← 新建
+│   └── anomalies.py
 │
 ├── database/
 │   ├── __init__.py
 │   ├── base.py
-│   └── connection.py
+│   ├── connection.py
+│   └── models/
+│       ├── __init__.py
+│       ├── mixins.py  ← 从 base.py 重命名
+│       └── stock.py
 │
-├── models/
+├── schemas/           ← 从 models/ 重命名
 │   ├── __init__.py
-│   ├── base.py
-│   └── stock.py
+│   └── anomaly.py
 │
 └── services/
     ├── __init__.py
-    └── stock_service.py   ← 新建
+    └── anomaly_service.py
 ```
+
+---
+
+## 7. ORM vs Pydantic 对比
+
+| 特性 | ORM 模型 | Pydantic 模型 |
+|------|----------|---------------|
+| 位置 | `database/models/` | `schemas/` |
+| 用途 | 数据库表映射 | 请求/响应 |
+| 基类 | `Base` (DeclarativeBase) | `BaseModel` |
+| 字段类型 | `Column(...)` | 类型标注 |
+| 示例 | `StockKlineDB` | `AnomalyCreate` |
