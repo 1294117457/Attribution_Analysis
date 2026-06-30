@@ -1,9 +1,9 @@
+"""API 路由汇总"""
+
 from fastapi import APIRouter
-from app.api import health, stocks, anomalies, analysis
+from app.api.v1 import health, stocks
 
 api_router = APIRouter()
 
 api_router.include_router(health.router)
 api_router.include_router(stocks.router)
-api_router.include_router(anomalies.router)
-api_router.include_router(analysis.router)

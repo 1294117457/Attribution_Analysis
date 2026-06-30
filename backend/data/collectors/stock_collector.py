@@ -1,19 +1,19 @@
-"""数据采集服务"""
+"""股票数据采集器"""
 
 from datetime import date, timedelta
 from typing import Optional
 
-from data.akshare_client import AkShareClient
+from data.fetchers import AkShareFetcher
 from data.schemas import StockKline
 
 
-class DataService:
-    """数据服务"""
+class StockCollector:
+    """股票数据采集器"""
 
     def __init__(self):
-        self.client = AkShareClient()
+        self.fetcher = AkShareFetcher()
 
-    def collect_stock(
+    def collect(
         self,
         symbol: str,
         days: int = 365,
@@ -21,7 +21,7 @@ class DataService:
         end_date: Optional[date] = None,
     ) -> list[StockKline]:
         """
-        采集股票数据
+        采集股票 K 线数据
 
         Args:
             symbol: 股票代码
@@ -38,13 +38,11 @@ class DataService:
         if start_date is None:
             start_date = end_date - timedelta(days=days)
 
-        # 获取股票名称
-        name = self.client.get_stock_name(symbol)
-
         # 获取 K 线数据
-        klines = self.client.get_stock_kline(symbol, start_date, end_date)
+        klines = self.fetcher.get_kline(symbol, start_date, end_date)
 
-        # 补充股票名称
+        # 获取股票名称并补充
+        name = self.fetcher.get_stock_name(symbol)
         for kline in klines:
             kline.name = name
 
@@ -66,13 +64,11 @@ class DataService:
             dict[symbol, list[StockKline]]
         """
         results = {}
-
         for symbol in symbols:
             try:
-                klines = self.collect_stock(symbol, days)
+                klines = self.collect(symbol, days=days)
                 results[symbol] = klines
             except Exception as e:
                 print(f"采集 {symbol} 失败: {e}")
                 results[symbol] = []
-
         return results
