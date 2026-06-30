@@ -1,6 +1,6 @@
 """数据采集模块"""
 
-from data.fetchers.akshare_fetcher import AkShareFetcher
-from data.schemas import StockKline
+from data.adapters.akshare import AkShareFetcher
+from data.schemas import DailyKline
 
-__all__ = ["AkShareFetcher", "StockKline"]
+__all__ = ["AkShareFetcher", "DailyKline"]

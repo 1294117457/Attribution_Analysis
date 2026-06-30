@@ -1,14 +1,14 @@
-"""股票 K 线 ORM 模型"""
+"""日K线 ORM 模型"""
 
 from sqlalchemy import Column, String, Float, Integer, Date, Index
 from app.database.base import Base
 from app.database.models.mixins import TimestampMixin
 
 
-class StockKlineDB(Base, TimestampMixin):
-    """K 线数据模型"""
+class DailyKlineDB(Base, TimestampMixin):
+    """日K线数据库模型"""
 
-    __tablename__ = "stock_klines"
+    __tablename__ = "daily_klines"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String(10), nullable=False, index=True)
@@ -27,4 +27,4 @@ class StockKlineDB(Base, TimestampMixin):
     )
 
     def __repr__(self):
-        return f"<StockKlineDB {self.symbol} {self.date} close={self.close}>"
+        return f"<DailyKlineDB {self.symbol} {self.date} close={self.close}>"

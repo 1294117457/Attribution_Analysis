@@ -10,7 +10,7 @@ from pathlib import Path
 # 添加 backend 目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from app.database import get_db
+from app.database import get_db_session
 from data.services import StockService
 
 
@@ -29,8 +29,8 @@ def main():
 
     print(f"开始批量采集 {len(symbols)} 只股票...")
 
-    with get_db() as db:
-        service = StockService(db)
+    with get_db_session() as session:
+        service = StockService(session)
         results = service.collect_batch_and_save(symbols, days=30)
 
         print("\n采集结果:")
