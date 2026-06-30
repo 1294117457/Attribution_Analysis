@@ -1,6 +1,6 @@
 """测试核心配置"""
 
-from app.config import get_settings
+from infra.config import get_settings
 
 settings = get_settings()
 print(f"DATABASE_URL: {settings.DATABASE_URL}")
