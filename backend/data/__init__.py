@@ -1,12 +1,6 @@
 """数据采集模块"""
 
-from data.schemas import StockKline, StockKlineResponse
-from data.akshare_client import AkShareClient
-from data.service import DataService
+from data.fetchers.akshare_fetcher import AkShareFetcher
+from data.schemas import StockKline
 
-__all__ = [
-    "StockKline",
-    "StockKlineResponse",
-    "AkShareClient",
-    "DataService",
-]
+__all__ = ["AkShareFetcher", "StockKline"]

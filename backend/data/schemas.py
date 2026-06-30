@@ -1,4 +1,4 @@
-"""数据采集模块的 Pydantic 模型"""
+"""数据模型"""
 
 from pydantic import BaseModel, Field
 from datetime import date
@@ -20,36 +20,11 @@ class StockKline(BaseModel):
     change_pct: Optional[float] = Field(None, description="涨跌幅 %")
 
 
-class StockKlineResponse(BaseModel):
-    """K 线数据响应 (从数据库读取)"""
+class StockInfo(BaseModel):
+    """股票基本信息"""
 
-    id: int
     symbol: str
-    name: Optional[str] = None
-    date: date
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: int
-    amount: float
-    change_pct: Optional[float] = None
-
-    class Config:
-        from_attributes = True
-
-
-class StockListResponse(BaseModel):
-    """股票列表响应"""
-
-    total: int
-    items: list[StockKlineResponse]
-
-
-class CollectResponse(BaseModel):
-    """采集响应"""
-
-    status: str  # success, failed, partial
-    symbol: str
-    count: int
-    message: str
+    name: str
+    industry: Optional[str] = None
+    market: Optional[str] = None
+    list_date: Optional[date] = None

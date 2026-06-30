@@ -1,4 +1,4 @@
-"""股票数据模型"""
+"""股票 K 线 ORM 模型"""
 
 from sqlalchemy import Column, String, Float, Integer, Date, Index
 from app.database.base import Base
@@ -6,7 +6,7 @@ from app.database.models.mixins import TimestampMixin
 
 
 class StockKlineDB(Base, TimestampMixin):
-    """K 线数据 ORM 模型"""
+    """K 线数据模型"""
 
     __tablename__ = "stock_klines"
 
@@ -20,10 +20,11 @@ class StockKlineDB(Base, TimestampMixin):
     close = Column(Float, nullable=False)
     volume = Column(Integer, nullable=False)
     amount = Column(Float, nullable=False)
-    change_pct = Column(Float, nullable=True)  # 涨跌幅 %
+    change_pct = Column(Float, nullable=True)
 
-    # 复合唯一索引
-    __table_args__ = (Index("idx_symbol_date", "symbol", "date", unique=True),)
+    __table_args__ = (
+        Index("idx_symbol_date", "symbol", "date", unique=True),
+    )
 
     def __repr__(self):
         return f"<StockKlineDB {self.symbol} {self.date} close={self.close}>"

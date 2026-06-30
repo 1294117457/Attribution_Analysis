@@ -1,3 +1,5 @@
+"""数据库连接"""
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
@@ -12,7 +14,8 @@ engine = create_engine(
     pool_size=10,
     max_overflow=20,
 )
-# Session工厂
+
+# Session 工厂
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
@@ -31,7 +34,7 @@ def get_db() -> Session:
 
 
 def get_db_session() -> Session:
-    """获取数据库会话 (用于依赖注入)"""
+    """获取数据库会话 (用于 FastAPI 依赖注入)"""
     db = SessionLocal()
     try:
         yield db

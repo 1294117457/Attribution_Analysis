@@ -1,13 +1,15 @@
-"""Pydantic 业务模型"""
+"""Pydantic 模型"""
 
-from app.schemas.anomaly import (
-    AnomalyCreate,
-    AnomalyResponse,
-    AnomalyListResponse,
+from app.schemas.stock import (
+    StockKlineResponse,
+    StockKlineListResponse,
+    CollectRequest,
+    CollectResponse,
 )
 
 __all__ = [
-    "AnomalyCreate",
-    "AnomalyResponse",
-    "AnomalyListResponse",
+    "StockKlineResponse",
+    "StockKlineListResponse",
+    "CollectRequest",
+    "CollectResponse",
 ]
