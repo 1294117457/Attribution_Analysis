@@ -1,12 +1,12 @@
-"""股票数据 Pydantic 模型"""
+"""日K线 API Pydantic 模型"""
 
 from pydantic import BaseModel, Field
 from datetime import date
 from typing import Optional
 
 
-class StockKlineResponse(BaseModel):
-    """K 线数据响应"""
+class DailyKlineResponse(BaseModel):
+    """日K线响应"""
 
     id: int
     symbol: str
@@ -24,11 +24,11 @@ class StockKlineResponse(BaseModel):
         from_attributes = True
 
 
-class StockKlineListResponse(BaseModel):
-    """K 线列表响应"""
+class DailyKlineListResponse(BaseModel):
+    """日K线列表响应"""
 
     total: int
-    items: list[StockKlineResponse]
+    items: list[DailyKlineResponse]
 
 
 class CollectRequest(BaseModel):

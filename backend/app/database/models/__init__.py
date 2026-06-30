@@ -2,6 +2,6 @@
 
 from app.database.base import Base
 from app.database.models.mixins import TimestampMixin
-from app.database.models.stock import StockKlineDB
+from app.database.models.stock import DailyKlineDB
 
-__all__ = ["Base", "TimestampMixin", "StockKlineDB"]
+__all__ = ["Base", "TimestampMixin", "DailyKlineDB"]

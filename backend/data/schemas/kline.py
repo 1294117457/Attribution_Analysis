@@ -1,12 +1,14 @@
-"""数据模型"""
+"""K线数据 Schema"""
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 from datetime import date
 from typing import Optional
 
+from data.schemas.base import BaseData
 
-class StockKline(BaseModel):
-    """K 线数据"""
+
+class DailyKline(BaseData):
+    """日K线数据"""
 
     symbol: str = Field(..., description="股票代码")
     name: str = Field("", description="股票名称")
@@ -20,7 +22,7 @@ class StockKline(BaseModel):
     change_pct: Optional[float] = Field(None, description="涨跌幅 %")
 
 
-class StockInfo(BaseModel):
+class StockInfo(BaseData):
     """股票基本信息"""
 
     symbol: str

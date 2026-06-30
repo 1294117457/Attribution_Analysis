@@ -2,23 +2,23 @@
 
 import pandas as pd
 from datetime import date
-from data.schemas import StockKline
+from data.schemas.kline import DailyKline
 
 
 class KlineParser:
     """K 线数据解析器"""
 
-    def parse_kline_df(self, df: pd.DataFrame, symbol: str) -> list[StockKline]:
-        """
-        解析 DataFrame 为 StockKline 列表
+    """
+    解析 DataFrame 为 StockKline 列表
+    Args:
+        df: AkShare 返回的 DataFrame
+        symbol: 股票代码
+    Returns:
+        list[StockKline]
+    """
 
-        Args:
-            df: AkShare 返回的 DataFrame
-            symbol: 股票代码
+    def parse_kline_df(self, df: pd.DataFrame, symbol: str) -> list[DailyKline]:
 
-        Returns:
-            list[StockKline]
-        """
         klines = []
 
         for _, row in df.iterrows():
@@ -33,7 +33,7 @@ class KlineParser:
                 if change_pct == "--":
                     change_pct = None
 
-                kline = StockKline(
+                kline = DailyKline(
                     symbol=symbol,
                     name="",
                     date=kline_date,
