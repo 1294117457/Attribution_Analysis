@@ -2,7 +2,6 @@
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
-from contextlib import contextmanager
 
 from infra.config import get_settings
 
@@ -22,9 +21,8 @@ SessionLocal = sessionmaker(
 )
 
 
-@contextmanager
-def get_db_session() -> Session:
-    """获取数据库会话（兼容 FastAPI Depends 和普通 with 语法）"""
+def get_db():
+    """获取数据库会话（用于 FastAPI Depends 和普通 with 语法）"""
     db = SessionLocal()
     try:
         yield db

@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
-from infra.database.connection import get_db_session
+from infra.database.connection import get_db
 from app.schemas.stock import (
     DailyKlineListResponse,
     CollectRequest,
@@ -23,7 +23,7 @@ router = APIRouter(prefix="/stocks", tags=["股票数据"])
 # ============ 股票列表 ============
 
 @router.get("/", response_model=StockListResponse)
-def list_stocks(db: Session = Depends(get_db_session)):
+def list_stocks(db: Session = Depends(get_db)):
     """获取所有已采集的股票列表"""
     service = StockService(db)
     stocks = service.list_stocks()
@@ -31,7 +31,7 @@ def list_stocks(db: Session = Depends(get_db_session)):
 
 
 @router.get("/{symbol}", response_model=StockInfoResponse)
-def get_stock(symbol: str, db: Session = Depends(get_db_session)):
+def get_stock(symbol: str, db: Session = Depends(get_db)):
     """获取股票详情"""
     service = StockService(db)
     info = service.get_stock_info(symbol)
@@ -59,7 +59,7 @@ def get_klines(
     start_date: Optional[date] = Query(None, description="开始日期"),
     end_date: Optional[date] = Query(None, description="结束日期"),
     limit: int = Query(365, ge=1, le=3650, description="返回数量"),
-    db: Session = Depends(get_db_session),
+    db: Session = Depends(get_db),
 ):
     """获取股票的K线数据"""
     service = StockService(db)
@@ -72,7 +72,7 @@ def get_klines(
 @router.post("/collect", response_model=CollectResponse)
 def collect_stock(
     request: CollectRequest,
-    db: Session = Depends(get_db_session),
+    db: Session = Depends(get_db),
 ):
     """采集并存储股票数据"""
     service = StockService(db)
@@ -110,7 +110,7 @@ def collect_stock(
 # ============ 删除 ============
 
 @router.delete("/{symbol}", response_model=DeleteResponse)
-def delete_stock(symbol: str, db: Session = Depends(get_db_session)):
+def delete_stock(symbol: str, db: Session = Depends(get_db)):
     """删除股票的所有数据"""
     service = StockService(db)
     deleted = service.delete_stock(symbol)
@@ -127,7 +127,7 @@ def delete_stock(symbol: str, db: Session = Depends(get_db_session)):
 
 
 @router.delete("/{symbol}/klines/{date_str}", response_model=DeleteResponse)
-def delete_kline(symbol: str, date_str: str, db: Session = Depends(get_db_session)):
+def delete_kline(symbol: str, date_str: str, db: Session = Depends(get_db)):
     """删除单条K线数据"""
     try:
         del_date = date.fromisoformat(date_str)
