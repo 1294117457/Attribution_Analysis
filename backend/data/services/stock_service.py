@@ -9,7 +9,7 @@ from data.collectors.collector import Collector
 from data.adapters.akshare import AkShareFetcher
 from data.interfaces.fetcher import CollectParams
 from data.schemas.kline import DailyKline
-from app.database.models import DailyKlineDB
+from infra.database.models import DailyKlineDB
 
 
 class StockService:

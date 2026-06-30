@@ -3,11 +3,12 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
+
+# TODO: 后续将 config 提取到顶层共享模块，消除 infra → app 的依赖
 from app.config import get_settings
 
 settings = get_settings()
 
-# 同步引擎
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
@@ -15,7 +16,6 @@ engine = create_engine(
     max_overflow=20,
 )
 
-# Session 工厂
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
@@ -25,7 +25,7 @@ SessionLocal = sessionmaker(
 
 @contextmanager
 def get_db_session() -> Session:
-    """获取数据库会话 (用于 FastAPI 依赖注入)"""
+    """获取数据库会话（兼容 FastAPI Depends 和普通 with 语法）"""
     db = SessionLocal()
     try:
         yield db

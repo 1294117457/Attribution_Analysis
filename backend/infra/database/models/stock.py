@@ -1,8 +1,8 @@
 """日K线 ORM 模型"""
 
 from sqlalchemy import Column, String, Float, Integer, Date, Index
-from app.database.base import Base
-from app.database.models.mixins import TimestampMixin
+from infra.database.base import Base
+from infra.database.models.mixins import TimestampMixin
 
 
 class DailyKlineDB(Base, TimestampMixin):
