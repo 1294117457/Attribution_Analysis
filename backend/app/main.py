@@ -15,7 +15,6 @@ def create_app() -> FastAPI:
         version="1.0.0",
     )
 
-    # CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -24,10 +23,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # 注册路由
     app.include_router(api_router)
 
-    # 启动事件
     @app.on_event("startup")
     def on_startup():
         """启动时创建数据库表"""
