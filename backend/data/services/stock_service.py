@@ -59,14 +59,14 @@ class StockService:
         for kline in klines:
             exists = self.db.query(DailyKlineDB).filter(
                 DailyKlineDB.symbol == kline.symbol,
-                DailyKlineDB.date == kline.date,
+                DailyKlineDB.date == kline.trade_date,
             ).first()
 
             if not exists:
                 self.db.add(DailyKlineDB(
                     symbol=kline.symbol,
                     name=kline.name,
-                    date=kline.date,
+                    date=kline.trade_date,
                     open=kline.open,
                     high=kline.high,
                     low=kline.low,
