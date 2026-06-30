@@ -1,0 +1,10 @@
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# 文档生成产物
+docs/_build/
