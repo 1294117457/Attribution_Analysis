@@ -1,4 +1,1 @@
-from sqlalchemy.orm import DeclarativeBase
-
-class Base(DeclarativeBase):
-    pass
+"""数据库基类"""
