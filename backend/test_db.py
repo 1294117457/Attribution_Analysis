@@ -1,9 +1,9 @@
 """测试数据库连接和模型"""
 
 from sqlalchemy import text
-from app.database.connection import engine, SessionLocal
-from app.database.models.stock import DailyKlineDB
-from app.database.base import Base
+from infra.database.connection import engine, SessionLocal
+from infra.database.models.stock import DailyKlineDB
+from infra.database.base import Base
 
 # 测试连接
 with engine.connect() as conn:

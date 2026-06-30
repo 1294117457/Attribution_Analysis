@@ -5,7 +5,7 @@ from data.adapters.akshare import AkShareFetcher
 from data.schemas.kline import DailyKline
 from data.interfaces.fetcher import CollectParams
 from data.services.stock_service import StockService
-from app.database.connection import get_db_session
+from infra.database.connection import get_db_session
 
 
 def test_akshare_fetcher():
