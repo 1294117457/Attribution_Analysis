@@ -1,5 +1,5 @@
-"""collectors 模块 - 数据采集任务"""
+"""collectors 模块"""
 
-from data.collectors.stock_collector import StockCollector
+from data.collectors.collector import Collector
 
-__all__ = ["StockCollector"]
+__all__ = ["Collector"]

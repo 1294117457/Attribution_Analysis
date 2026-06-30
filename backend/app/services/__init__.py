@@ -1,5 +1,1 @@
-"""app services 模块"""
-
-from app.services.stock_service import StockService
-
-__all__ = ["StockService"]
+"""app services 模块 - 业务服务将在此扩展"""

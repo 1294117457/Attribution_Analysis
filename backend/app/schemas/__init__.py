@@ -1,15 +1,15 @@
 """Pydantic 模型"""
 
 from app.schemas.stock import (
-    StockKlineResponse,
-    StockKlineListResponse,
+    DailyKlineResponse,
+    DailyKlineListResponse,
     CollectRequest,
     CollectResponse,
 )
 
 __all__ = [
-    "StockKlineResponse",
-    "StockKlineListResponse",
+    "DailyKlineResponse",
+    "DailyKlineListResponse",
     "CollectRequest",
     "CollectResponse",
 ]

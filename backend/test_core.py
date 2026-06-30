@@ -1,12 +1,9 @@
-# test_core.py
-from core import get_settings, MarketType, AnomalyType
+"""测试核心配置"""
 
-# 测试配置
+from app.config import get_settings
+
 settings = get_settings()
 print(f"DATABASE_URL: {settings.DATABASE_URL}")
-
-# 测试枚举
-print(f"MarketType.SH: {MarketType.SH}")
-print(f"AnomalyType.PRICE_SPIKE: {AnomalyType.PRICE_SPIKE}")
-
-print("✅ Core 模块配置成功!")
+print(f"REDIS_URL: {settings.REDIS_URL}")
+print(f"API_V1_PREFIX: {settings.API_V1_PREFIX}")
+print("✅ 配置加载成功!")

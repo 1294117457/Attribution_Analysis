@@ -24,15 +24,6 @@ SessionLocal = sessionmaker(
 
 
 @contextmanager
-def get_db() -> Session:
-    """获取数据库会话上下文管理器"""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 def get_db_session() -> Session:
     """获取数据库会话 (用于 FastAPI 依赖注入)"""
     db = SessionLocal()

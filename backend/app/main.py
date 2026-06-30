@@ -5,6 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import api_router
 from app.database.base import Base
 from app.database.connection import engine
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # startup: 创建数据库表
+    Base.metadata.create_all(bind=engine)
+    yield
+    # shutdown: 这里可以做清理工作（关连接等）
 
 
 def create_app() -> FastAPI:
@@ -13,6 +22,7 @@ def create_app() -> FastAPI:
         title="智能金融数据归因分析平台",
         description="数据采集 + 异常检测 + 归因分析",
         version="1.0.0",
+        lifespan=lifespan,
     )
 
     app.add_middleware(
@@ -24,11 +34,6 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(api_router)
-
-    @app.on_event("startup")
-    def on_startup():
-        """启动时创建数据库表"""
-        Base.metadata.create_all(bind=engine)
 
     return app
 
