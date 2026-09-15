@@ -672,7 +672,10 @@ async function submitAddToPool() {
       })
       targetPoolId = typeof newPool.id === 'number' ? newPool.id : NaN
     } else {
-      targetPoolId = selectedPoolId ?? NaN
+      // 必须用 .value 取 ref 内的原始数字；裸 ref 对象 typeof 为 'object'
+      targetPoolId = typeof selectedPoolId.value === 'number'
+        ? selectedPoolId.value
+        : NaN
     }
 
     if (Number.isNaN(targetPoolId)) {
