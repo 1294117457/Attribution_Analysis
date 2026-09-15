@@ -129,10 +129,10 @@ class TestStockInfo:
             symbol="000001",
             name="平安银行",
             industry="银行",
-            market="SZ",
+            market="主板",
         )
         assert stock.industry.name == "银行"
-        assert stock.market.code == "SZ"
+        assert stock.market.code == "MAIN"
 
     def test_update_name(self):
         stock = StockInfo.create(symbol="000001", name="旧名")
@@ -173,16 +173,32 @@ class TestKlineSchemas:
 # ════════════════════════════════════════════════════════════════
 
 class TestMarket:
-    def test_from_code_shanghai(self):
-        m = Market.from_code("SH")
-        assert m.code == "SH"
-        assert m.is_shanghai is True
+    def test_from_market_type_main(self):
+        m = Market.from_market_type("主板")
+        assert m.code == "MAIN"
+        assert m.is_main_board is True
 
-    def test_from_code_shenzhen(self):
-        m = Market.from_code("SZ")
-        assert m.code == "SZ"
-        assert m.is_shenzhen is True
+    def test_from_market_type_star(self):
+        m = Market.from_market_type("科创板")
+        assert m.code == "STAR"
+        assert m.is_star is True
 
-    def test_from_code_default(self):
-        m = Market.from_code("UNKNOWN")
-        assert m.code == "SZ"
+    def test_from_market_type_chinext(self):
+        m = Market.from_market_type("创业板")
+        assert m.code == "CHINEXT"
+        assert m.is_chinext is True
+
+    def test_from_market_type_bse(self):
+        m = Market.from_market_type("北交所")
+        assert m.code == "BSE"
+        assert m.is_bse is True
+
+    def test_from_market_type_unknown(self):
+        m = Market.from_market_type("UNKNOWN_TYPE")
+        assert m.code == "OTHER"
+
+    def test_from_exchange(self):
+        m = Market.from_exchange("SSE")
+        assert m.is_main_board is True
+        m = Market.from_exchange("BSE")
+        assert m.is_bse is True

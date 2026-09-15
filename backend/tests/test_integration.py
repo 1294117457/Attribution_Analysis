@@ -98,7 +98,7 @@ def make_stock(symbol: str = "000001") -> StockInfo:
         symbol=symbol,
         name="平安银行",
         industry="银行",
-        market="SZ",
+        market="主板",
     )
 
 
@@ -253,7 +253,7 @@ class TestStockRepository:
         stock1 = make_stock()
         await stock_repo.upsert(stock1)
 
-        stock2 = StockInfo.create(symbol="000001", name="新名字", industry="科技", market="SZ")
+        stock2 = StockInfo.create(symbol="000001", name="新名字", industry="科技", market="主板")
         await stock_repo.upsert(stock2)
 
         found = await stock_repo.find_by_symbol("000001")
@@ -271,8 +271,8 @@ class TestStockRepository:
 
     @pytest.mark.asyncio
     async def test_find_by_industry(self, stock_repo):
-        bank = StockInfo.create(symbol="000001", name="A", industry="银行", market="SZ")
-        tech = StockInfo.create(symbol="000002", name="B", industry="科技", market="SZ")
+        bank = StockInfo.create(symbol="000001", name="A", industry="银行", market="主板")
+        tech = StockInfo.create(symbol="000002", name="B", industry="科技", market="主板")
         await stock_repo.upsert(bank)
         await stock_repo.upsert(tech)
 
@@ -322,7 +322,7 @@ class TestFullFlow:
             symbol="600519",
             name="贵州茅台",
             industry="白酒",
-            market="SH",
+            market="主板",
         )
         await stock_repo.upsert(stock)
 
