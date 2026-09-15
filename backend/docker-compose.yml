@@ -1,0 +1,88 @@
+# =============================================================
+# Attribution Analysis - 数据库服务（PostgreSQL + Redis）
+# =============================================================
+# 账户/密码统一为：zhouch / zhouchenhui
+# 启动：docker compose up -d
+#
+# 常用命令：
+#   docker compose up -d        # 启动
+#   docker compose ps           # 状态
+#   docker compose logs -f      # 日志
+#   docker compose down         # 停止
+#   docker compose down -v      # 停止 + 删数据卷（慎用！）
+# =============================================================
+
+services:
+  # -------------------------------------------------------
+  # PostgreSQL 16
+  # -------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: attribution-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: attribution
+      POSTGRES_USER: zhouch
+      POSTGRES_PASSWORD: zhouchenhui
+      TZ: Asia/Shanghai
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+      - ./postgres/conf:/etc/postgresql/conf.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zhouch -d attribution"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - attribution-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # -------------------------------------------------------
+  # Redis 7
+  # -------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: attribution-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+        --appendonly yes
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --requirepass zhouchenhui
+        --bind 0.0.0.0
+        --protected-mode no
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "zhouchenhui", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - attribution-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+networks:
+  attribution-net:
+    driver: bridge
+    name: attribution-net
+
+volumes:
+  postgres_data:
+    name: attribution-postgres-data
+  redis_data:
+    name: attribution-redis-data
