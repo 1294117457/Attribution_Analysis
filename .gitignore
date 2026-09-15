@@ -8,3 +8,14 @@ Thumbs.db
 
 # 文档生成产物
 docs/_build/
+
+# 环境变量（包含密钥，禁止提交）
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+backend/.env
+backend/.env.local
+backend/.env.production
