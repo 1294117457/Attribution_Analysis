@@ -49,3 +49,44 @@ class CollectionError(ApplicationError):
     def __init__(self, symbol: str, reason: str):
         super().__init__(f"采集股票 {symbol} 失败: {reason}", "COLLECTION_ERROR")
         self.symbol = symbol
+
+
+# ── 操作池相关异常 ──────────────────────────────────────────────
+
+
+class PoolNotFoundError(ApplicationError):
+    def __init__(self, pool_id: int):
+        self.pool_id = pool_id
+        super().__init__(f"操作池不存在: {pool_id}", "POOL_NOT_FOUND")
+
+
+class PoolOperationNotFoundError(ApplicationError):
+    def __init__(self, op_id: int):
+        self.op_id = op_id
+        super().__init__(f"操作记录不存在: {op_id}", "POOL_OP_NOT_FOUND")
+
+
+class CannotDeleteDefaultPoolError(ApplicationError):
+    def __init__(self):
+        super().__init__("无法删除默认池", "CANNOT_DELETE_DEFAULT_POOL")
+
+
+class DuplicatePoolMemberError(ApplicationError):
+    def __init__(self, symbol: str):
+        self.symbol = symbol
+        super().__init__(f"股票 {symbol} 已在该池中", "DUPLICATE_MEMBER")
+
+
+class PoolMemberNotFoundError(ApplicationError):
+    def __init__(self, symbol: str):
+        self.symbol = symbol
+        super().__init__(f"股票 {symbol} 不在该池中", "MEMBER_NOT_FOUND")
+
+
+class PoolOperationConflictError(ApplicationError):
+    def __init__(self, pool_id: int):
+        self.pool_id = pool_id
+        super().__init__(
+            f"池 {pool_id} 已有进行中的操作，请等待完成后重试",
+            "OPERATION_CONFLICT",
+        )

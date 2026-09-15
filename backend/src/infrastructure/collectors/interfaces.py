@@ -21,6 +21,7 @@ class CollectParams:
     end_date: Optional[date] = None
     days: int = 30
     adjust: str = "qfq"
+    list_status: str = "L"  # 上市状态（L/D/P）
 
 
 @runtime_checkable
@@ -28,11 +29,17 @@ class FetcherProtocol(Protocol):
     """采集器协议
 
     所有数据源适配器必须满足此协议。
-    fetch() 返回值类型：list[KlineBO]（或其他领域 BO）
     """
 
     def fetch(self, params: CollectParams) -> list[Any]:
-        """执行采集"""
+        """执行 K 线采集"""
+        ...
+
+    def fetch_stock_basic(self, params: CollectParams) -> list[Any]:
+        """执行股票基本信息采集（stock_basic）
+
+        返回领域 BO 列表，由调用方转换为实体。
+        """
         ...
 
     @property

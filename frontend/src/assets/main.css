@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+/* ── 自定义 CSS 变量 ──────────────────────────── */
+:root {
+  --color-primary:       #2563eb;
+  --color-primary-light: #dbeafe;
+  --color-success:       #22c55e;
+  --color-warning:       #f59e0b;
+  --color-danger:        #ef4444;
+  --color-info:          #64748b;
+
+  --color-admin-primary:    #2563eb;
+  --color-admin-primary-soft: #dbeafe;
+  --color-admin-bg:         #f5f7fb;
+  --color-admin-surface:     #ffffff;
+  --color-admin-border:      #e5e7eb;
+  --color-admin-text:        #1f2937;
+  --color-admin-muted:       #64748b;
+
+  --sidebar-width:      220px;
+  --sidebar-collapsed:  56px;
+  --topbar-height:      3rem;
+  --color-sidebar-bg:   #1d2128;
+  --color-sidebar-text: #a8b3cf;
+  --color-sidebar-active-bg:  rgba(37, 99, 235, 0.15);
+  --color-sidebar-active-text: #2563eb;
+}
+
+/* ── Tailwind 主题扩展 ────────────────────────── */
+@theme {
+  --color-primary: #2563eb;
+  --color-admin-primary: #2563eb;
+}
+
+/* ── 全局重置 ────────────────────────────────── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  color: var(--color-admin-text);
+  background: var(--color-admin-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── 滚动条美化 ─────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+/* ── Element Plus 覆盖 ───────────────────────── */
+.el-card {
+  --el-card-border-radius: 12px;
+  --el-card-border-color: rgba(229, 231, 235, 0.85);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05) !important;
+}
+.el-card.is-always-shadow {
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05) !important;
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--color-primary);
+  --el-button-border-color: var(--color-primary);
+}
+.el-button--primary:hover {
+  --el-button-bg-color: #1d4ed8;
+  --el-button-border-color: #1d4ed8;
+}
+
+.el-table {
+  --el-table-header-bg-color: #f8fafc;
+  --el-table-header-text-color: #334155;
+  --el-table-row-hover-bg-color: #f8fafc;
+}
+
+.el-pagination {
+  --el-pagination-hover-color: var(--color-primary);
+}
+
+/* ── 页面容器 ─────────────────────────────── */
+.page-container {
+  width: min(100%, 1440px);
+  margin: 0 auto;
+  padding: 0 16px 16px;
+}
+.page-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 16px;
+}
+
+/* ── 按钮组/搜索组竖线装饰 ───────────────────── */
+.btn-group,
+.search-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-left: 6px;
+  position: relative;
+}
+.btn-group::before,
+.search-group::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 14px;
+  background-color: var(--color-primary);
+  border-radius: 2px;
+}
+
+/* ── 工具类 ────────────────────────────────── */
+.mono { font-family: 'Courier New', monospace; }
