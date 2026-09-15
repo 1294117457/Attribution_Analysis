@@ -3,3 +3,210 @@
 
   ➜  Local:   http://localhost:3000/
   ➜  Network: use --host to expose
+10:27:55 AM [vite] page reload src/main.js
+10:28:13 AM [vite] hmr update /src/App.vue, /src/App.vue?vue&type=style&index=0&lang.css
+10:28:13 AM [vite] Internal server error: Failed to resolve import "./components/layout/TheNavbar.vue" from "src/App.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/dustp/codes/Attribution_Analysis/frontend/src/App.vue:19:24
+  1  |  import TheNavbar from './components/layout/TheNavbar.vue'
+     |                         ^
+  2  |  import TheSidebar from './components/layout/TheSidebar.vue'
+  3  |  
+      at TransformPluginContext._formatError (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at async file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 0)
+      at async TransformPluginContext.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+10:28:37 AM [vite] page reload src/components/layout/TheNavbar.vue
+10:28:37 AM [vite] Pre-transform error: Failed to resolve import "./components/layout/TheSidebar.vue" from "src/App.vue". Does the file exist?
+10:28:37 AM [vite] Internal server error: Failed to resolve import "./components/layout/TheSidebar.vue" from "src/App.vue". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/dustp/codes/Attribution_Analysis/frontend/src/App.vue:20:25
+  1  |  import TheNavbar from './components/layout/TheNavbar.vue'
+  2  |  import TheSidebar from './components/layout/TheSidebar.vue'
+     |                          ^
+  3  |  
+  4  |  const _sfc_main = {
+      at TransformPluginContext._formatError (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at async file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 1)
+      at async TransformPluginContext.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+10:28:52 AM [vite] page reload src/components/layout/TheSidebar.vue
+10:29:11 AM [vite] page reload src/router/index.js
+10:29:11 AM [vite] Pre-transform error: Failed to resolve import "../views/StockPanelView.vue" from "src/router/index.js". Does the file exist?
+10:29:11 AM [vite] Internal server error: Failed to resolve import "../views/StockPanelView.vue" from "src/router/index.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/dustp/codes/Attribution_Analysis/frontend/src/router/index.js:2:29
+  1  |  import { createRouter, createWebHistory } from 'vue-router'
+  2  |  import StockPanelView from '../views/StockPanelView.vue'
+     |                              ^
+  3  |  import DataCollectView from '../views/DataCollectView.vue'
+  4  |  import StockManageView from '../views/StockManageView.vue'
+      at TransformPluginContext._formatError (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at async file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 1)
+      at async TransformPluginContext.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+10:29:32 AM [vite] page reload src/views/DashboardView.vue
+10:29:32 AM [vite] Pre-transform error: Failed to resolve import "../views/StockPanelView.vue" from "src/router/index.js". Does the file exist?
+10:29:32 AM [vite] Internal server error: Failed to resolve import "../views/StockPanelView.vue" from "src/router/index.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/dustp/codes/Attribution_Analysis/frontend/src/router/index.js:2:29
+  1  |  import { createRouter, createWebHistory } from 'vue-router'
+  2  |  import StockPanelView from '../views/StockPanelView.vue'
+     |                              ^
+  3  |  import DataCollectView from '../views/DataCollectView.vue'
+  4  |  import StockManageView from '../views/StockManageView.vue'
+      at TransformPluginContext._formatError (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at async file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 1)
+      at async TransformPluginContext.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+10:29:56 AM [vite] page reload src/views/DataCollectView.vue
+10:29:56 AM [vite] Pre-transform error: Failed to resolve import "../views/StockPanelView.vue" from "src/router/index.js". Does the file exist?
+10:29:57 AM [vite] Internal server error: Failed to resolve import "../views/StockPanelView.vue" from "src/router/index.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/dustp/codes/Attribution_Analysis/frontend/src/router/index.js:2:29
+  1  |  import { createRouter, createWebHistory } from 'vue-router'
+  2  |  import StockPanelView from '../views/StockPanelView.vue'
+     |                              ^
+  3  |  import DataCollectView from '../views/DataCollectView.vue'
+  4  |  import StockManageView from '../views/StockManageView.vue'
+      at TransformPluginContext._formatError (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at async file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 1)
+      at async TransformPluginContext.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+10:30:23 AM [vite] page reload src/views/StockManageView.vue
+10:30:23 AM [vite] Pre-transform error: Failed to resolve import "../views/StockPanelView.vue" from "src/router/index.js". Does the file exist?
+10:30:23 AM [vite] Internal server error: Failed to resolve import "../views/StockPanelView.vue" from "src/router/index.js". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/dustp/codes/Attribution_Analysis/frontend/src/router/index.js:2:29
+  1  |  import { createRouter, createWebHistory } from 'vue-router'
+  2  |  import StockPanelView from '../views/StockPanelView.vue'
+     |                              ^
+  3  |  import DataCollectView from '../views/DataCollectView.vue'
+  4  |  import StockManageView from '../views/StockManageView.vue'
+      at TransformPluginContext._formatError (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at async file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 1)
+      at async TransformPluginContext.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+10:31:08 AM [vite] page reload src/views/StockPanelView.vue
+10:31:20 AM [vite] hmr update /src/views/CollectPage.vue, /src/views/ManagePage.vue, /src/views/DashboardView.vue, /src/views/DataCollectView.vue, /src/views/StockManageView.vue, /src/views/StockPanelView.vue
+10:37:17 AM [vite] changed tsconfig file detected: /home/dustp/codes/Attribution_Analysis/frontend/tsconfig.json - Clearing cache and forcing full-reload to ensure TypeScript is compiled with updated config values.
+10:39:17 AM [vite] hmr update /src/App.vue
+10:44:45 AM [vite] hmr update /src/views/StockPanelView.vue, /src/views/StockPanelView.vue?vue&type=style&index=0&scoped=584b9cb3&lang.css
+10:44:45 AM [vite] page reload src/main.js
+10:44:45 AM [vite] Pre-transform error: Failed to load url /src/main.js (resolved id: /home/dustp/codes/Attribution_Analysis/frontend/src/main.js). Does the file exist?
+10:44:46 AM [vite] hmr update /src/components/layout/TheNavbar.vue, /src/components/layout/TheNavbar.vue?vue&type=style&index=0&scoped=3b601537&lang.css
+10:44:46 AM [vite] page reload src/router/index.js
+10:44:46 AM [vite] hmr update /src/views/ManagePage.vue, /src/views/ManagePage.vue?vue&type=style&index=0&scoped=cbb04265&lang.css
+10:44:46 AM [vite] hmr update /src/views/CollectPage.vue, /src/views/DashboardView.vue, /src/views/DataCollectView.vue, /src/views/StockManageView.vue
+10:44:46 AM [vite] hmr update /src/views/StockManageView.vue, /src/views/StockManageView.vue?vue&type=style&index=0&scoped=2ef11593&lang.css
+10:44:46 AM [vite] hmr update /src/assets/vars.css
+10:44:46 AM [vite] hmr update /src/views/CollectPage.vue, /src/views/CollectPage.vue?vue&type=style&index=0&scoped=c369a926&lang.css
+10:44:46 AM [vite] hmr update /src/views/DashboardView.vue, /src/views/DashboardView.vue?vue&type=style&index=0&scoped=336c5134&lang.css
+10:44:46 AM [vite] hmr update /src/components/layout/TheSidebar.vue, /src/components/layout/TheSidebar.vue?vue&type=style&index=0&scoped=c8056421&lang.css
+10:44:46 AM [vite] hmr update /src/views/DataCollectView.vue, /src/views/DataCollectView.vue?vue&type=style&index=0&scoped=07ecbd81&lang.css
+10:44:46 AM [vite] Pre-transform error: Failed to load url /src/main.js (resolved id: /home/dustp/codes/Attribution_Analysis/frontend/src/main.js). Does the file exist?
+11:01:51 AM [vite] page reload index.html
+11:01:51 AM [vite] Pre-transform error: Cannot find module '/home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BB45zftN.js' imported from /home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js
+11:01:51 AM [vite] Pre-transform error: Failed to resolve import "@/views/NotFound.vue" from "src/router/index.ts". Does the file exist?
+11:01:51 AM [vite] Internal server error: Cannot find module '/home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BB45zftN.js' imported from /home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js
+  Plugin: vite:css
+  File: /home/dustp/codes/Attribution_Analysis/frontend/src/assets/main.css
+      at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+      at moduleResolve (node:internal/modules/esm/resolve:861:10)
+      at defaultResolve (node:internal/modules/esm/resolve:985:11)
+      at #cachedDefaultResolve (node:internal/modules/esm/loader:747:20)
+      at ModuleLoader.resolve (node:internal/modules/esm/loader:724:38)
+      at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)
+      at onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:680:36)
+      at TracingChannel.tracePromise (node:diagnostics_channel:350:14)
+      at ModuleLoader.import (node:internal/modules/esm/loader:679:21)
+      at defaultImportModuleDynamicallyForModule (node:internal/modules/esm/utils:222:31)
+11:01:51 AM [vite] Pre-transform error: Failed to resolve import "@/layouts/Shell.vue" from "src/router/home.ts". Does the file exist?
+11:01:51 AM [vite] Internal server error: Failed to resolve import "@/views/NotFound.vue" from "src/router/index.ts". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/dustp/codes/Attribution_Analysis/frontend/src/router/index.ts:8:54
+  4  |    { path: "/", redirect: "/home/index" },
+  5  |    homeRoutes,
+  6  |    { path: "/:pathMatch(.*)*", component: () => import("@/views/NotFound.vue") }
+     |                                                        ^
+  7  |  ];
+  8  |  const router = createRouter({
+      at TransformPluginContext._formatError (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 2)
+      at async TransformPluginContext.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+11:01:51 AM [vite] Pre-transform error: Failed to resolve import "@/layouts/Shell.vue" from "src/router/home.ts". Does the file exist?
+11:01:52 AM [vite] ✨ new dependencies optimized: pinia, element-plus
+11:01:52 AM [vite] ✨ optimized dependencies changed. reloading
+11:01:52 AM [vite] Pre-transform error: Cannot find module '/home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BB45zftN.js' imported from /home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js
+11:01:52 AM [vite] Pre-transform error: Failed to resolve import "@/views/NotFound.vue" from "src/router/index.ts". Does the file exist?
+11:01:52 AM [vite] Pre-transform error: Failed to resolve import "@/layouts/Shell.vue" from "src/router/home.ts". Does the file exist?
+11:01:52 AM [vite] Internal server error: Cannot find module '/home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BB45zftN.js' imported from /home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js
+  Plugin: vite:css
+  File: /home/dustp/codes/Attribution_Analysis/frontend/src/assets/main.css
+      at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+      at moduleResolve (node:internal/modules/esm/resolve:861:10)
+      at defaultResolve (node:internal/modules/esm/resolve:985:11)
+      at #cachedDefaultResolve (node:internal/modules/esm/loader:747:20)
+      at ModuleLoader.resolve (node:internal/modules/esm/loader:724:38)
+      at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:320:38)
+      at onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:680:36)
+      at TracingChannel.tracePromise (node:diagnostics_channel:350:14)
+      at ModuleLoader.import (node:internal/modules/esm/loader:679:21)
+      at defaultImportModuleDynamicallyForModule (node:internal/modules/esm/utils:222:31)
+11:01:52 AM [vite] Internal server error: Failed to resolve import "@/views/NotFound.vue" from "src/router/index.ts". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /home/dustp/codes/Attribution_Analysis/frontend/src/router/index.ts:8:54
+  4  |    { path: "/", redirect: "/home/index" },
+  5  |    homeRoutes,
+  6  |    { path: "/:pathMatch(.*)*", component: () => import("@/views/NotFound.vue") }
+     |                                                        ^
+  7  |  ];
+  8  |  const router = createRouter({
+      at TransformPluginContext._formatError (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41)
+      at TransformPluginContext.error (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16)
+      at normalizeUrl (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+      at async Promise.all (index 2)
+      at async TransformPluginContext.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7)
+      at async PluginContainer.transform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18)
+      at async loadAndTransform (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27)
+      at async viteTransformMiddleware (file:///home/dustp/codes/Attribution_Analysis/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:62106:24)
+11:01:52 AM [vite] Pre-transform error: Failed to resolve import "@/layouts/Shell.vue" from "src/router/home.ts". Does the file exist?

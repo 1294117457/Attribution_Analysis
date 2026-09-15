@@ -125,9 +125,15 @@ class KlineAppService:
             symbol=symbol,
             name=name,
             industry=existing.industry.name if existing and existing.industry else None,
-            market=existing.market.code if existing and existing.market else None,
+            market=existing.market.name if existing and existing.market else None,
+            area=existing.area if existing else None,
+            exchange=existing.exchange if existing else None,
             list_date=existing.list_date if existing else None,
+            delist_date=existing.delist_date if existing else None,
+            list_status=existing.list_status if existing else None,
+            is_hs=existing.is_hs if existing else None,
             total_shares=existing.total_shares if existing else None,
+            ts_code=existing.ts_code if existing else None,
         )
         await self._stock_repo.upsert(stock)
 
