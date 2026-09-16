@@ -7,9 +7,9 @@ skinparam classFontSize 13
 skinparam packageFontSize 14
 
 ' ════════════════════════════════════════════
-'  核心
+'  核心（无前缀，聚合根 / 关联表）
 ' ════════════════════════════════════════════
-package "核心" #F5F5DC {
+package "核心 (Aggregate Roots)" #F5F5DC {
 
   class stock_info <<聚合根>> {
     + symbol : str {PK}
@@ -31,13 +31,6 @@ package "核心" #F5F5DC {
     act_ent_type : str
   }
 
-}
-
-' ════════════════════════════════════════════
-'  操作池
-' ════════════════════════════════════════════
-package "操作池" #E8F5E9 {
-
   class stock_pool {
     + id : bigint {PK}
     --
@@ -48,6 +41,8 @@ package "操作池" #E8F5E9 {
     sort_order : int
     is_default : bool
     is_archived : bool
+    owner_id : int
+    share_token : str
   }
 
   class stock_pool_member {
@@ -59,15 +54,14 @@ package "操作池" #E8F5E9 {
     added_at : datetime
   }
 
-
 }
 
 ' ════════════════════════════════════════════
-'  技术面 (日频，per 个股)
+'  技术面 (tech_*)
 ' ════════════════════════════════════════════
-package "技术面" #E3F2FD {
+package "技术面 (tech_*)" #E3F2FD {
 
-  class daily_kline {
+  class tech_kline_daily <<日频>> {
     + symbol {FK} + date {UK}
     --
     open, high, low, close : float
@@ -91,11 +85,100 @@ package "技术面" #E3F2FD {
 }
 
 ' ════════════════════════════════════════════
-'  基本面
+'  资金面 (cap_*)
 ' ════════════════════════════════════════════
-package "基本面" #FFF3E0 {
+package "资金面 (cap_*)" #F3E5F5 {
 
-  class financial_report <<季频>> {
+  class cap_margin <<日频, per 交易所>> {
+    + exchange_id + trade_date {UK}
+    --
+    rzye : float
+    rzmre : float
+    rzche : float
+    rqye : float
+    rqmcl : float
+    rqyl : float
+    rzrqye : float
+  }
+
+  class cap_moneyflow <<日频>> {
+    + symbol {FK} + trade_date {UK}
+    --
+    __ 小单 (<5万) __
+    buy_sm_vol, buy_sm_amount
+    sell_sm_vol, sell_sm_amount
+    __ 中单 (5万~20万) __
+    buy_md_vol, buy_md_amount
+    sell_md_vol, sell_md_amount
+    __ 大单 (20万~100万) __
+    buy_lg_vol, buy_lg_amount
+    sell_lg_vol, sell_lg_amount
+    __ 特大单 (≥100万) __
+    buy_elg_vol, buy_elg_amount
+    sell_elg_vol, sell_elg_amount
+    __ 净流入 __
+    net_mf_vol, net_mf_amount
+  }
+
+  class cap_margin_detail <<日频, per 个股>> {
+    + symbol {FK} + trade_date {UK}
+    --
+    name : str
+    rzye, rqye : float
+    rzmre, rzche : float
+    rqyl, rqchl, rqmcl : float
+    rzrqye : float
+  }
+
+  class cap_top_list <<日频>> {
+    + id {PK}
+    + trade_date + symbol + reason {UK}
+    --
+    name, close, pct_chg
+    turnover_rate, amount
+    l_sell, l_buy, l_amount
+    net_amount, net_rate
+    amount_rate, float_values
+    reason : str
+  }
+
+  class cap_top_inst <<日频>> {
+    + id {PK}
+    --
+    trade_date, symbol
+    exalter : str
+    buy, buy_rate
+    sell, sell_rate
+    net_buy
+    side : str
+    reason : str
+  }
+
+  class cap_block_trade <<日频>> {
+    + id {PK}
+    --
+    symbol, trade_date
+    price, vol, amount
+    buyer : str
+    seller : str
+  }
+
+  class cap_holder_num <<季频>> {
+    + symbol {FK} + end_date {UK}
+    --
+    ann_date
+    holder_num : int
+    holder_nums : int
+  }
+
+}
+
+' ════════════════════════════════════════════
+'  基本面 (fin_*)
+' ════════════════════════════════════════════
+package "基本面 (fin_*)" #FFF3E0 {
+
+  class fin_report <<季频>> {
     + symbol {FK} + end_date {UK}
     --
     ann_date : date
@@ -117,56 +200,92 @@ package "基本面" #FFF3E0 {
     free_cashflow
   }
 
-  class daily_basic_metric <<日频>> {
+  class fin_daily_basic <<日频>> {
     + symbol {FK} + trade_date {UK}
     --
-    __ 估值 __
+    __ 估值（基本面维度）__
     pe, pe_ttm, pb
     ps, ps_ttm
     dv_ratio, dv_ttm
-    __ 股本与市值 __
+    __ 股本与市值（通用）__
     total_share, float_share, free_share
     total_mv, circ_mv
-    __ 交易特征 __
+    __ 交易特征（资金面维度）__
     turnover_rate, turnover_rate_f
     volume_ratio
     close
   }
 
-}
-
-' ════════════════════════════════════════════
-'  资金/情绪面
-' ════════════════════════════════════════════
-package "资金面" #F3E5F5 {
-
-  class margin_data <<日频, per 交易所>> {
-    + exchange_id + trade_date {UK}
+  class fin_top10_holders <<季频>> {
+    + symbol {FK} + end_date + ann_date + holder_name {UK}
     --
-    rzye : float
-    rzmre : float
-    rzche : float
-    rqye : float
-    rqmcl : float
-    rqyl : float
-    rzrqye : float
+    hold_amount, hold_ratio
+    hold_float_ratio, hold_change
+    holder_type : str
+  }
+
+  class fin_top10_floatholders <<季频>> {
+    + symbol {FK} + end_date + ann_date + holder_name {UK}
+    --
+    hold_amount, hold_ratio
+    hold_float_ratio, hold_change
+    holder_type : str
   }
 
 }
 
 ' ════════════════════════════════════════════
-'  市场全局
+'  基础数据层 (base_*) - 地基，多维度共享
 ' ════════════════════════════════════════════
-package "市场全局" #ECEFF1 {
+package "基础数据层 (base_*)" #FAFAFA {
 
-  class trading_calendar <<参考数据>> {
+  class base_adj_factor <<日频>> {
+    + symbol {FK} + trade_date {UK}
+    --
+    adj_factor : float
+  }
+
+  class base_dividend <<事件>> {
+    + symbol {FK} + end_date + div_proc {UK}
+    --
+    stk_div, stk_bo_rate, stk_co_rate
+    cash_div, cash_div_tax
+    record_date, ex_date, pay_date
+    div_listdate, ann_date, imp_ann_date
+  }
+
+  class base_suspend <<事件>> {
+    + id {PK}
+    + symbol {FK} + trade_date
+    --
+    suspend_timing : str
+    suspend_type : str  'S/R'
+  }
+
+  class base_name_change <<事件>> {
+    + symbol {FK} + start_date {UK}
+    --
+    name : str
+    end_date
+    ann_date
+    change_reason : str
+  }
+
+}
+
+' ════════════════════════════════════════════
+'  市场全局 (mkt_*) - 无 FK → stock_info
+' ════════════════════════════════════════════
+package "市场全局 (mkt_*)" #ECEFF1 {
+
+  class mkt_calendar <<参考数据>> {
     + cal_date + exchange {UK}
     --
     is_open : bool
     pretrade_date : date
   }
 
-  class market_daily <<日频, per 市场>> {
+  class mkt_market_daily <<日频, per 市场>> {
     + market + trade_date {UK}
     --
     total_amount : float
@@ -180,12 +299,31 @@ package "市场全局" #ECEFF1 {
     avg_change_pct : float
   }
 
+  class mkt_sector_daily <<日频, per 板块>> {
+    + sector_type + sector_code + trade_date {UK}
+    --
+    sector_name : str
+    close, open, high, low
+    change, pct_change
+    vol, amount, turnover_rate
+    leading_stock
+    leading_stock_pct
+  }
+
+  class mkt_index_member <<静态+事件>> {
+    + sector_type + sector_code + symbol + effective_date {UK}
+    --
+    sector_name, symbol_name
+    expire_date
+    is_current : bool
+  }
+
 }
 
 ' ════════════════════════════════════════════
-'  新闻资讯
+'  新闻资讯 (news_*) - 暂缓
 ' ════════════════════════════════════════════
-package "新闻资讯" #FCE4EC {
+package "新闻资讯 (news_*)" #FCE4EC {
 
   class news_article {
     + id : bigint {PK}
@@ -216,9 +354,9 @@ package "新闻资讯" #FCE4EC {
 }
 
 ' ════════════════════════════════════════════
-'  采集基础设施
+'  基础设施（无前缀）
 ' ════════════════════════════════════════════
-package "基础设施" #F5F5F5 {
+package "基础设施 (Infra)" #F5F5F5 {
 
   class data_collection_log {
     + id : bigint {PK}
@@ -240,14 +378,39 @@ package "基础设施" #F5F5F5 {
 ' ════════════════════════════════════════════
 '  关系
 ' ════════════════════════════════════════════
-stock_info "1" --o "0..*" daily_kline : symbol
-stock_info "1" --o "0..*" financial_report : symbol
-stock_info "1" --o "0..*" daily_basic_metric : symbol
-stock_info "1" --o "0..*" stock_pool_member : symbol
-stock_info "1" --o "0..*" news_stock_relation : symbol
+' ── 技术面 ──
+stock_info "1" --o "0..*" tech_kline_daily : symbol
 
+' ── 资金面 ──
+stock_info "1" --o "0..*" cap_moneyflow : symbol
+stock_info "1" --o "0..*" cap_margin_detail : symbol
+stock_info "1" --o "0..*" cap_top_list : symbol
+stock_info "1" --o "0..*" cap_top_inst : symbol
+stock_info "1" --o "0..*" cap_block_trade : symbol
+stock_info "1" --o "0..*" cap_holder_num : symbol
+
+' ── 基本面 ──
+stock_info "1" --o "0..*" fin_report : symbol
+stock_info "1" --o "0..*" fin_daily_basic : symbol
+stock_info "1" --o "0..*" fin_top10_holders : symbol
+stock_info "1" --o "0..*" fin_top10_floatholders : symbol
+
+' ── 基础数据层 ──
+stock_info "1" --o "0..*" base_adj_factor : symbol
+stock_info "1" --o "0..*" base_dividend : symbol
+stock_info "1" --o "0..*" base_suspend : symbol
+stock_info "1" --o "0..*" base_name_change : symbol
+
+' ── 操作池 ──
+stock_info "1" --o "0..*" stock_pool_member : symbol
 stock_pool "1" --o "0..*" stock_pool_member : pool_id
 
+' ── 新闻 ──
+stock_info "1" --o "0..*" news_stock_relation : symbol
 news_article "1" --o "0..*" news_stock_relation : news_id
+
+' 注：市场全局 (mkt_*) 表无 FK → stock_info
+' - mkt_sector_daily / mkt_index_member 不强引用个股
+' - 它们回答"市场/行业怎么样"，独立维度
 
 @enduml
