@@ -4,7 +4,6 @@ sqlalchemy==2.0.35
 pydantic-settings==2.5.2
 asyncpg==0.29.0
 
-akshare==1.18.64
 pandas==2.2.3
 
 tushare==1.4.3

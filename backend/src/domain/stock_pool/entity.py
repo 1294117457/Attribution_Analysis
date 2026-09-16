@@ -106,6 +106,7 @@ class StockPool(AggregateRoot):
     updated_at: Optional[datetime] = None
 
     _next_sort_order: int = field(default=0, repr=False)
+    _member_count_override: Optional[int] = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         AggregateRoot.__init__(self)
@@ -268,6 +269,8 @@ class StockPool(AggregateRoot):
 
     @property
     def member_count(self) -> int:
+        if self._member_count_override is not None:
+            return self._member_count_override
         return len(self.members)
 
     @property

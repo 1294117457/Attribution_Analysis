@@ -16,15 +16,22 @@
 <style scoped>
 .main-container {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   background: var(--color-admin-bg);
-  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
 }
 
 .page-container {
+  flex: 1;
+  min-height: 0;
   width: min(100%, 1440px);
   margin: 0 auto;
-  padding-right: 16px;
+  padding: 16px 16px 16px;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 路由切换过渡 */

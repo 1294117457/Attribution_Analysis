@@ -13,7 +13,6 @@ class PoolKlineCollectRequest(BaseModel):
     pool_id: int = Field(..., description="池 ID")
     operation_type: Literal["kline_collect"] = "kline_collect"
     days: int = Field(365, ge=1, le=3650, description="回溯天数")
-    source: Optional[str] = Field(None, description="数据源 tushare/akshare")
 
 
 class PoolOperationListRequest(BaseModel):
