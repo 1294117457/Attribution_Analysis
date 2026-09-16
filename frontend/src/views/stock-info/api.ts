@@ -252,3 +252,284 @@ export const getStockAnalysis = (
   params: { days?: number } = {}
 ): Promise<StockAnalysisResponse> =>
   http.get<StockAnalysisResponse>(`/stocks/${symbol}/analysis`, { params }).then(unwrap)
+
+// ═══════════════════════════════════════════════════════════════
+//  🆕 数据分析层 API（对应后端 14 张新表）
+//  参考 backend/docs/03dataana/02-dev-guide.md §8
+// ═══════════════════════════════════════════════════════════════
+
+// ── 资金流向 ───────────────────────────────────────────────────
+
+/** 资金流向项（cap_moneyflows） */
+export interface MoneyflowItem {
+  symbol: string
+  trade_date: string
+  net_mf_amount: number | null
+  net_mf_vol: number | null
+  buy_lg_amount: number | null
+  sell_lg_amount: number | null
+  buy_elg_amount: number | null
+  sell_elg_amount: number | null
+  buy_sm_amount: number | null
+  sell_sm_amount: number | null
+  buy_md_amount: number | null
+  sell_md_amount: number | null
+}
+
+/** GET /moneyflows/ 查询资金流向 */
+export const getMoneyflows = (params: {
+  symbol?: string
+  trade_date?: string
+  start_date?: string
+  end_date?: string
+  limit?: number
+}) =>
+  http
+    .get<{ total: number; items: MoneyflowItem[] }>('/moneyflows/', { params })
+    .then(unwrap)
+
+/** POST /moneyflows/collect  触发资金流向采集 */
+export const collectMoneyflows = (params?: { symbol?: string; trade_date?: string }) =>
+  http.post<{ saved_count: number; total_count: number; message: string }>(
+    '/moneyflows/collect',
+    null,
+    { params }
+  ).then(unwrap)
+
+// ── 两融明细 ───────────────────────────────────────────────────
+
+/** 个股两融明细项（cap_margin_details） */
+export interface MarginDetailItem {
+  symbol: string
+  trade_date: string
+  rzye: number | null
+  rqye: number | null
+  rzmre: number | null
+  rqyl: number | null
+  rzche: number | null
+  rqchl: number | null
+  rqmcl: number | null
+  rzrqye: number | null
+}
+
+/** GET /margin-details/ 查询两融明细 */
+export const getMarginDetails = (params: {
+  symbol: string
+  start_date?: string
+  end_date?: string
+  limit?: number
+}) =>
+  http
+    .get<{ total: number; items: MarginDetailItem[] }>('/margin-details/', { params })
+    .then(unwrap)
+
+// ── 龙虎榜 ─────────────────────────────────────────────────────
+
+/** 龙虎榜单项（cap_top_lists） */
+export interface TopListItem {
+  trade_date: string
+  symbol: string
+  name: string | null
+  close: number | null
+  pct_change: number | null
+  amount: number | null
+  net_amount: number | null
+  reason: string | null
+}
+
+/** GET /top-lists/ 查询龙虎榜 */
+export const getTopLists = (params: {
+  trade_date?: string
+  start_date?: string
+  end_date?: string
+}) =>
+  http
+    .get<{ total: number; items: TopListItem[] }>('/top-lists/', { params })
+    .then(unwrap)
+
+// ── 日频估值 ───────────────────────────────────────────────────
+
+/** 日频估值项（fin_daily_basics） */
+export interface DailyBasicItem {
+  symbol: string
+  trade_date: string
+  close: number | null
+  pe: number | null
+  pe_ttm: number | null
+  pb: number | null
+  ps: number | null
+  ps_ttm: number | null
+  dv_ratio: number | null
+  turnover_rate: number | null
+  total_mv: number | null
+  circ_mv: number | null
+}
+
+/** GET /fin-daily-basics/ 查询日频估值 */
+export const getFinDailyBasics = (params: {
+  symbol: string
+  start_date?: string
+  end_date?: string
+  limit?: number
+}) =>
+  http
+    .get<{ total: number; items: DailyBasicItem[] }>('/fin-daily-basics/', { params })
+    .then(unwrap)
+
+// ── 前十大股东 ─────────────────────────────────────────────────
+
+/** 十大股东项（fin_top10_holders） */
+export interface Top10HolderItem {
+  symbol: string
+  holder_name: string
+  end_date: string | null
+  ann_date: string | null
+  hold_amount: number | null
+  hold_ratio: number | null
+  hold_float_ratio: number | null
+  hold_change: number | null
+  holder_type: string | null
+}
+
+/** GET /top10-holders/ 查询十大股东 */
+export const getTop10Holders = (params: {
+  symbol: string
+  end_date?: string
+}) =>
+  http
+    .get<{ total: number; items: Top10HolderItem[] }>('/top10-holders/', { params })
+    .then(unwrap)
+
+// ── 复权因子 ───────────────────────────────────────────────────
+
+/** 复权因子项（base_adj_factors） */
+export interface AdjFactorItem {
+  symbol: string
+  trade_date: string
+  adj_factor: number
+}
+
+/** GET /adj-factors/ 查询复权因子 */
+export const getAdjFactors = (params: {
+  symbol: string
+  start_date?: string
+  end_date?: string
+  limit?: number
+}) =>
+  http
+    .get<{ total: number; items: AdjFactorItem[] }>('/adj-factors/', { params })
+    .then(unwrap)
+
+// ── 分红送股 ───────────────────────────────────────────────────
+
+/** 分红送股项（base_dividends） */
+export interface DividendItem {
+  symbol: string
+  end_date: string
+  ann_date: string | null
+  record_date: string | null
+  ex_date: string | null
+  pay_date: string | null
+  div_proc: string | null
+  stk_div: number | null
+  cash_div: number | null
+  cash_div_tax: number | null
+}
+
+/** GET /dividends/ 查询分红送股 */
+export const getDividends = (params: {
+  symbol: string
+  start_date?: string
+  end_date?: string
+}) =>
+  http
+    .get<{ total: number; items: DividendItem[] }>('/dividends/', { params })
+    .then(unwrap)
+
+// ── 停复牌 ─────────────────────────────────────────────────────
+
+/** 停复牌项（base_suspends） */
+export interface SuspendItem {
+  symbol: string
+  trade_date: string
+  suspend_timing: string | null
+  suspend_type: string | null
+}
+
+/** GET /suspends/ 查询停复牌 */
+export const getSuspends = (params: {
+  symbol?: string
+  trade_date?: string
+  start_date?: string
+  end_date?: string
+}) =>
+  http
+    .get<{ total: number; items: SuspendItem[] }>('/suspends/', { params })
+    .then(unwrap)
+
+// ── 板块行情 ───────────────────────────────────────────────────
+
+/** 板块行情项（mkt_sector_dailys） */
+export interface SectorDailyItem {
+  sector_type: string
+  sector_code: string
+  sector_name: string | null
+  trade_date: string
+  close: number | null
+  pct_change: number | null
+  amount: number | null
+  turnover_rate: number | null
+}
+
+/** GET /sector-dailys/ 查询板块日行情 */
+export const getSectorDailys = (params: {
+  sector_type?: string
+  trade_date?: string
+  limit?: number
+}) =>
+  http
+    .get<{ total: number; items: SectorDailyItem[] }>('/sector-dailys/', { params })
+    .then(unwrap)
+
+// ── 板块成分 ───────────────────────────────────────────────────
+
+/** 板块成分项（mkt_index_members） */
+export interface IndexMemberItem {
+  sector_type: string
+  sector_code: string
+  sector_name: string | null
+  symbol: string
+  name: string | null
+  effective_date: string | null
+  expiry_date: string | null
+  is_new: string | null
+}
+
+/** GET /index-members/ 查询板块成分 */
+export const getIndexMembers = (params: {
+  sector_type: string
+  sector_code: string
+}) =>
+  http
+    .get<{ total: number; items: IndexMemberItem[] }>('/index-members/', { params })
+    .then(unwrap)
+
+// ── 股东户数 ───────────────────────────────────────────────────
+
+/** 股东户数项（cap_holder_nums） */
+export interface HolderNumItem {
+  symbol: string
+  end_date: string
+  ann_date: string | null
+  holder_num: number | null
+}
+
+/** GET /holder-nums/ 查询股东户数 */
+export const getHolderNums = (params: {
+  symbol: string
+  start_date?: string
+  end_date?: string
+}) =>
+  http
+    .get<{ total: number; items: HolderNumItem[] }>('/holder-nums/', { params })
+    .then(unwrap)
