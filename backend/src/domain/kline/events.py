@@ -15,7 +15,7 @@ class KlineCollected(DomainEvent):
     name: str = ""
     collected_count: int = 0
     total_count: int = 0
-    source: str = "akshare"
+    source: str = "tushare"
 
     def __init__(
         self,
@@ -23,7 +23,7 @@ class KlineCollected(DomainEvent):
         name: str = "",
         collected_count: int = 0,
         total_count: int = 0,
-        source: str = "akshare",
+        source: str = "tushare",
     ):
         self.symbol = symbol
         self.name = name

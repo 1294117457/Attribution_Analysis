@@ -137,12 +137,10 @@ export const usePoolStore = defineStore('pool', () => {
   async function startKlineCollect(
     poolId: number,
     days = 365,
-    source?: string,
   ) {
     const result = await poolApi.createOperation(poolId, {
       operation_type: 'kline_collect',
       days,
-      source,
     })
 
     const newOp: PoolOperation = {
@@ -150,7 +148,7 @@ export const usePoolStore = defineStore('pool', () => {
       pool_id: poolId,
       operation_type: 'kline_collect',
       status: result.status,
-      params: { days, source },
+      params: { days },
       progress: { done: 0, total: result.total, failed: 0 },
       created_at: new Date().toISOString(),
     }

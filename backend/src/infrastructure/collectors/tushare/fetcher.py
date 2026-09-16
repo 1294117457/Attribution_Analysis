@@ -86,7 +86,7 @@ class TushareFetcher(BaseCollector):
         token = get_settings().TUSHARE_TOKEN
         if not token:
             raise RuntimeError(
-                "TUSHARE_TOKEN 未配置，请在 .env 中设置或注入 COLLECTOR_SOURCE=akshare"
+                "TUSHARE_TOKEN 未配置，请在 .env 中设置"
             )
         ts.set_token(token)
         self._pro = ts.pro_api()

@@ -35,7 +35,7 @@ class PoolOperationAppService:
         self._session = session
         self._pool_repo: StockPoolRepository = StockPoolRepoImpl(session)
         self._op_repo: PoolOperationRepository = PoolOperationRepoImpl(session)
-        self._dispatcher = OperationDispatcher(session)
+        self._dispatcher = OperationDispatcher()
 
     async def create_kline_collect_operation(
         self, request: PoolKlineCollectRequest
@@ -64,7 +64,6 @@ class PoolOperationAppService:
 
         params = {
             "days": request.days,
-            "source": request.source,
         }
         op_id = await self._op_repo.create(
             pool_id=request.pool_id,
@@ -81,7 +80,6 @@ class PoolOperationAppService:
             pool_id=request.pool_id,
             symbols=symbols,
             days=request.days,
-            source=request.source,
         )
 
         return PoolOperationCreateResponse(

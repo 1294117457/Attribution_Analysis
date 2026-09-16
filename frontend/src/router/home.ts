@@ -21,7 +21,7 @@ const homeRoutes: RouteRecordRaw = {
     {
       path: 'pool',
       name: 'PoolList',
-      component: () => import('@/views/stock-pool/components/PoolList.vue'),
+      component: () => import('@/views/stock-pool/PoolList.vue'),
       meta: { title: '操作池', icon: 'folder' },
     },
     {

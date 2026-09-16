@@ -50,10 +50,52 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await conn.run_sync(Base.metadata.create_all)
         # 兼容旧表：补齐 stock_infos 新增字段（仅首次启动时执行）
         await _migrate_stock_infos(conn)
+        # 兼容旧 daily_klines：补齐 17 个技术指标列
+        await _migrate_daily_klines_indicators(conn)
         # 初始化操作池：创建默认池
         await _ensure_default_pool(conn)
     yield
     await close_db()
+
+
+async def _migrate_daily_klines_indicators(conn) -> None:
+    """兼容旧 schema：为已存在的 daily_klines 表添加 17 个技术指标列
+
+    字段全部为可空 Float 列, IF NOT EXISTS 保证幂等。
+    PostgreSQL 11+ ADD COLUMN 不锁表, 直接执行即可。
+    """
+    from sqlalchemy import text
+    indicator_columns = [
+        # 均线
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS ma5 DOUBLE PRECISION",
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS ma10 DOUBLE PRECISION",
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS ma20 DOUBLE PRECISION",
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS ma60 DOUBLE PRECISION",
+        # EMA
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS ema12 DOUBLE PRECISION",
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS ema26 DOUBLE PRECISION",
+        # MACD
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS macd_dif DOUBLE PRECISION",
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS macd_dea DOUBLE PRECISION",
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS macd_bar DOUBLE PRECISION",
+        # RSI
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS rsi6 DOUBLE PRECISION",
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS rsi12 DOUBLE PRECISION",
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS rsi24 DOUBLE PRECISION",
+        # KDJ
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS kdj_k DOUBLE PRECISION",
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS kdj_d DOUBLE PRECISION",
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS kdj_j DOUBLE PRECISION",
+        # BOLL
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS boll_up DOUBLE PRECISION",
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS boll_mid DOUBLE PRECISION",
+        "ALTER TABLE daily_klines ADD COLUMN IF NOT EXISTS boll_dn DOUBLE PRECISION",
+    ]
+    for stmt in indicator_columns:
+        try:
+            await conn.execute(text(stmt))
+        except Exception as e:
+            logging.warning("daily_klines 指标迁移跳过: %s | %s", stmt, e)
 
 
 async def _migrate_stock_infos(conn) -> None:

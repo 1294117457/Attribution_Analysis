@@ -125,7 +125,6 @@ export interface PoolUpdateMemberMemoRequest {
 export interface PoolKlineCollectRequest {
   operation_type: 'kline_collect'
   days: number
-  source?: string | null
 }
 
 // ── 响应类型 ──────────────────────────────────────────────

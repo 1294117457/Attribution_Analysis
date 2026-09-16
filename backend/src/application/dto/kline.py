@@ -36,7 +36,7 @@ class KlineDeleteRequest(BaseModel):
 # ── 响应 DTO ──────────────────────────────────────────────
 
 class KlineItemResponse(BaseModel):
-    """单条K线响应"""
+    """单条K线响应（含 17 个技术指标列）"""
     symbol: str
     name: str
     date: date
@@ -47,6 +47,32 @@ class KlineItemResponse(BaseModel):
     volume: int
     amount: float
     change_pct: Optional[float] = None
+
+    # ── 技术指标（方案 A 展宽字段）──────────────────────────
+    # 均线
+    ma5:  Optional[float] = None
+    ma10: Optional[float] = None
+    ma20: Optional[float] = None
+    ma60: Optional[float] = None
+    # EMA
+    ema12: Optional[float] = None
+    ema26: Optional[float] = None
+    # MACD
+    macd_dif: Optional[float] = None
+    macd_dea: Optional[float] = None
+    macd_bar: Optional[float] = None
+    # RSI
+    rsi6:  Optional[float] = None
+    rsi12: Optional[float] = None
+    rsi24: Optional[float] = None
+    # KDJ
+    kdj_k: Optional[float] = None
+    kdj_d: Optional[float] = None
+    kdj_j: Optional[float] = None
+    # BOLL
+    boll_up:  Optional[float] = None
+    boll_mid: Optional[float] = None
+    boll_dn:  Optional[float] = None
 
 
 class KlineListResponse(BaseModel):

@@ -236,75 +236,68 @@
     <el-drawer
       v-model="detailVisible"
       :title="selectedStock?.name || '股票详情'"
-      size="400px"
+      size="480px"
       direction="rtl"
     >
       <template v-if="selectedStock">
         <div class="px-1">
-          <div class="detail-header">
+          <!-- 抽屉顶部：标的 + 基本信息快捷 -->
+          <div class="detail-header mb-4">
             <div class="text-xl font-bold text-gray-900">
               {{ selectedStock.symbol }}
               <el-tag size="small" class="ml-2">{{ selectedStock.name }}</el-tag>
             </div>
             <div class="text-xs text-gray-500 mt-1">
-              {{ selectedStock.ts_code }} · {{ selectedStock.market }}
+              {{ selectedStock.ts_code }} · {{ selectedStock.market }} · {{ selectedStock.industry || '—' }}
             </div>
           </div>
 
-          <el-descriptions :column="1" border class="mt-4">
-            <el-descriptions-item label="TS代码">{{ selectedStock.ts_code }}</el-descriptions-item>
-            <el-descriptions-item label="交易所">{{ exchangeLabel(selectedStock.exchange) }}</el-descriptions-item>
-            <el-descriptions-item label="市场">{{ selectedStock.market || '—' }}</el-descriptions-item>
-            <el-descriptions-item label="行业">{{ selectedStock.industry || '—' }}</el-descriptions-item>
-            <el-descriptions-item label="地域">{{ selectedStock.area || '—' }}</el-descriptions-item>
-            <el-descriptions-item label="上市日期">{{ formatDate(selectedStock.list_date) }}</el-descriptions-item>
-            <el-descriptions-item label="退市日期">{{ formatDate(selectedStock.delist_date) || '—' }}</el-descriptions-item>
-            <el-descriptions-item label="实控人">{{ selectedStock.act_name || '—' }}</el-descriptions-item>
-            <el-descriptions-item label="企业性质">{{ selectedStock.act_ent_type || '—' }}</el-descriptions-item>
-            <el-descriptions-item label="英文名">{{ selectedStock.enname || '—' }}</el-descriptions-item>
-            <el-descriptions-item label="拼音缩写">{{ selectedStock.cnspell || '—' }}</el-descriptions-item>
-          </el-descriptions>
+          <!-- Tabs: 基本信息 / K 线图 / 归因分析 -->
+          <el-tabs v-model="drawerTab" class="drawer-tabs">
+            <!-- Tab 1: 基本信息 -->
+            <el-tab-pane label="基本信息" name="info">
+              <el-descriptions :column="1" border size="small">
+                <el-descriptions-item label="TS代码">{{ selectedStock.ts_code }}</el-descriptions-item>
+                <el-descriptions-item label="交易所">{{ exchangeLabel(selectedStock.exchange) }}</el-descriptions-item>
+                <el-descriptions-item label="市场">{{ selectedStock.market || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="行业">{{ selectedStock.industry || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="地域">{{ selectedStock.area || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="上市日期">{{ formatDate(selectedStock.list_date) }}</el-descriptions-item>
+                <el-descriptions-item label="实控人">{{ selectedStock.act_name || '—' }}</el-descriptions-item>
+                <el-descriptions-item label="企业性质">{{ selectedStock.act_ent_type || '—' }}</el-descriptions-item>
+              </el-descriptions>
 
-          <div class="mt-6 space-y-2">
-            <!-- 加入操作池 -->
-            <el-dropdown
-              trigger="click"
-              :disabled="poolStore.pools.length === 0"
-            >
-              <el-button type="success" class="w-full">
-                <el-icon class="mr-1"><Folder /></el-icon>
-                加入操作池
-                <el-icon class="ml-1"><ArrowDown /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item
-                    v-for="pool in activePools"
-                    :key="pool.id"
-                    :data-pool-id="pool.id"
-                    :disabled="currentStockInPool(pool.id as number)"
-                    @click="(e: Event) => onPoolDropdownClick(e, pool.id as number)"
-                  >
-                    {{ pool.icon || '📂' }} {{ pool.name }}
-                    <span v-if="currentStockInPool(pool.id)" class="text-xs text-green-500 ml-2">已在池中</span>
-                  </el-dropdown-item>
-                  <el-dropdown-item divided @click="onNewPoolClick">
-                    <el-icon><Plus /></el-icon> 新建池...
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+              <!-- 基本信息 Tab 底部操作 -->
+              <div class="mt-4 space-y-2">
+                <el-button type="success" class="w-full" @click="showAddToPoolDialog">
+                  <el-icon class="mr-1"><Folder /></el-icon>
+                  加入操作池
+                </el-button>
+                <el-button type="primary" class="w-full" @click="goToAnalysis">
+                  <el-icon class="mr-1"><DataLine /></el-icon>
+                  打开 K 线分析页
+                </el-button>
+              </div>
+            </el-tab-pane>
 
-            <!-- 跳转操作池（采集 K 线） -->
-            <el-button
-              type="primary"
-              class="w-full"
-              @click="goToPoolPage"
-            >
-              <el-icon class="mr-1"><FolderOpened /></el-icon>
-              在操作池中采集 K 线
-            </el-button>
-          </div>
+            <!-- Tab 2: K 线图 -->
+            <el-tab-pane label="K 线图" name="kline">
+              <KLineDrawerTab :symbol="selectedStock.symbol" />
+            </el-tab-pane>
+
+            <!-- Tab 3: 归因分析（跳转独立页） -->
+            <el-tab-pane label="归因分析" name="analysis">
+              <div class="flex flex-col items-center justify-center py-8 gap-4">
+                <div class="text-gray-500 text-sm text-center">
+                  完整归因分析需要更多数据支持,<br>点击下方按钮进入分析页。
+                </div>
+                <el-button type="primary" @click="goToAnalysis">
+                  <el-icon class="mr-1"><DataLine /></el-icon>
+                  打开分析页
+                </el-button>
+              </div>
+            </el-tab-pane>
+          </el-tabs>
         </div>
       </template>
     </el-drawer>
@@ -406,12 +399,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Search, Refresh, Download, FolderOpened, Folder, ArrowDown, Plus } from '@element-plus/icons-vue'
+import { Search, Refresh, Folder, Plus, DataLine } from '@element-plus/icons-vue'
 import {
   queryStocks,
   getStockMeta,
   syncStocks,
 } from '@/views/stock-info/api'
+import KLineDrawerTab from './KLineDrawerTab.vue'
 import { usePoolStore } from '@/stores/pool'
 import type { StockInfo, StockMeta, StockQueryParams } from '@/views/stock-info/api'
 import type { Pool } from '@/views/stock-pool/api'
@@ -426,6 +420,7 @@ const loading = ref(false)
 const syncing = ref(false)
 const detailVisible = ref(false)
 const selectedStock = ref<StockInfo | null>(null)
+const drawerTab = ref('info')  // 抽屉内 Tab: info / kline / analysis
 const meta = ref<StockMeta>({ industries: [], markets: [], exchanges: [] })
 const poolStore = usePoolStore()
 
@@ -541,6 +536,7 @@ async function syncStocksHandler() {
 // ── 详情抽屉 ─────────────────────────────────────────────
 function selectStock(row: StockInfo) {
   selectedStock.value = row
+  drawerTab.value = 'info'    // 每次打开重置到基本信息 Tab
   detailVisible.value = true
 }
 
@@ -728,6 +724,12 @@ function goToPoolPage() {
     } else {
       router.push({ path: '/home/pool' })
     }
+  }
+}
+
+function goToAnalysis() {
+  if (selectedStock.value) {
+    ElMessage.info('完整分析已整合进操作池详情页，请在「操作池」中查看')
   }
 }
 

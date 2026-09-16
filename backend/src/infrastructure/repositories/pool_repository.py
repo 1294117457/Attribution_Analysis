@@ -55,9 +55,12 @@ class StockPoolRepoImpl(StockPoolRepository):
             updated_at=db.updated_at,
         )
 
-    def _to_entity_light(self, db: StockPoolDB) -> StockPool:
-        """不含成员的轻量实体"""
-        return StockPool.reconstitute(
+    def _to_entity_light(self, db: StockPoolDB, member_count: Optional[int] = None) -> StockPool:
+        """不含成员的轻量实体
+
+        member_count: 来自单独查询的真实成员数（仅用于列表场景，避免 N+1）。
+        """
+        pool = StockPool.reconstitute(
             id=db.id,
             name=db.name,
             pool_type=db.pool_type,
@@ -71,6 +74,9 @@ class StockPoolRepoImpl(StockPoolRepository):
             created_at=db.created_at,
             updated_at=db.updated_at,
         )
+        if member_count is not None:
+            pool._member_count_override = member_count
+        return pool
 
     # ── 池 CRUD ─────────────────────────────────────────────────────────────
 
@@ -139,7 +145,24 @@ class StockPoolRepoImpl(StockPoolRepository):
 
         result = await self._session.execute(stmt)
         dbs = result.scalars().all()
-        return [self._to_entity_light(db) for db in dbs]
+        if not dbs:
+            return []
+        # 批量统计每个池的成员数（避免 N+1）
+        pool_ids = [db.id for db in dbs]
+        count_stmt = (
+            select(
+                StockPoolMemberDB.pool_id,
+                func.count(StockPoolMemberDB.symbol),
+            )
+            .where(StockPoolMemberDB.pool_id.in_(pool_ids))
+            .group_by(StockPoolMemberDB.pool_id)
+        )
+        count_result = await self._session.execute(count_stmt)
+        counts = {pid: cnt for pid, cnt in count_result.all()}
+        return [
+            self._to_entity_light(db, member_count=counts.get(db.id, 0))
+            for db in dbs
+        ]
 
     async def find_by_default(self) -> Optional[StockPool]:
         stmt = (

@@ -108,7 +108,7 @@ import { ElMessage } from 'element-plus'
 import { Search, Plus, MoreFilled, DataLine } from '@element-plus/icons-vue'
 import { usePoolStore } from '@/stores/pool'
 import type { Pool } from '@/views/stock-pool/api'
-import PoolCreateDialog from '@/views/stock-pool/popup/PoolCreateDialog.vue'
+import PoolCreateDialog from './components/PoolCreateDialog.vue'
 
 const router = useRouter()
 const store = usePoolStore()

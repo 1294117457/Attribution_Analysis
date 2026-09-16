@@ -10,10 +10,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 
-# Mock akshare 模块（环境无 akshare）
-akshare_stub = types.ModuleType("akshare")
-akshare_stub.__path__ = []
-sys.modules.setdefault("akshare", akshare_stub)
+# Mock tushare 模块（环境无 tushare）
+tushare_stub = types.ModuleType("tushare")
+tushare_stub.__path__ = []
+tushare_stub.set_token = lambda *a, **k: None
+tushare_stub.pro_api = lambda *a, **k: MagicMock()
+sys.modules.setdefault("tushare", tushare_stub)
 
 
 from fastapi.testclient import TestClient
