@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from domain.stock_info.entity import StockInfo
 from domain.stock_info.repository import StockInfoRepository
 from infrastructure.database.models.stock_info import StockInfoDB
-from infrastructure.database.models.kline import DailyKlineDB
+from infrastructure.database.models.tech_kline import TechKlineDailyDB
 
 
 class StockRepoImpl:
@@ -171,11 +171,11 @@ class StockRepoImpl:
                 StockInfoDB.name,
                 StockInfoDB.industry,
                 StockInfoDB.market,
-                func.count(DailyKlineDB.id).label("record_count"),
-                func.min(DailyKlineDB.date).label("kline_start"),
-                func.max(DailyKlineDB.date).label("kline_end"),
+                func.count(TechKlineDailyDB.id).label("record_count"),
+                func.min(TechKlineDailyDB.date).label("kline_start"),
+                func.max(TechKlineDailyDB.date).label("kline_end"),
             )
-            .outerjoin(DailyKlineDB, StockInfoDB.symbol == DailyKlineDB.symbol)
+            .outerjoin(TechKlineDailyDB, StockInfoDB.symbol == TechKlineDailyDB.symbol)
             .group_by(StockInfoDB.id)
             .order_by(StockInfoDB.symbol)
         )
@@ -270,11 +270,11 @@ class StockRepoImpl:
                 StockInfoDB.list_status,
                 StockInfoDB.is_hs,
                 StockInfoDB.total_shares,
-                func.count(DailyKlineDB.id).label("record_count"),
-                func.min(DailyKlineDB.date).label("kline_start"),
-                func.max(DailyKlineDB.date).label("kline_end"),
+                func.count(TechKlineDailyDB.id).label("record_count"),
+                func.min(TechKlineDailyDB.date).label("kline_start"),
+                func.max(TechKlineDailyDB.date).label("kline_end"),
             )
-            .outerjoin(DailyKlineDB, StockInfoDB.symbol == DailyKlineDB.symbol)
+            .outerjoin(TechKlineDailyDB, StockInfoDB.symbol == TechKlineDailyDB.symbol)
             .group_by(StockInfoDB.id)
         )
         count_stmt = select(func.count()).select_from(StockInfoDB)

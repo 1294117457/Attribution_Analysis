@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from domain.kline.entity import Kline
 from domain.kline.repository import KlineRepository
 from domain.kline.value_objects import StockCode
-from infrastructure.database.models.kline import DailyKlineDB
+from infrastructure.database.models.tech_kline import TechKlineDailyDB
 
 
 # 一行 = 一只股票一天的所有 K 线 + 指标字段（方案 A 展宽结构）
@@ -37,7 +37,7 @@ class KlineRepoImpl:
 
     # ── ORM ↔ Entity 转换 ───────────────────────────────────
 
-    def _to_entity(self, row: DailyKlineDB) -> Kline:
+    def _to_entity(self, row: TechKlineDailyDB) -> Kline:
         """ORM 行 → 领域实体"""
         return Kline.create(
             id=row.id,
@@ -108,7 +108,7 @@ class KlineRepoImpl:
     # ── KlineRepository 接口实现 ─────────────────────────────
 
     async def save(self, kline: Kline) -> Kline:
-        row = DailyKlineDB(**self._to_row(kline))
+        row = TechKlineDailyDB(**self._to_row(kline))
         self._session.add(row)
         await self._session.flush()
         await self._session.refresh(row)
@@ -116,21 +116,13 @@ class KlineRepoImpl:
         return kline
 
     async def save_batch(self, klines: list[Kline]) -> int:
-        """批量保存 K 线 + 指标，使用 ON CONFLICT DO UPDATE。
-
-        - 新行：插入全部字段（含指标列）
-        - 已存在：更新基础字段 + 指标列（覆盖重算结果）
-        - 返回实际受影响行数（新增 + 更新）
-
-        注意：相比原版本的 DO NOTHING，这里改为 DO UPDATE，
-        因为指标列需要每次重算并覆盖。
-        """
+        """批量保存 K 线 + 指标，使用 ON CONFLICT DO UPDATE。"""
         if not klines:
             return 0
         rows = [self._to_row(k) for k in klines]
 
         # DO UPDATE 全部字段（含指标），保证重复采集时指标被覆盖
-        excluded = pg_insert(DailyKlineDB).excluded
+        excluded = pg_insert(TechKlineDailyDB).excluded
         upsert_set = {col: getattr(excluded, col) for col in _INDICATOR_COLUMNS}
         upsert_set.update({
             "name": excluded.name,
@@ -144,10 +136,10 @@ class KlineRepoImpl:
         })
 
         stmt = (
-            pg_insert(DailyKlineDB)
+            pg_insert(TechKlineDailyDB)
             .values(rows)
             .on_conflict_do_update(
-                constraint="uq_kline_symbol_date",
+                constraint="uq_tech_kline_symbol_date",
                 set_=upsert_set,
             )
         )
@@ -156,7 +148,7 @@ class KlineRepoImpl:
         return result.rowcount
 
     async def find_by_id(self, id: int) -> Optional[Kline]:
-        stmt = select(DailyKlineDB).where(DailyKlineDB.id == id)
+        stmt = select(TechKlineDailyDB).where(TechKlineDailyDB.id == id)
         result = await self._session.execute(stmt)
         row = result.scalar_one_or_none()
         return self._to_entity(row) if row else None
@@ -164,9 +156,9 @@ class KlineRepoImpl:
     async def find_by_symbol_date(
         self, symbol: StockCode, trade_date: date
     ) -> Optional[Kline]:
-        stmt = select(DailyKlineDB).where(
-            DailyKlineDB.symbol == symbol.code,
-            DailyKlineDB.date == trade_date,
+        stmt = select(TechKlineDailyDB).where(
+            TechKlineDailyDB.symbol == symbol.code,
+            TechKlineDailyDB.date == trade_date,
         )
         result = await self._session.execute(stmt)
         row = result.scalar_one_or_none()
@@ -180,14 +172,14 @@ class KlineRepoImpl:
         limit: int = 365,
         order_desc: bool = True,
     ) -> list[Kline]:
-        stmt = select(DailyKlineDB).where(DailyKlineDB.symbol == symbol.code)
+        stmt = select(TechKlineDailyDB).where(TechKlineDailyDB.symbol == symbol.code)
 
         if start_date:
-            stmt = stmt.where(DailyKlineDB.date >= start_date)
+            stmt = stmt.where(TechKlineDailyDB.date >= start_date)
         if end_date:
-            stmt = stmt.where(DailyKlineDB.date <= end_date)
+            stmt = stmt.where(TechKlineDailyDB.date <= end_date)
 
-        order_col = DailyKlineDB.date.desc() if order_desc else DailyKlineDB.date.asc()
+        order_col = TechKlineDailyDB.date.desc() if order_desc else TechKlineDailyDB.date.asc()
         stmt = stmt.order_by(order_col).limit(limit)
 
         result = await self._session.execute(stmt)
@@ -195,20 +187,20 @@ class KlineRepoImpl:
         return [self._to_entity(row) for row in rows]
 
     async def count_by_symbol(self, symbol: StockCode) -> int:
-        stmt = select(func.count()).where(DailyKlineDB.symbol == symbol.code)
+        stmt = select(func.count()).where(TechKlineDailyDB.symbol == symbol.code)
         result = await self._session.execute(stmt)
         return result.scalar_one()
 
     async def delete_by_symbol(self, symbol: StockCode) -> int:
-        stmt = delete(DailyKlineDB).where(DailyKlineDB.symbol == symbol.code)
+        stmt = delete(TechKlineDailyDB).where(TechKlineDailyDB.symbol == symbol.code)
         result = await self._session.execute(stmt)
         await self._session.commit()
         return result.rowcount
 
     async def delete_one(self, symbol: StockCode, trade_date: date) -> int:
-        stmt = delete(DailyKlineDB).where(
-            DailyKlineDB.symbol == symbol.code,
-            DailyKlineDB.date == trade_date,
+        stmt = delete(TechKlineDailyDB).where(
+            TechKlineDailyDB.symbol == symbol.code,
+            TechKlineDailyDB.date == trade_date,
         )
         result = await self._session.execute(stmt)
         await self._session.commit()

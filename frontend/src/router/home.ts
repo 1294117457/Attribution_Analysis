@@ -31,6 +31,20 @@ const homeRoutes: RouteRecordRaw = {
       meta: { title: '池详情', icon: 'folder', hidden: true },
       props: true,
     },
+    {
+      // 🆕 市场全局（开发指南 §8.6）
+      path: 'market',
+      name: 'MarketDashboard',
+      component: () => import('@/views/market/MarketDashboard.vue'),
+      meta: { title: '市场全局', icon: 'data-analysis', hidden: true },
+    },
+    {
+      // 🆕 板块行情列表（开发指南 §8.6）
+      path: 'market/sectors',
+      name: 'SectorBoard',
+      component: () => import('@/views/market/SectorBoard.vue'),
+      meta: { title: '板块行情', icon: 'grid', hidden: true },
+    },
   ],
 }
 

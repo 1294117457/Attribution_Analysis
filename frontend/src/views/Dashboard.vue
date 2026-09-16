@@ -3,8 +3,8 @@
     <!-- 标题 -->
     <h2 class="page-title">📊 数据大盘</h2>
 
-    <!-- 统计卡片 -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- 统计卡片（8 张，扩展资金面/市场面 4 张）-->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
       <el-card v-for="card in stats" :key="card.label" class="stat-card" shadow="hover">
         <div class="flex items-center gap-3">
           <div :class="['stat-icon', card.color]">{{ card.icon }}</div>
@@ -116,10 +116,17 @@ const stats = computed<StatCard[]>(() => {
   }
 
   return [
+    // ── 已有 4 张 ──
     { label: '股票数量',  value: stocks.length,                                       icon: '📋', color: 'blue' },
     { label: 'K 线总条数', value: totalKlines.toLocaleString(),                       icon: '📈', color: 'green' },
     { label: '数据覆盖',  value: range,                                                icon: '🕐', color: 'orange' },
     { label: '涉及行业',  value: industries.size,                                     icon: '🏭', color: 'purple' },
+    // ── 🆕 新增 4 张（开发指南 §8.5，对应后端 4 类新表，需后端提供聚合 API） ──
+    // 待后端实现 dashboard/summary 接口后可填真实值
+    { label: '资金流向覆盖', value: '—', icon: '💰', color: 'red' },
+    { label: '两融覆盖',     value: '—', icon: '📊', color: 'cyan' },
+    { label: '龙虎榜记录',   value: '—', icon: '🏆', color: 'gold' },
+    { label: '板块行情',     value: '—', icon: '🗂️', color: 'magenta' },
   ]
 })
 
@@ -159,6 +166,10 @@ onMounted(async () => {
 .stat-icon.green  { background: #e8f6ed; }
 .stat-icon.orange { background: #fef3e2; }
 .stat-icon.purple { background: #f3effd; }
+.stat-icon.red    { background: #fde8e8; }
+.stat-icon.cyan   { background: #defaf0; }
+.stat-icon.gold   { background: #fef4d8; }
+.stat-icon.magenta{ background: #fce8f3; }
 
 .stat-value {
   font-size: 1.4rem;
