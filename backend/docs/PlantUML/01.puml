@@ -1,0 +1,253 @@
+@startuml DataModel
+
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam classFontSize 13
+skinparam packageFontSize 14
+
+' ════════════════════════════════════════════
+'  核心
+' ════════════════════════════════════════════
+package "核心" #F5F5DC {
+
+  class stock_info <<聚合根>> {
+    + symbol : str {PK}
+    + ts_code : str
+    + name : str
+    --
+    area : str
+    industry : str
+    market : str
+    exchange : str
+    list_date : date
+    delist_date : date
+    list_status : str
+    is_hs : str
+    total_shares : bigint
+    cnspell : str
+    fullname : str
+    act_name : str
+    act_ent_type : str
+  }
+
+}
+
+' ════════════════════════════════════════════
+'  操作池
+' ════════════════════════════════════════════
+package "操作池" #E8F5E9 {
+
+  class stock_pool {
+    + id : bigint {PK}
+    --
+    name : str
+    pool_type : str
+    color : str
+    icon : str
+    sort_order : int
+    is_default : bool
+    is_archived : bool
+  }
+
+  class stock_pool_member {
+    + pool_id {FK}
+    + symbol {FK}
+    --
+    memo : str
+    sort_order : int
+    added_at : datetime
+  }
+
+
+}
+
+' ════════════════════════════════════════════
+'  技术面 (日频，per 个股)
+' ════════════════════════════════════════════
+package "技术面" #E3F2FD {
+
+  class daily_kline {
+    + symbol {FK} + date {UK}
+    --
+    open, high, low, close : float
+    volume : bigint
+    amount : float
+    change_pct : float
+    __ 均线 __
+    ma5, ma10, ma20, ma60
+    __ EMA __
+    ema12, ema26
+    __ MACD __
+    macd_dif, macd_dea, macd_bar
+    __ RSI __
+    rsi6, rsi12, rsi24
+    __ KDJ __
+    kdj_k, kdj_d, kdj_j
+    __ BOLL __
+    boll_up, boll_mid, boll_dn
+  }
+
+}
+
+' ════════════════════════════════════════════
+'  基本面
+' ════════════════════════════════════════════
+package "基本面" #FFF3E0 {
+
+  class financial_report <<季频>> {
+    + symbol {FK} + end_date {UK}
+    --
+    ann_date : date
+    report_type : str
+    update_flag : str
+    __ 盈利能力 __
+    eps, roe, roe_waa, roa
+    netprofit_margin
+    grossprofit_margin
+    __ 成长性 __
+    or_yoy, netprofit_yoy, ocf_yoy
+    __ 偿债 __
+    debt_to_assets
+    __ 现金流 __
+    net_profit
+    n_cashflow_act
+    n_cashflow_inv_act
+    n_cash_flows_fnc_act
+    free_cashflow
+  }
+
+  class daily_basic_metric <<日频>> {
+    + symbol {FK} + trade_date {UK}
+    --
+    __ 估值 __
+    pe, pe_ttm, pb
+    ps, ps_ttm
+    dv_ratio, dv_ttm
+    __ 股本与市值 __
+    total_share, float_share, free_share
+    total_mv, circ_mv
+    __ 交易特征 __
+    turnover_rate, turnover_rate_f
+    volume_ratio
+    close
+  }
+
+}
+
+' ════════════════════════════════════════════
+'  资金/情绪面
+' ════════════════════════════════════════════
+package "资金面" #F3E5F5 {
+
+  class margin_data <<日频, per 交易所>> {
+    + exchange_id + trade_date {UK}
+    --
+    rzye : float
+    rzmre : float
+    rzche : float
+    rqye : float
+    rqmcl : float
+    rqyl : float
+    rzrqye : float
+  }
+
+}
+
+' ════════════════════════════════════════════
+'  市场全局
+' ════════════════════════════════════════════
+package "市场全局" #ECEFF1 {
+
+  class trading_calendar <<参考数据>> {
+    + cal_date + exchange {UK}
+    --
+    is_open : bool
+    pretrade_date : date
+  }
+
+  class market_daily <<日频, per 市场>> {
+    + market + trade_date {UK}
+    --
+    total_amount : float
+    total_volume : bigint
+    up_count : int
+    down_count : int
+    flat_count : int
+    limit_up_count : int
+    limit_down_count : int
+    avg_turnover : float
+    avg_change_pct : float
+  }
+
+}
+
+' ════════════════════════════════════════════
+'  新闻资讯
+' ════════════════════════════════════════════
+package "新闻资讯" #FCE4EC {
+
+  class news_article {
+    + id : bigint {PK}
+    --
+    datetime : datetime
+    title : str
+    content : text
+    source : str
+    channels : str
+    __ AI 分类标签 __
+    scope : enum
+    nature : enum
+    urgency : enum
+    sentiment : enum
+    credibility : enum
+    causality : enum
+    duration : enum
+    subject : enum
+  }
+
+  class news_stock_relation {
+    + news_id {FK}
+    + symbol {FK}
+    --
+    relevance_score : float
+  }
+
+}
+
+' ════════════════════════════════════════════
+'  采集基础设施
+' ════════════════════════════════════════════
+package "基础设施" #F5F5F5 {
+
+  class data_collection_log {
+    + id : bigint {PK}
+    --
+    task_type : str
+    target_symbol : str (nullable)
+    data_source : str
+    date_range_start : date
+    date_range_end : date
+    status : str
+    records_affected : int
+    error_message : text
+    started_at : datetime
+    finished_at : datetime
+  }
+
+}
+
+' ════════════════════════════════════════════
+'  关系
+' ════════════════════════════════════════════
+stock_info "1" --o "0..*" daily_kline : symbol
+stock_info "1" --o "0..*" financial_report : symbol
+stock_info "1" --o "0..*" daily_basic_metric : symbol
+stock_info "1" --o "0..*" stock_pool_member : symbol
+stock_info "1" --o "0..*" news_stock_relation : symbol
+
+stock_pool "1" --o "0..*" stock_pool_member : pool_id
+
+news_article "1" --o "0..*" news_stock_relation : news_id
+
+@enduml
