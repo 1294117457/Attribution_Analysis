@@ -15,7 +15,6 @@ from application.dto.kline import (
 )
 from domain.kline.schemas import KlineBO
 from infrastructure.collectors.interfaces import FetcherProtocol
-from infrastructure.config import get_settings
 from infrastructure.database.connection import get_db
 from route.schemas import response as R
 
@@ -32,19 +31,9 @@ def get_kline_service(
 
 @lru_cache
 def get_kline_fetcher() -> FetcherProtocol:
-    """K 线采集器依赖（单例）。
-
-    根据 `COLLECTOR_SOURCE` 环境变量选择数据源适配器：
-    - tushare  → TushareFetcher
-    - akshare  → AkShareFetcher（默认）
-    """
-    source = (get_settings().COLLECTOR_SOURCE or "akshare").lower()
-    if source == "tushare":
-        from infrastructure.collectors.tushare import TushareFetcher
-        return TushareFetcher(KlineBO)
-    # 默认 / 显式 akshare
-    from infrastructure.collectors.akshare import AkShareFetcher
-    return AkShareFetcher(KlineBO)
+    """K 线采集器依赖（单例）— 唯一数据源：Tushare"""
+    from infrastructure.collectors.tushare import TushareFetcher
+    return TushareFetcher(KlineBO)
 
 
 # ── 查询路由 ──────────────────────────────────────────────

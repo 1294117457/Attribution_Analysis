@@ -2,9 +2,9 @@
 
 将 tushare `pro.daily()` 返回的 DataFrame 转换为 KlineBO 列表。
 
-Tushare 字段说明 (与 AkShare 差异):
+Tushare 字段说明:
 - trade_date: YYYYMMDD 字符串
-- vol:        成交量（手），与 AkShare 单位一致
+- vol:        成交量（手）
 - amount:     成交额（千元），需 *1000 转换为元
 - pct_chg:    涨跌幅（%），保留 2 位小数
 """

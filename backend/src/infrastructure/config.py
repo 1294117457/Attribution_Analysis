@@ -36,7 +36,6 @@ class Settings(BaseSettings):
 
     # 数据源
     TUSHARE_TOKEN: str = ""
-    COLLECTOR_SOURCE: str = "tushare"  # tushare / akshare
 
     # API 版本
     API_V1_PREFIX: str = "/api/v1"

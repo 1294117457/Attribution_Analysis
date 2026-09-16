@@ -1,9 +1,9 @@
-// Stock Info API - 股票基础信息 + K 线
+// Stock Info API - 股票基础信息 + K 线（含 17 个指标列）+ AI 归因分析
 import http, { unwrap } from '@/common/utils/http'
 
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 //  类型定义
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 
 /** 分页响应 */
 export interface PaginatedResponse<T> {
@@ -34,7 +34,6 @@ export interface StockInfo {
 
 /** 股票查询项（GET /stocks/ 响应，含富字段 + K 线统计） */
 export interface StockListItem {
-  // 基础信息
   symbol:        string
   ts_code:       string | null
   name:          string | null
@@ -42,25 +41,50 @@ export interface StockListItem {
   industry:      string | null
   market:        string | null
   exchange:      string | null
-  list_date:     string | null  // YYYYMMDD
+  list_date:     string | null
   list_status:   string | null
   is_hs:         string | null
-  // K 线统计
   record_count:  number
   kline_start:   string | null
   kline_end:     string | null
 }
 
-/** K 线数据 */
+/** K 线数据（含 17 个技术指标列 — 方案 A 展宽） */
 export interface Kline {
-  date:       string
+  date:       string     // YYYY-MM-DD
   open:       number
   high:       number
   low:        number
   close:      number
-  volume:     number   // 成交量（手）
-  amount:     number   // 成交额（元）
-  change_pct: number | null // 涨跌幅（%）
+  volume:     number     // 成交量（手）
+  amount:     number     // 成交额（元）
+  change_pct: number | null
+
+  // ── 技术指标（来自 daily_klines 展宽列）────────────────
+  // 均线
+  ma5:  number | null
+  ma10: number | null
+  ma20: number | null
+  ma60: number | null
+  // EMA
+  ema12: number | null
+  ema26: number | null
+  // MACD
+  macd_dif: number | null
+  macd_dea: number | null
+  macd_bar: number | null
+  // RSI
+  rsi6:  number | null
+  rsi12: number | null
+  rsi24: number | null
+  // KDJ
+  kdj_k: number | null
+  kdj_d: number | null
+  kdj_j: number | null
+  // BOLL
+  boll_up:  number | null
+  boll_mid: number | null
+  boll_dn:  number | null
 }
 
 /** K 线统计 */
@@ -98,13 +122,72 @@ export interface StockQueryParams {
   page_size?:   number
 }
 
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+//  🆕 AI 归因分析接口
+// ═══════════════════════════════════════════════════════════════
+
+/** 技术形态摘要（后端 SignalDetector 算好） */
+export interface TechnicalSummary {
+  latest_close: number
+  pct_change_1d: number
+  pct_change_30d: number
+
+  ma_alignment: 'bullish' | 'bearish' | 'neutral'
+  ma5: number | null
+  ma10: number | null
+  ma20: number | null
+  ma60: number | null
+  ma5_above_ma20: boolean
+  golden_cross_recent: boolean
+
+  macd_status: 'golden_cross' | 'death_cross' | 'above_zero' | 'below_zero' | 'neutral'
+  macd_dif: number
+  macd_dea: number
+  macd_bar: number
+
+  rsi6: number
+  rsi_status: 'overbought' | 'oversold' | 'neutral'
+
+  kdj_k: number
+  kdj_d: number
+  kdj_j: number
+  kdj_status: 'golden_cross' | 'death_cross' | 'overbought' | 'oversold' | 'neutral'
+
+  boll_up: number | null
+  boll_mid: number | null
+  boll_dn: number | null
+  boll_position: 'above_upper' | 'below_lower' | 'upper_half' | 'lower_half' | 'middle'
+
+  signals: string[]    // ["MA 多头排列", "MACD 金叉", ...]
+}
+
+/** 所在池（简短信息） */
+export interface PoolMembership {
+  pool_id: number
+  pool_name: string
+  joined_at: string | null
+}
+
+/** 完整分析响应 */
+export interface StockAnalysisResponse {
+  stock: {
+    symbol: string
+    name: string
+    industry: string | null
+    market: string | null
+  }
+  summary: TechnicalSummary
+  klines: Kline[]
+  pools: PoolMembership[]
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  API
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 
 // ── 股票基础信息 ─────────────────────────────────────────────
 
-/** GET /stocks/  查询股票列表（支持搜索/筛选/分页） */
+/** GET /stocks/  查询股票列表 */
 export const queryStocks = (params: StockQueryParams = {}) =>
   http.get<PaginatedResponse<StockInfo>>('/stocks/', { params }).then(unwrap)
 
@@ -130,9 +213,9 @@ export const getStock = (symbol: string) =>
 export const deleteStock = (symbol: string) =>
   http.delete(`/stocks/${symbol}`).then(unwrap)
 
-// ── K 线采集 & 查询 ─────────────────────────────────────────
+// ── K 线采集 & 查询（响应含 17 个指标列）───────────────────────
 
-/** POST /klines/collect  采集 K 线 */
+/** POST /klines/collect  采集 K 线（后端会一并算指标） */
 export const collectKlines = (body: { symbol: string; days?: number }) =>
   http.post<CollectResult>('/klines/collect', body).then(unwrap)
 
@@ -146,7 +229,7 @@ export const collectBatch = (symbols: string[], days = 30) =>
         .join('&'),
   }).then(unwrap)
 
-/** GET /klines/{symbol}  查询 K 线列表 */
+/** GET /klines/{symbol}  查询 K 线列表（含指标列） */
 export const getKlines = (
   symbol: string,
   params: { start_date?: string; end_date?: string; limit?: number; order_desc?: boolean } = {}
@@ -160,3 +243,12 @@ export const getKlineStats = (symbol: string): Promise<KlineStats> =>
 /** DELETE /klines/{symbol}/{trade_date}  删除单条 K 线 */
 export const deleteKline = (symbol: string, tradeDate: string) =>
   http.delete(`/klines/${symbol}/${tradeDate}`).then(unwrap)
+
+// ── 🆕 AI 归因分析（前端 + Agent 统一入口） ─────────────────
+
+/** GET /stocks/{symbol}/analysis  一次拿齐 K 线 + 指标 + 摘要 + 池 */
+export const getStockAnalysis = (
+  symbol: string,
+  params: { days?: number } = {}
+): Promise<StockAnalysisResponse> =>
+  http.get<StockAnalysisResponse>(`/stocks/${symbol}/analysis`, { params }).then(unwrap)

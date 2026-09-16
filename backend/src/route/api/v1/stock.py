@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from application.dto.stock import StockQueryRequest, StockUpdateRequest
 from application.stock_service import StockAppService
 from infrastructure.collectors.interfaces import FetcherProtocol
-from infrastructure.config import get_settings
 from infrastructure.database.connection import get_db
 from route.schemas import response as R
 
@@ -26,18 +25,10 @@ def get_stock_service(
 
 @lru_cache
 def get_stock_fetcher() -> FetcherProtocol:
-    """股票基本信息采集器（单例）。
-
-    与 K线采集器共用同一数据源（tushare/akshare）。
-    """
-    source = (get_settings().COLLECTOR_SOURCE or "akshare").lower()
-    if source == "tushare":
-        from infrastructure.collectors.tushare import TushareFetcher
-        from domain.kline.schemas import KlineBO
-        return TushareFetcher(KlineBO)
-    from infrastructure.collectors.akshare import AkShareFetcher
+    """股票基本信息采集器（单例）— 与 K 线共用 Tushare"""
+    from infrastructure.collectors.tushare import TushareFetcher
     from domain.kline.schemas import KlineBO
-    return AkShareFetcher(KlineBO)
+    return TushareFetcher(KlineBO)
 
 
 # ── 查询路由 ──────────────────────────────────────────────
@@ -119,7 +110,7 @@ async def sync_stocks(
 ):
     """全量同步 A股股票基本信息
 
-    从 Tushare/AkShare 拉取股票基本信息并 upsert 到数据库。
+    从 Tushare 拉取股票基本信息并 upsert 到数据库。
     同步完成后，前端可调用 /stocks/meta 刷新枚举值。
     """
     result = await service.sync_stocks(fetcher, list_status=list_status)
