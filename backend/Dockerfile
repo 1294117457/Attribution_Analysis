@@ -6,17 +6,20 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /build
 
-# 系统依赖（编译 asyncpg / pandas 等需要）
+# 换阿里云 apt / pip 镜像源（国内服务器加速）
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制 requirements 并安装到独立目录（便于复制到 runtime）
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir --prefix=/install -r requirements.txt
+        -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com \
+    && pip install --no-cache-dir --prefix=/install -r requirements.txt \
+        -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com
 
 # ====================================================
 # Stage 2: 运行时镜像（精简）
@@ -32,7 +35,9 @@ ENV TZ=Asia/Shanghai \
 
 WORKDIR /app
 
-# 仅安装运行时必要的系统库（不需要 gcc）
+# 换阿里云 apt 镜像源
+RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     curl \
