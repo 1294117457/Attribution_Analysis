@@ -1,0 +1,153 @@
+# =============================================================
+# Attribution Analysis - 全服务编排
+# =============================================================
+#
+# 服务清单：
+#   postgres   — PostgreSQL 16 数据库
+#   redis      — Redis 7 缓存
+#   backend    — FastAPI 后端（Python 3.12）
+#   frontend   — Vue 3 前端（nginx 静态服务 + API 反代）
+#
+# 部署步骤：
+#   1. git pull 最新代码
+#   2. 手动上传以下文件到服务器（不入 git）：
+#      - .env               ← 数据库/Redis 密码（本文件读取）
+#      - backend/.env       ← 后端配置（DATABASE_URL / TUSHARE_TOKEN 等）
+#   3. docker compose up -d --build
+#
+# .env 文件格式（放在本文件同级目录）：
+#   POSTGRES_USER=zhouch
+#   POSTGRES_PASSWORD=your_password
+#   POSTGRES_DB=attribution
+#   REDIS_PASSWORD=your_password
+#
+# 常用命令：
+#   docker compose up -d --build           # 构建并启动全部
+#   docker compose up -d --build backend   # 只重建后端
+#   docker compose up -d --build frontend  # 只重建前端
+#   docker compose ps                      # 状态
+#   docker compose logs -f backend         # 查看后端日志
+#   docker compose logs -f frontend        # 查看前端日志
+#   docker compose down                    # 停止全部
+#   docker compose down -v                 # 停止 + 删数据卷（慎用！）
+# =============================================================
+
+services:
+  # -------------------------------------------------------
+  # PostgreSQL 16
+  # -------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: attribution-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-attribution}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: Asia/Shanghai
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+      - ./postgres/conf:/etc/postgresql/conf.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-attribution}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - attribution-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # -------------------------------------------------------
+  # Redis 7
+  # -------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: attribution-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+        --appendonly yes
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --requirepass ${REDIS_PASSWORD}
+        --bind 0.0.0.0
+        --protected-mode no
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - attribution-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  # -------------------------------------------------------
+  # Backend — FastAPI
+  # -------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: attribution-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    networks:
+      - attribution-net
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # -------------------------------------------------------
+  # Frontend — Vue 3 + nginx
+  # -------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: attribution-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    networks:
+      - attribution-net
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+networks:
+  attribution-net:
+    driver: bridge
+    name: attribution-net
+
+volumes:
+  postgres_data:
+    name: attribution-postgres-data
+  redis_data:
+    name: attribution-redis-data
