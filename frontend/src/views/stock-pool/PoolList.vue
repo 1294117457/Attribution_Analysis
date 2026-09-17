@@ -1,25 +1,23 @@
 <template>
-  <div class="admin-page flex flex-col gap-5 h-full">
-    <div class="flex items-center justify-between">
-      <h2 class="page-title">📊 操作池</h2>
-      <div class="flex gap-2">
-        <el-input
-          v-model="searchQuery"
-          placeholder="搜索池名"
-          clearable
-          style="width: 200px"
-          :prefix-icon="Search"
-          @input="onSearchInput"
-        />
-        <el-button type="primary" @click="showCreateDialog">
-          <el-icon class="mr-1"><Plus /></el-icon>
-          新建池
-        </el-button>
-      </div>
-    </div>
+  <PageWrapper>
+    <template #title>📊 操作池</template>
+    <template #actions>
+      <el-input
+        v-model="searchQuery"
+        placeholder="搜索池名"
+        clearable
+        style="width: 200px"
+        :prefix-icon="Search"
+        @input="onSearchInput"
+      />
+      <el-button type="primary" @click="showCreateDialog">
+        <el-icon class="mr-1"><Plus /></el-icon>
+        新建池
+      </el-button>
+    </template>
 
-    <!-- 池卡片列表 -->
-    <div v-loading="store.loading" class="flex-1 overflow-auto">
+    <!-- Middle Area: 池卡片列表 -->
+    <div v-loading="store.loading" class="flex-1 min-h-0 overflow-auto">
       <div v-if="filteredPools.length === 0 && !store.loading" class="empty-state">
         <el-empty description="还没有操作池，点击右上角新建">
           <el-button type="primary" @click="showCreateDialog">新建第一个池</el-button>
@@ -98,7 +96,7 @@
         <el-button type="danger" @click="confirmDelete">确定删除</el-button>
       </template>
     </el-dialog>
-  </div>
+  </PageWrapper>
 </template>
 
 <script setup lang="ts">
@@ -107,6 +105,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Search, Plus, MoreFilled, DataLine } from '@element-plus/icons-vue'
 import { usePoolStore } from '@/stores/pool'
+import PageWrapper from '@/components/PageWrapper.vue'
 import type { Pool } from '@/views/stock-pool/api'
 import PoolCreateDialog from './components/PoolCreateDialog.vue'
 
@@ -208,10 +207,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.admin-page {
-  min-height: 100%;
-}
-
 .pool-card {
   border-radius: 8px;
   transition: all 0.2s ease;

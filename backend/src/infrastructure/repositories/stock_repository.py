@@ -12,6 +12,7 @@ from domain.stock_info.entity import StockInfo
 from domain.stock_info.repository import StockInfoRepository
 from infrastructure.database.models.stock_info import StockInfoDB
 from infrastructure.database.models.tech_kline import TechKlineDailyDB
+from infrastructure.database.models.fin_daily_basic import FinDailyBasicDB
 
 
 class StockRepoImpl:
@@ -40,6 +41,8 @@ class StockRepoImpl:
             list_status=row.list_status,
             is_hs=row.is_hs,
             total_shares=row.total_shares,
+            act_name=row.act_name,
+            act_ent_type=row.act_ent_type,
             ts_code=row.ts_code,
         )
 
@@ -59,6 +62,8 @@ class StockRepoImpl:
             "list_status": stock.list_status or "L",
             "is_hs": stock.is_hs or "N",
             "total_shares": stock.total_shares,
+            "act_name": stock.act_name,
+            "act_ent_type": stock.act_ent_type,
         }
 
     # ── CRUD ──────────────────────────────────────────────
@@ -128,6 +133,8 @@ class StockRepoImpl:
             "list_status":  excluded.list_status,
             "is_hs":        excluded.is_hs,
             "total_shares": excluded.total_shares,
+            "act_name":     excluded.act_name,
+            "act_ent_type": excluded.act_ent_type,
         }
 
         total_inserted = 0
@@ -256,7 +263,36 @@ class StockRepoImpl:
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[dict], int]:
-        """分页 + 多维筛选 + K线统计（前端主列表用）"""
+        """分页 + 多维筛选 + K线统计 + 最新估值（前端主列表用）"""
+
+        # 子查询：每只股票在 fin_daily_basics 中最新 trade_date
+        latest_date_sq = (
+            select(
+                FinDailyBasicDB.symbol,
+                func.max(FinDailyBasicDB.trade_date).label("max_date"),
+            )
+            .group_by(FinDailyBasicDB.symbol)
+            .subquery("latest_date")
+        )
+
+        # 子查询：用 max_date 取对应行的 close / total_mv / pe_ttm
+        latest_basic_sq = (
+            select(
+                FinDailyBasicDB.symbol,
+                FinDailyBasicDB.close.label("latest_close"),
+                FinDailyBasicDB.total_mv,
+                FinDailyBasicDB.pe_ttm,
+            )
+            .join(
+                latest_date_sq,
+                and_(
+                    FinDailyBasicDB.symbol == latest_date_sq.c.symbol,
+                    FinDailyBasicDB.trade_date == latest_date_sq.c.max_date,
+                ),
+            )
+            .subquery("latest_basic")
+        )
+
         stmt = (
             select(
                 StockInfoDB.symbol,
@@ -269,13 +305,19 @@ class StockRepoImpl:
                 StockInfoDB.list_date,
                 StockInfoDB.list_status,
                 StockInfoDB.is_hs,
+                StockInfoDB.act_name,
+                StockInfoDB.act_ent_type,
                 StockInfoDB.total_shares,
                 func.count(TechKlineDailyDB.id).label("record_count"),
                 func.min(TechKlineDailyDB.date).label("kline_start"),
                 func.max(TechKlineDailyDB.date).label("kline_end"),
+                latest_basic_sq.c.latest_close,
+                latest_basic_sq.c.total_mv,
+                latest_basic_sq.c.pe_ttm,
             )
             .outerjoin(TechKlineDailyDB, StockInfoDB.symbol == TechKlineDailyDB.symbol)
-            .group_by(StockInfoDB.id)
+            .outerjoin(latest_basic_sq, StockInfoDB.symbol == latest_basic_sq.c.symbol)
+            .group_by(StockInfoDB.id, latest_basic_sq.c.latest_close, latest_basic_sq.c.total_mv, latest_basic_sq.c.pe_ttm)
         )
         count_stmt = select(func.count()).select_from(StockInfoDB)
 
@@ -325,10 +367,15 @@ class StockRepoImpl:
                 "list_date":     _fmt_yyyymmdd(r.list_date),
                 "list_status":   r.list_status,
                 "is_hs":         r.is_hs,
+                "act_name":      r.act_name,
+                "act_ent_type":  r.act_ent_type,
                 "total_shares":  r.total_shares,
                 "record_count":  r.record_count,
                 "kline_start":   r.kline_start,
                 "kline_end":     r.kline_end,
+                "latest_close":  r.latest_close,
+                "total_mv":      r.total_mv,
+                "pe_ttm":        r.pe_ttm,
             }
             for r in rows
         ]

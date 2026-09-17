@@ -1,95 +1,98 @@
 <template>
-  <div class="admin-page flex flex-col gap-5 h-full">
-    <!-- 标题 -->
-    <h2 class="page-title">📊 数据大盘</h2>
+  <PageWrapper>
+    <template #title>📊 数据大盘</template>
 
-    <!-- 统计卡片（8 张，扩展资金面/市场面 4 张）-->
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-      <el-card v-for="card in stats" :key="card.label" class="stat-card" shadow="hover">
-        <div class="flex items-center gap-3">
-          <div :class="['stat-icon', card.color]">{{ card.icon }}</div>
-          <div>
-            <div class="stat-value">{{ card.value }}</div>
-            <div class="stat-label">{{ card.label }}</div>
+    <!-- Middle Area -->
+    <div class="flex flex-col gap-4 flex-1 min-h-0 overflow-auto">
+      <!-- 统计卡片 -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <el-card v-for="card in stats" :key="card.label" class="stat-card" shadow="hover">
+          <div class="flex items-center gap-3">
+            <div :class="['stat-icon', card.color]">{{ card.icon }}</div>
+            <div>
+              <div class="stat-value">{{ card.value }}</div>
+              <div class="stat-label">{{ card.label }}</div>
+            </div>
           </div>
-        </div>
-      </el-card>
-    </div>
+        </el-card>
+      </div>
 
-    <!-- 双列区 -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <el-card shadow="never">
+      <!-- 双列图表区 -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <el-card shadow="never">
+          <template #header>
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-gray-800">📈 K 线采集趋势</span>
+              <el-tag size="small" type="info">最近 30 天</el-tag>
+            </div>
+          </template>
+          <div class="chart-placeholder">
+            <span>📊</span>
+            <p>图表开发中…</p>
+          </div>
+        </el-card>
+
+        <el-card shadow="never">
+          <template #header>
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-gray-800">🥧 行业分布 Top 10</span>
+              <el-tag size="small" type="info">实时</el-tag>
+            </div>
+          </template>
+          <div class="chart-placeholder">
+            <span>🥧</span>
+            <p>图表开发中…</p>
+          </div>
+        </el-card>
+      </div>
+
+      <!-- 最近采集 -->
+      <el-card shadow="never" class="flex-1">
         <template #header>
           <div class="flex justify-between items-center">
-            <span class="font-bold text-gray-800">📈 K 线采集趋势</span>
-            <el-tag size="small" type="info">最近 30 天</el-tag>
+            <span class="font-bold text-gray-800">🕐 最近采集</span>
+            <el-button text type="primary" size="small" @click="router.push('/home/stock-panel')">
+              查看全部 →
+            </el-button>
           </div>
         </template>
-        <div class="chart-placeholder">
-          <span>📊</span>
-          <p>图表开发中…</p>
-        </div>
-      </el-card>
 
-      <el-card shadow="never">
-        <template #header>
-          <div class="flex justify-between items-center">
-            <span class="font-bold text-gray-800">🥧 行业分布 Top 10</span>
-            <el-tag size="small" type="info">实时</el-tag>
-          </div>
-        </template>
-        <div class="chart-placeholder">
-          <span>🥧</span>
-          <p>图表开发中…</p>
-        </div>
+        <el-table :data="recentStocks" stripe v-loading="loading" empty-text="暂无采集数据">
+          <el-table-column prop="symbol" label="代码" width="100">
+            <template #default="{ row }">
+              <span class="mono font-semibold">{{ row.symbol }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="name" label="名称" min-width="120" />
+          <el-table-column prop="industry" label="行业" min-width="120">
+            <template #default="{ row }">
+              {{ row.industry || '—' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="K 线条数" width="120" align="right">
+            <template #default="{ row }">
+              <span class="text-blue-600 font-medium">
+                {{ row.record_count?.toLocaleString() ?? '—' }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="kline_start" label="起始" width="110">
+            <template #default="{ row }">{{ row.kline_start || '—' }}</template>
+          </el-table-column>
+          <el-table-column prop="kline_end" label="截止" width="110">
+            <template #default="{ row }">{{ row.kline_end || '—' }}</template>
+          </el-table-column>
+        </el-table>
       </el-card>
     </div>
-
-    <!-- 最近采集 -->
-    <el-card shadow="never" class="flex-1">
-      <template #header>
-        <div class="flex justify-between items-center">
-          <span class="font-bold text-gray-800">🕐 最近采集</span>
-          <el-button text type="primary" size="small" @click="router.push('/home/stock-panel')">
-            查看全部 →
-          </el-button>
-        </div>
-      </template>
-
-      <el-table :data="recentStocks" stripe v-loading="loading" empty-text="暂无采集数据">
-        <el-table-column prop="symbol" label="代码" width="100">
-          <template #default="{ row }">
-            <span class="mono font-semibold">{{ row.symbol }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="name" label="名称" min-width="120" />
-        <el-table-column prop="industry" label="行业" min-width="120">
-          <template #default="{ row }">
-            {{ row.industry || '—' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="K 线条数" width="120" align="right">
-          <template #default="{ row }">
-            <span class="text-blue-600 font-medium">
-              {{ row.record_count?.toLocaleString() ?? '—' }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="kline_start" label="起始" width="110">
-          <template #default="{ row }">{{ row.kline_start || '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="kline_end" label="截止" width="110">
-          <template #default="{ row }">{{ row.kline_end || '—' }}</template>
-        </el-table-column>
-      </el-table>
-    </el-card>
-  </div>
+  </PageWrapper>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { listStocks } from '@/views/stock-info/api'
+import PageWrapper from '@/components/PageWrapper.vue'
 import type { StockListItem } from '@/views/stock-info/api'
 
 const router = useRouter()
@@ -144,10 +147,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.admin-page {
-  min-height: 100%;
-}
-
 .stat-card :deep(.el-card__body) {
   padding: 18px 20px;
 }

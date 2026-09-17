@@ -36,7 +36,6 @@ class FinTop10FloatHolderDB(Base, TimestampMixin):
             "symbol", "end_date", "ann_date", "holder_name",
             name="uq_fin_top10_floatholders_uk",
         ),
-        Index("ix_fin_top10_floatholders_symbol", "symbol"),
         Index("ix_fin_top10_floatholders_date", "end_date"),
     )
 

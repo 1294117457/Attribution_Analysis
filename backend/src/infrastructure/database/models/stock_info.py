@@ -68,6 +68,16 @@ class StockInfoDB(Base, TimestampMixin):
     )
     total_shares: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
+    # 实控人信息
+    act_name: Mapped[str | None] = mapped_column(
+        String(200), nullable=True,
+        comment="实控人名称",
+    )
+    act_ent_type: Mapped[str | None] = mapped_column(
+        String(50), nullable=True,
+        comment="实控人企业性质",
+    )
+
     __table_args__ = (
         Index("ix_stock_industry_market", "industry", "market"),
         Index("ix_stock_exchange_status", "exchange", "list_status"),

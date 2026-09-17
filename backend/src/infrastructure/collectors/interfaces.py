@@ -42,6 +42,16 @@ class FetcherProtocol(Protocol):
         """
         ...
 
+    def fetch_daily_basic(self, trade_date: str) -> list[Any]:
+        """执行日频估值指标采集（daily_basic）
+
+        Args:
+            trade_date: YYYYMMDD 格式日期
+        Returns:
+            FinDailyBasicBO 列表
+        """
+        ...
+
     @property
     def source_name(self) -> str:
         """数据源名称"""

@@ -1,6 +1,6 @@
 <template>
   <div class="main-container">
-    <div class="page-container">
+    <div class="page-slot">
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
           <component :is="Component" />
@@ -10,31 +10,25 @@
   </div>
 </template>
 
-<script setup lang="ts">
-</script>
-
 <style scoped>
 .main-container {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  background: var(--color-admin-bg);
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+  padding: var(--page-padding, 16px);
 }
 
-.page-container {
+.page-slot {
   flex: 1;
   min-height: 0;
-  width: min(100%, 1440px);
-  margin: 0 auto;
-  padding: 16px 16px 16px;
+  width: 100%;
   display: flex;
   flex-direction: column;
 }
 
-/* 路由切换过渡 */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.18s ease, transform 0.18s ease;

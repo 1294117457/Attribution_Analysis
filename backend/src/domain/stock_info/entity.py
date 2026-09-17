@@ -38,6 +38,10 @@ class StockInfo(AggregateRoot):
     # 股本
     total_shares: Optional[int] = None
 
+    # 实控人
+    act_name: Optional[str] = None
+    act_ent_type: Optional[str] = None
+
     # Tushare 标识
     ts_code: Optional[str] = None
 
@@ -61,6 +65,8 @@ class StockInfo(AggregateRoot):
         list_status: Optional[str] = None,
         is_hs: Optional[str] = None,
         total_shares: Optional[int] = None,
+        act_name: Optional[str] = None,
+        act_ent_type: Optional[str] = None,
         ts_code: Optional[str] = None,
         id: int = 0,
     ) -> StockInfo:
@@ -77,6 +83,8 @@ class StockInfo(AggregateRoot):
             list_status=list_status or "L",
             is_hs=is_hs or "N",
             total_shares=total_shares,
+            act_name=act_name,
+            act_ent_type=act_ent_type,
             ts_code=ts_code,
         )
 

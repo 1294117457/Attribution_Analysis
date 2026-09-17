@@ -37,7 +37,6 @@ class MktIndexMemberDB(Base, TimestampMixin):
             name="uq_mkt_index_members_uk",
         ),
         Index("ix_mkt_index_members_sector", "sector_type", "sector_code"),
-        Index("ix_mkt_index_members_symbol", "symbol"),
     )
 
     def __repr__(self) -> str:

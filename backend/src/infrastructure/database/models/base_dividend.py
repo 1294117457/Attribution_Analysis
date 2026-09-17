@@ -37,7 +37,6 @@ class BaseDividendDB(Base, TimestampMixin):
 
     __table_args__ = (
         UniqueConstraint("symbol", "end_date", "div_proc", name="uq_base_dividends_uk"),
-        Index("ix_base_dividends_symbol", "symbol"),
         Index("ix_base_dividends_date", "end_date"),
     )
 

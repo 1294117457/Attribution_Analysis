@@ -43,7 +43,6 @@ class CapTopListDB(Base, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("trade_date", "symbol", "reason", name="uq_cap_top_lists_uk"),
         Index("ix_cap_top_lists_date", "trade_date"),
-        Index("ix_cap_top_lists_symbol", "symbol"),
     )
 
     def __repr__(self) -> str:

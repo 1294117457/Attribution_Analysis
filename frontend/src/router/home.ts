@@ -14,8 +14,8 @@ const homeRoutes: RouteRecordRaw = {
     },
     {
       path: 'stock-panel',
-      name: 'StockPanel',
-      component: () => import('@/views/stock-info/components/StockPanel.vue'),
+      name: 'StockInfoList',
+      component: () => import('@/views/stock-info/StockInfoList.vue'),
       meta: { title: '股票信息', icon: 'data-line' },
     },
     {

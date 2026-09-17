@@ -27,6 +27,8 @@ class StockInfoBO(BaseModel):
     delist_date: Optional[date] = Field(None, description="退市日期")
     list_status: Optional[str] = Field("L", description="上市状态 L/D/P")
     is_hs: Optional[str] = Field("N", description="沪深港通 N/H/S")
+    act_name: Optional[str] = Field(None, description="实控人名称")
+    act_ent_type: Optional[str] = Field(None, description="实控人企业性质")
 
     def to_entity(self, id: int = 0) -> StockInfo:
         """转换为领域实体"""
@@ -42,6 +44,8 @@ class StockInfoBO(BaseModel):
             delist_date=self.delist_date,
             list_status=self.list_status,
             is_hs=self.is_hs,
+            act_name=self.act_name,
+            act_ent_type=self.act_ent_type,
             ts_code=self.ts_code,
         )
 

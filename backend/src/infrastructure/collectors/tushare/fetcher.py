@@ -18,6 +18,7 @@ import pandas as pd
 
 from domain.kline.schemas import KlineBO
 from domain.stock_info.schemas import StockInfoBO
+from domain.fin_daily_basic.schemas import FinDailyBasicBO
 from infrastructure.collectors.base import BaseCollector
 from infrastructure.collectors.interfaces import CollectParams, FetcherProtocol
 from infrastructure.collectors.tushare.parser import TushareKlineParser
@@ -178,7 +179,7 @@ class TushareFetcher(BaseCollector):
                 df = self._pro.stock_basic(
                     exchange=ex,
                     list_status=list_status,
-                    fields="ts_code,symbol,name,area,industry,market,exchange,list_date,delist_date,list_status,is_hs",
+                    fields="ts_code,symbol,name,area,industry,market,exchange,list_date,delist_date,list_status,is_hs,act_name,act_ent_type",
                 )
             except Exception as e:
                 self._log("warning", f"拉取 {ex} stock_basic 失败: {e}")
@@ -200,6 +201,85 @@ class TushareFetcher(BaseCollector):
         self._log("info", f"stock_basic 同步完成，共 {len(all_stocks)} 条")
         return all_stocks
 
+    # ── 日频估值指标采集 ────────────────────────────────────
+
+    def fetch_daily_basic(self, trade_date: str) -> list[FinDailyBasicBO]:
+        """拉取指定日期的全市场日频估值指标
+
+        Args:
+            trade_date: YYYYMMDD 格式的交易日期
+        Returns:
+            FinDailyBasicBO 列表
+        """
+        self._log("info", f"开始拉取 daily_basic: trade_date={trade_date}")
+
+        try:
+            df = self._pro.daily_basic(
+                trade_date=trade_date,
+                fields="ts_code,trade_date,close,turnover_rate,turnover_rate_f,"
+                       "volume_ratio,pe,pe_ttm,pb,ps,ps_ttm,"
+                       "dv_ratio,dv_ttm,total_share,float_share,free_share,"
+                       "total_mv,circ_mv",
+            )
+        except Exception as e:
+            self._log("warning", f"拉取 daily_basic 失败: {e}")
+            return []
+
+        if df is None or df.empty:
+            self._log("info", f"daily_basic {trade_date}: 无数据")
+            return []
+
+        items: list[FinDailyBasicBO] = []
+        for _, row in df.iterrows():
+            try:
+                bo = self._row_to_daily_basic_bo(row)
+                if bo:
+                    items.append(bo)
+            except Exception as e:
+                logger.warning("跳过无效 daily_basic 行: %s", e)
+
+        self._log("info", f"daily_basic {trade_date} 完成，共 {len(items)} 条")
+        return items
+
+    @staticmethod
+    def _row_to_daily_basic_bo(row: pd.Series) -> Optional[FinDailyBasicBO]:
+        """DataFrame 行 → FinDailyBasicBO"""
+        ts_code = row.get("ts_code")
+        if not ts_code or pd.isna(ts_code):
+            return None
+        symbol = str(ts_code).split(".")[0]
+        trade_date_val = row.get("trade_date")
+        if not trade_date_val or pd.isna(trade_date_val):
+            return None
+        td = pd.to_datetime(str(trade_date_val), format="%Y%m%d").date()
+
+        def _float(key: str) -> Optional[float]:
+            v = row.get(key)
+            if v is None or pd.isna(v):
+                return None
+            return float(v)
+
+        return FinDailyBasicBO(
+            symbol=symbol,
+            trade_date=td,
+            close=_float("close"),
+            turnover_rate=_float("turnover_rate"),
+            turnover_rate_f=_float("turnover_rate_f"),
+            volume_ratio=_float("volume_ratio"),
+            pe=_float("pe"),
+            pe_ttm=_float("pe_ttm"),
+            pb=_float("pb"),
+            ps=_float("ps"),
+            ps_ttm=_float("ps_ttm"),
+            dv_ratio=_float("dv_ratio"),
+            dv_ttm=_float("dv_ttm"),
+            total_share=_float("total_share"),
+            float_share=_float("float_share"),
+            free_share=_float("free_share"),
+            total_mv=_float("total_mv"),
+            circ_mv=_float("circ_mv"),
+        )
+
     @staticmethod
     def _row_to_stock_info_bo(row: pd.Series) -> Optional[StockInfoBO]:
         """DataFrame 行 → StockInfoBO"""
@@ -218,4 +298,6 @@ class TushareFetcher(BaseCollector):
             delist_date=parse_list_date(row.get("delist_date")),
             list_status=str(row.get("list_status") or "L"),
             is_hs=str(row.get("is_hs") or "N"),
+            act_name=row.get("act_name") if pd.notna(row.get("act_name")) else None,
+            act_ent_type=row.get("act_ent_type") if pd.notna(row.get("act_ent_type")) else None,
         )

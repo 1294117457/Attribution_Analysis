@@ -67,11 +67,11 @@ settings = get_settings()
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """应用生命周期管理"""
     async with async_engine.begin() as conn:
+        # 先做重命名（必须在 create_all 之前，否则 create_all 会创建空的新表）
+        await _migrate_rename_kline_table(conn)
         await conn.run_sync(Base.metadata.create_all)
         # 兼容旧表：补齐 stock_infos 新增字段（仅首次启动时执行）
         await _migrate_stock_infos(conn)
-        # 兼容旧 daily_klines：重命名为 tech_kline_dailys
-        await _migrate_rename_kline_table(conn)
         # 兼容旧 daily_klines：补齐 17 个技术指标列（针对旧表）
         await _migrate_daily_klines_indicators(conn)
         # 初始化操作池：创建默认池
@@ -156,6 +156,8 @@ async def _migrate_stock_infos(conn) -> None:
         "CREATE INDEX IF NOT EXISTS ix_stock_infos_area ON stock_infos (area)",
         "CREATE INDEX IF NOT EXISTS ix_stock_infos_exchange ON stock_infos (exchange)",
         "CREATE INDEX IF NOT EXISTS ix_stock_infos_list_status ON stock_infos (list_status)",
+        "ALTER TABLE stock_infos ADD COLUMN IF NOT EXISTS act_name VARCHAR(200)",
+        "ALTER TABLE stock_infos ADD COLUMN IF NOT EXISTS act_ent_type VARCHAR(50)",
     ]
     for stmt in statements:
         try:

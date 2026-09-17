@@ -24,6 +24,9 @@
   --color-sidebar-text: #a8b3cf;
   --color-sidebar-active-bg:  rgba(37, 99, 235, 0.15);
   --color-sidebar-active-text: #2563eb;
+
+  --page-padding:       16px;
+  --page-max-width:     1440px;
 }
 
 /* ── Tailwind 主题扩展 ────────────────────────── */
@@ -78,18 +81,7 @@ body {
   --el-pagination-hover-color: var(--color-primary);
 }
 
-/* ── 页面容器 ─────────────────────────────── */
-.page-container {
-  width: min(100%, 1440px);
-  margin: 0 auto;
-  padding: 0 16px 16px;
-}
-.page-title {
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: #1e293b;
-  margin-bottom: 16px;
-}
+/* ── 页面级全局变量（配合 PageWrapper 使用） ─── */
 
 /* ── 按钮组/搜索组竖线装饰 ───────────────────── */
 .btn-group,

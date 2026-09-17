@@ -1,5 +1,9 @@
 """股票 API 路由"""
 
+from __future__ import annotations
+
+import logging
+from datetime import date, timedelta
 from functools import lru_cache
 from typing import Optional
 
@@ -11,6 +15,8 @@ from application.stock_service import StockAppService
 from infrastructure.collectors.interfaces import FetcherProtocol
 from infrastructure.database.connection import get_db
 from route.schemas import response as R
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/stocks", tags=["股票"])
 
@@ -138,3 +144,53 @@ async def delete_stock(
     """删除股票"""
     response = await service.delete_stock(symbol)
     return R.ok(response.model_dump())
+
+
+# ── 日频估值同步 ──────────────────────────────────────────
+
+@router.post("/sync-daily-basic", summary="同步日频估值指标")
+async def sync_daily_basic(
+    trade_date: Optional[str] = Query(
+        None,
+        description="YYYYMMDD 格式，不传默认取最近交易日",
+    ),
+    days: int = Query(1, ge=1, le=30, description="往回拉取天数（默认1天）"),
+    db: AsyncSession = Depends(get_db),
+    fetcher: FetcherProtocol = Depends(get_stock_fetcher),
+):
+    """从 Tushare daily_basic 同步全市场日频估值
+
+    用于填充 fin_daily_basics 表，使股票列表能展示最新价、总市值、PE 等。
+    """
+    from infrastructure.repositories.fin_daily_basic_repository import FinDailyBasicRepoImpl
+
+    repo = FinDailyBasicRepoImpl(db)
+
+    if trade_date:
+        dates_to_sync = [trade_date]
+    else:
+        today = date.today()
+        dates_to_sync = [
+            (today - timedelta(days=i)).strftime("%Y%m%d")
+            for i in range(days)
+        ]
+
+    total_synced = 0
+    synced_dates: list[str] = []
+
+    for td in dates_to_sync:
+        bo_list = fetcher.fetch_daily_basic(td)
+        if not bo_list:
+            logger.info("daily_basic %s: 无数据（可能非交易日）", td)
+            continue
+        entities = [bo.to_entity() for bo in bo_list]
+        count = await repo.save_batch(entities)
+        total_synced += count
+        synced_dates.append(td)
+        logger.info("daily_basic %s: 写入 %d 条", td, count)
+
+    return R.ok({
+        "synced_count": total_synced,
+        "dates": synced_dates,
+        "message": f"成功同步 {total_synced} 条日频估值数据",
+    })
