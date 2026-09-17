@@ -30,7 +30,6 @@ class CapHolderNumDB(Base, TimestampMixin):
 
     __table_args__ = (
         UniqueConstraint("symbol", "end_date", name="uq_cap_holder_nums_uk"),
-        Index("ix_cap_holder_nums_symbol", "symbol"),
         Index("ix_cap_holder_nums_date", "end_date"),
     )
 

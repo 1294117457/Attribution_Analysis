@@ -30,6 +30,9 @@ export interface StockInfo {
   enname:    string   // 英文名
   cnspell:   string   // 拼音缩写
   list_status: string // 上市状态（L/D/P/UN）
+  latest_close: number | null  // 最新收盘价
+  total_mv:  number | null     // 总市值（万元）
+  pe_ttm:    number | null     // 市盈率TTM
 }
 
 /** 股票查询项（GET /stocks/ 响应，含富字段 + K 线统计） */
@@ -198,6 +201,10 @@ export const getStockMeta = (): Promise<StockMeta> =>
 /** POST /stocks/sync  触发全量同步 */
 export const syncStocks = (): Promise<{ synced_count: number }> =>
   http.post('/stocks/sync').then(unwrap)
+
+/** POST /stocks/sync-daily-basic  同步日频估值指标 */
+export const syncDailyBasic = (days = 1): Promise<{ synced_count: number; dates: string[]; message: string }> =>
+  http.post(`/stocks/sync-daily-basic?days=${days}`).then(unwrap)
 
 // ── 已采集股票（kline 关联视图） ─────────────────────────────
 
