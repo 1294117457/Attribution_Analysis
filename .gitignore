@@ -20,8 +20,7 @@ backend/.env
 backend/.env.local
 backend/.env.production
 
-# docker-compose 含密码引用，手动上传到服务器
-docker-compose.yml
+# docker-compose.override.yml 可能含本地定制，不入 git
 docker-compose.override.yml
 
 # 根目录残留（前端自有 package-lock）
