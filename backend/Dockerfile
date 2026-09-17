@@ -52,11 +52,14 @@ RUN useradd --create-home --shell /bin/bash app \
     && chown -R app:app /app
 USER app
 
+# 工作目录切到 src，uvicorn 从这里找 main:app
+WORKDIR /app/src
+
 EXPOSE 8000
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -fsS http://localhost:8000/health || exit 1
 
-# 启动命令（使用 4 个 worker，可按需调整）
+# 启动命令
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--proxy-headers"]
