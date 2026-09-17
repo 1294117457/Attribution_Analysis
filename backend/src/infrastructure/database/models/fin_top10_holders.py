@@ -37,7 +37,6 @@ class FinTop10HolderDB(Base, TimestampMixin):
             "symbol", "end_date", "ann_date", "holder_name",
             name="uq_fin_top10_holders_uk",
         ),
-        Index("ix_fin_top10_holders_symbol", "symbol"),
         Index("ix_fin_top10_holders_date", "end_date"),
     )
 

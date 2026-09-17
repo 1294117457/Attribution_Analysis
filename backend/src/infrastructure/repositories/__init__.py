@@ -35,6 +35,7 @@ from infrastructure.repositories.kline_repository import KlineRepoImpl
 from infrastructure.repositories.stock_repository import StockRepoImpl
 from infrastructure.repositories.pool_repository import StockPoolRepoImpl
 from infrastructure.repositories.pool_operation_repository import PoolOperationRepoImpl
+from infrastructure.repositories.fin_daily_basic_repository import FinDailyBasicRepoImpl
 
 # ── __all__ ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,7 @@ __all__ = [
     "StockRepoImpl",
     "StockPoolRepoImpl",
     "PoolOperationRepoImpl",
+    "FinDailyBasicRepoImpl",
     # 待实现（按开发指南 §3 顺序）
     # "CapMoneyflowRepoImpl",
     # "CapMarginDetailRepoImpl",

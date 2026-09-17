@@ -35,6 +35,7 @@ import MainContainer from './components/MainContainer.vue'
   display: flex;
   grid-row: 2;
   overflow: hidden;
+  background: var(--color-admin-bg);
 }
 
 .shell-sidebar {
@@ -44,8 +45,10 @@ import MainContainer from './components/MainContainer.vue'
 
 .shell-content {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  contain: layout style;
 }
 </style>

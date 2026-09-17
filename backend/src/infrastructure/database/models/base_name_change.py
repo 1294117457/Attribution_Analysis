@@ -30,7 +30,6 @@ class BaseNameChangeDB(Base, TimestampMixin):
 
     __table_args__ = (
         UniqueConstraint("symbol", "start_date", name="uq_base_name_change_uk"),
-        Index("ix_base_name_change_symbol", "symbol"),
     )
 
     def __repr__(self) -> str:

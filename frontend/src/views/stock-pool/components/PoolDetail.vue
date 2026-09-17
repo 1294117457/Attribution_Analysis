@@ -4,7 +4,7 @@
   - 右侧 (~80%)：完整 K 线分析面板（复用 AnalysisDetailPanel）
 -->
 <template>
-  <div class="admin-page" v-loading="store.loading && !pool">
+  <div class="pool-detail" v-loading="store.loading && !pool">
     <!-- 顶部信息 -->
     <header class="top-bar flex items-center gap-4 px-5 py-3 border-b bg-white">
       <el-button text @click="goBack">
@@ -14,7 +14,7 @@
 
       <div v-if="pool" class="flex items-center gap-3 flex-1 min-w-0">
         <span class="text-2xl">{{ pool.icon || '📂' }}</span>
-        <h2 class="page-title !mb-0 truncate">{{ pool.name }}</h2>
+        <h2 class="text-lg font-bold text-gray-900 !mb-0 truncate">{{ pool.name }}</h2>
         <el-tag v-if="pool.is_default" type="warning" size="small">默认池</el-tag>
         <span class="text-xs text-gray-500 truncate">
           {{ pool.description || '暂无描述' }}
@@ -390,13 +390,13 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.admin-page {
+.pool-detail {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: #f5f7fa;
+  background: var(--color-admin-bg);
 }
 
 .top-bar {

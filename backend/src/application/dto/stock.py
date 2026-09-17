@@ -62,7 +62,7 @@ class StockListItemResponse(BaseModel):
 
 
 class StockQueryItemResponse(BaseModel):
-    """股票查询项（富字段 + K 线统计，StockPanel.vue 主列表用）"""
+    """股票查询项（富字段 + K线统计 + 最新估值，StockInfoList.vue 主列表用）"""
     symbol: str
     ts_code: Optional[str] = None
     name: Optional[str] = None
@@ -73,9 +73,14 @@ class StockQueryItemResponse(BaseModel):
     list_date: Optional[str] = None
     list_status: Optional[str] = None
     is_hs: Optional[str] = None
+    act_name: Optional[str] = None
+    act_ent_type: Optional[str] = None
     record_count: int = 0
     kline_start: Optional[date] = None
     kline_end: Optional[date] = None
+    latest_close: Optional[float] = None
+    total_mv: Optional[float] = None
+    pe_ttm: Optional[float] = None
 
 
 class StockListResponse(BaseModel):
