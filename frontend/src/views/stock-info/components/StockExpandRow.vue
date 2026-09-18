@@ -7,10 +7,22 @@
           <el-select
             v-model="dailyRange"
             size="small"
+            placeholder="周期"
             style="width: 90px"
             @change="loadDailyKlines"
           >
             <el-option v-for="o in dailyOptions" :key="o.value" :label="o.label" :value="o.value" />
+          </el-select>
+          <el-select
+            v-model="dailyIndicators"
+            size="small"
+            multiple
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="指标"
+            style="width: 120px"
+          >
+            <el-option v-for="o in indicatorOptions" :key="o.value" :label="o.label" :value="o.value" />
           </el-select>
         </div>
         <MiniKlineChart
@@ -18,7 +30,7 @@
           :klines="dailyKlines"
           :loading="dailyLoading"
           :height="150"
-          :show-main="['MA5', 'MA20']"
+          :show-main="dailyIndicators"
         />
       </div>
       <div class="chart-col">
@@ -27,6 +39,7 @@
           <el-select
             v-model="minuteInterval"
             size="small"
+            placeholder="周期"
             style="width: 80px"
             @change="loadMinuteKlines"
           >
@@ -35,6 +48,7 @@
           <el-select
             v-model="minuteDays"
             size="small"
+            placeholder="天数"
             style="width: 70px"
             @change="loadMinuteKlines"
           >
@@ -79,6 +93,15 @@ const dailyOptions = [
   { label: '250 日', value: 250 },
 ]
 const dailyRange = ref(60)
+
+const indicatorOptions = [
+  { label: 'MA5',  value: 'MA5' },
+  { label: 'MA10', value: 'MA10' },
+  { label: 'MA20', value: 'MA20' },
+  { label: 'MA60', value: 'MA60' },
+  { label: 'BOLL', value: 'BOLL' },
+]
+const dailyIndicators = ref<string[]>(['MA5', 'MA20'])
 
 // ── 分K 选项（周期 + 天数 两个独立选择器） ────────────
 const intervalOptions = [
@@ -190,7 +213,7 @@ onMounted(() => {
 .chart-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 4px;
 }
 
