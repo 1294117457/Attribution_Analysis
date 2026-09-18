@@ -1,0 +1,7 @@
+# 大包 / C扩展 / 稳定依赖（几乎不变，Docker 层长期缓存）
+pandas==2.2.3
+sqlalchemy==2.0.35
+asyncpg==0.29.0
+psycopg2-binary==2.9.10
+tushare==1.4.3
+tdxpy>=0.2.5
