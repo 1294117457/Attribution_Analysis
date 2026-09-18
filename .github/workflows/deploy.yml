@@ -69,6 +69,9 @@ jobs:
           script: |
             cd ${{ secrets.SERVER_PROJECT_PATH }}
 
+            # 同步最新配置文件（docker-compose.yml / nginx.conf 等）
+            git pull origin main
+
             # 登录 ACR
             echo "${{ secrets.ALIYUN_REGISTRY_PASSWORD }}" | docker login \
               --username=${{ secrets.ALIYUN_REGISTRY_USERNAME }} \
