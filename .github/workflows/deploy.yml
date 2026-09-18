@@ -37,6 +37,7 @@ jobs:
         with:
           context: ./backend
           push: true
+          provenance: false
           tags: |
             ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/backend:latest
             ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/backend:${{ github.sha }}
@@ -49,6 +50,7 @@ jobs:
         with:
           context: ./frontend
           push: true
+          provenance: false
           tags: |
             ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/frontend:latest
             ${{ env.REGISTRY }}/${{ env.NAMESPACE }}/frontend:${{ github.sha }}
