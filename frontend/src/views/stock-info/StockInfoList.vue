@@ -85,15 +85,24 @@
 
     <!-- 表格 -->
     <el-table
+      ref="tableRef"
       v-loading="loading"
       :data="stocks"
       stripe
       class="flex-1"
       highlight-current-row
       empty-text="没有匹配的股票"
-      @row-click="openDetail"
+      row-key="symbol"
+      :expand-row-keys="expandedRows"
+      @row-click="toggleExpand"
       @selection-change="onSelectionChange"
     >
+      <el-table-column type="expand">
+        <template #default="{ row }">
+          <StockExpandRow :symbol="row.symbol" />
+        </template>
+      </el-table-column>
+
       <!-- 固定列（左侧钉住） -->
       <el-table-column type="selection" width="50" fixed="left" />
       <el-table-column prop="symbol" label="代码" width="90" fixed="left">
@@ -205,13 +214,6 @@
     </template>
   </PageWrapper>
 
-  <StockDetailDrawer
-    v-model="detailVisible"
-    :stock="detailStock"
-    @add-to-pool="onDrawerAddToPool"
-    @go-analysis="onGoAnalysis"
-  />
-
   <AddToPoolDialog
     v-model="addToPoolVisible"
     :stocks="selectedStocks"
@@ -227,7 +229,7 @@ import { ElMessage } from 'element-plus'
 import { Search, Refresh, Folder, ArrowDown, ArrowUp, TrendCharts } from '@element-plus/icons-vue'
 
 import PageWrapper from '@/components/PageWrapper.vue'
-import StockDetailDrawer from './components/StockDetailDrawer.vue'
+import StockExpandRow from './components/StockExpandRow.vue'
 import AddToPoolDialog from './components/AddToPoolDialog.vue'
 import { usePoolStore } from '@/stores/pool'
 import {
@@ -254,9 +256,9 @@ const meta = ref<StockMeta>({ industries: [], markets: [], exchanges: [] })
 const selectedStocks = ref<StockInfo[]>([])
 const symbolPoolsMap = ref<Record<string, Pool[]>>({})
 
-// ── 弹窗 / 抽屉 ──────────────────────────────────────────
-const detailVisible = ref(false)
-const detailStock = ref<StockInfo | null>(null)
+// ── 展开行 / 弹窗 ────────────────────────────────────────
+const tableRef = ref()
+const expandedRows = ref<string[]>([])
 const addToPoolVisible = ref(false)
 
 // ── 筛选 ──────────────────────────────────────────────────
@@ -393,21 +395,14 @@ function clearSelection() {
   selectedStocks.value = []
 }
 
-// ── 详情抽屉 ──────────────────────────────────────────────
-function openDetail(row: StockInfo) {
-  detailStock.value = row
-  detailVisible.value = true
-}
-
-function onDrawerAddToPool() {
-  if (detailStock.value) {
-    selectedStocks.value = [detailStock.value]
-    addToPoolVisible.value = true
+// ── 展开行 ──────────────────────────────────────────────
+function toggleExpand(row: StockInfo) {
+  const idx = expandedRows.value.indexOf(row.symbol)
+  if (idx >= 0) {
+    expandedRows.value.splice(idx, 1)
+  } else {
+    expandedRows.value = [row.symbol]
   }
-}
-
-function onGoAnalysis() {
-  ElMessage.info('完整分析已整合进操作池详情页，请在「操作池」中查看')
 }
 
 // ── 池操作完成回调 ────────────────────────────────────────
