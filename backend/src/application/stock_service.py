@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date
 from typing import Optional
@@ -72,6 +73,8 @@ class StockAppService:
             exchange=request.exchange,
             is_hs=request.is_hs,
             list_status=request.list_status,
+            exclude_st=request.exclude_st,
+            min_total_mv=request.min_total_mv,
             page=request.page,
             page_size=request.page_size,
         )
@@ -169,7 +172,7 @@ class StockAppService:
         返回同步条数与统计信息。
         """
         params = CollectParams(symbol=None, list_status=list_status)
-        raw_data = fetcher.fetch_stock_basic(params)
+        raw_data = await asyncio.to_thread(fetcher.fetch_stock_basic, params)
         if not raw_data:
             return SyncStockResponse(
                 synced_count=0,

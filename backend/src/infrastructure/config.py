@@ -34,8 +34,16 @@ class Settings(BaseSettings):
     # CORS
     ALLOWED_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
 
+    # Redis
+    REDIS_URL: str = "redis://localhost:6379/0"
+
     # 数据源
     TUSHARE_TOKEN: str = ""
+
+    # 采集并发
+    COLLECT_CONCURRENCY: int = 3
+    COLLECT_MAX_CONCURRENCY: int = 8
+    COLLECT_CHUNK_SIZE: int = 30
 
     # API 版本
     API_V1_PREFIX: str = "/api/v1"

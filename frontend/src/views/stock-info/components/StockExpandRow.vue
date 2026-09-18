@@ -19,18 +19,32 @@
             multiple
             collapse-tags
             collapse-tags-tooltip
-            placeholder="指标"
-            style="width: 120px"
+            placeholder="主图指标"
+            style="width: 130px"
           >
-            <el-option v-for="o in indicatorOptions" :key="o.value" :label="o.label" :value="o.value" />
+            <el-option v-for="o in mainIndicatorOptions" :key="o.value" :label="o.label" :value="o.value">
+              <span class="indicator-dot" :style="{ background: o.color }" />{{ o.label }}
+            </el-option>
+          </el-select>
+          <el-select
+            v-model="dailySub"
+            size="small"
+            clearable
+            placeholder="副图"
+            style="width: 90px"
+          >
+            <el-option v-for="o in subIndicatorOptions" :key="o.value" :label="o.label" :value="o.value">
+              <span class="indicator-dot" :style="{ background: o.color }" />{{ o.label }}
+            </el-option>
           </el-select>
         </div>
         <MiniKlineChart
           :title="''"
           :klines="dailyKlines"
           :loading="dailyLoading"
-          :height="150"
+          :height="dailySub ? 200 : 150"
           :show-main="dailyIndicators"
+          :show-sub="dailySub"
         />
       </div>
       <div class="chart-col">
@@ -94,14 +108,21 @@ const dailyOptions = [
 ]
 const dailyRange = ref(60)
 
-const indicatorOptions = [
-  { label: 'MA5',  value: 'MA5' },
-  { label: 'MA10', value: 'MA10' },
-  { label: 'MA20', value: 'MA20' },
-  { label: 'MA60', value: 'MA60' },
-  { label: 'BOLL', value: 'BOLL' },
+const mainIndicatorOptions = [
+  { label: 'MA5',  value: 'MA5',  color: '#fbbf24' },
+  { label: 'MA10', value: 'MA10', color: '#3b82f6' },
+  { label: 'MA20', value: 'MA20', color: '#a855f7' },
+  { label: 'MA60', value: 'MA60', color: '#06b6d4' },
+  { label: 'BOLL', value: 'BOLL', color: '#f97316' },
 ]
 const dailyIndicators = ref<string[]>(['MA5', 'MA20'])
+
+const subIndicatorOptions = [
+  { label: 'RSI',  value: 'RSI',  color: '#ec4899' },
+  { label: 'MACD', value: 'MACD', color: '#3b82f6' },
+  { label: 'KDJ',  value: 'KDJ',  color: '#14b8a6' },
+]
+const dailySub = ref('')
 
 // ── 分K 选项（周期 + 天数 两个独立选择器） ────────────
 const intervalOptions = [
@@ -222,6 +243,15 @@ onMounted(() => {
   font-weight: 600;
   color: #374151;
   white-space: nowrap;
+}
+
+.indicator-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
 }
 
 .expand-summary {

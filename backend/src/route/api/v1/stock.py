@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, timedelta
 from functools import lru_cache
@@ -47,6 +48,8 @@ async def query_stocks(
     exchange: Optional[str] = Query(None, description="交易所 SSE/SZSE/BSE"),
     is_hs: Optional[str] = Query(None, description="沪深港通 N/H/S"),
     list_status: Optional[str] = Query("L", description="上市状态 L/D/P/全部"),
+    exclude_st: Optional[bool] = Query(None, description="排除ST股票"),
+    min_total_mv: Optional[float] = Query(None, ge=0, description="最低总市值(万元)"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=500, description="每页条数"),
     service: StockAppService = Depends(get_stock_service),
@@ -59,6 +62,8 @@ async def query_stocks(
         exchange=exchange,
         is_hs=is_hs,
         list_status=list_status,
+        exclude_st=exclude_st,
+        min_total_mv=min_total_mv,
         page=page,
         page_size=page_size,
     )
@@ -179,7 +184,7 @@ async def sync_daily_basic(
     synced_dates: list[str] = []
 
     for td in dates_to_sync:
-        bo_list = fetcher.fetch_daily_basic(td)
+        bo_list = await asyncio.to_thread(fetcher.fetch_daily_basic, td)
         if not bo_list:
             logger.info("daily_basic %s: 无数据（可能非交易日）", td)
             continue

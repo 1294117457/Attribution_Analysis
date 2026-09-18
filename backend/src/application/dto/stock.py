@@ -34,6 +34,8 @@ class StockQueryRequest(BaseModel):
     exchange: Optional[str] = Field(None, description="交易所 SSE/SZSE/BSE")
     is_hs: Optional[str] = Field(None, description="沪深港通 N/H/S")
     list_status: Optional[str] = Field("L", description="上市状态 L/D/P/全部")
+    exclude_st: Optional[bool] = Field(None, description="排除ST股票")
+    min_total_mv: Optional[float] = Field(None, ge=0, description="最低总市值(万元)")
     page: int = Field(1, ge=1, description="页码")
     page_size: int = Field(20, ge=1, le=500, description="每页条数")
 
@@ -81,6 +83,7 @@ class StockQueryItemResponse(BaseModel):
     latest_close: Optional[float] = None
     total_mv: Optional[float] = None
     pe_ttm: Optional[float] = None
+    profit_margin: Optional[float] = None
 
 
 class StockListResponse(BaseModel):

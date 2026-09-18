@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date, timedelta
 from typing import Optional
 
@@ -77,7 +78,7 @@ class KlineAppService:
                 start_date=request.start_date,
                 end_date=request.end_date,
             )
-            raw_data = fetcher.fetch(params)
+            raw_data = await asyncio.to_thread(fetcher.fetch, params)
 
             if not raw_data:
                 return KlineCollectResponse(
@@ -96,8 +97,8 @@ class KlineAppService:
                 if not name:
                     name = kline.name
 
-            # ── 核心：采集后立即计算指标 ─────────────────────
-            self._enrich_with_indicators(request.symbol, klines)
+            # ── 核心：采集后立即计算指标（CPU密集，放入线程池避免阻塞事件循环）
+            await asyncio.to_thread(self._enrich_with_indicators, request.symbol, klines)
 
             # 批量 UPSERT（含指标）
             saved_count = await self._repo.save_batch(klines)
@@ -240,7 +241,7 @@ class KlineAppService:
         if len(full_klines) < 2:
             return 0
 
-        self._enrich_with_indicators(symbol, full_klines)
+        await asyncio.to_thread(self._enrich_with_indicators, symbol, full_klines)
         return await self._repo.save_batch(full_klines)
 
     async def recalculate_pool(

@@ -32,7 +32,12 @@ const homeRoutes: RouteRecordRaw = {
       props: true,
     },
     {
-      // 🆕 市场全局（开发指南 §8.6）
+      path: 'collect-manage',
+      name: 'CollectManage',
+      component: () => import('@/views/collect-manage/CollectManage.vue'),
+      meta: { title: '采集管理', icon: 'upload' },
+    },
+    {
       path: 'market',
       name: 'MarketDashboard',
       component: () => import('@/views/market/MarketDashboard.vue'),

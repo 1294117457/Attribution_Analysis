@@ -1,0 +1,149 @@
+@startuml CollectTaskLog
+
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam classFontSize 13
+skinparam packageFontSize 14
+
+title 采集任务日志 — 数据类设计
+
+' ════════════════════════════════════════════
+'  采集任务日志 (sys_*)
+' ════════════════════════════════════════════
+package "基础设施 — 采集任务日志 (sys_*)" #F5F5F5 {
+
+  enum TaskType <<枚举>> {
+    daily_kline      : 日K线
+    daily_basic      : 日频估值(PE/市值等)
+    stock_basic      : 股票基本信息
+    fin_report       : 财务报表
+    moneyflow        : 资金流向
+    margin           : 融资融券
+    minute_kline     : 分钟K线(实时,不记录)
+  }
+
+  enum TaskStatus <<枚举>> {
+    pending   : 排队中
+    running   : 执行中
+    success   : 成功
+    failed    : 失败
+    cancelled : 已取消
+  }
+
+  enum TriggerType <<枚举>> {
+    manual   : 手动触发
+    schedule : 定时任务
+  }
+
+  class sys_collect_task <<采集任务主表>> {
+    + id : bigint {PK, auto}
+    --
+    task_type     : varchar(32) {NOT NULL}
+    trigger_type  : varchar(16) {NOT NULL, default 'manual'}
+    --
+    __ 任务参数 (JSONB, 按 task_type 不同) __
+    params        : jsonb
+    .. daily_kline 示例 ..
+    {"days": 7}
+    .. daily_kline 全量示例 ..
+    {"start_date": "20260101", "end_date": "20260918"}
+    .. daily_basic 示例 ..
+    {"trade_date": "20260918", "days": 3}
+    .. stock_basic 示例 ..
+    {"list_status": "L"}
+    --
+    __ 执行状态 __
+    status        : varchar(16) {NOT NULL, default 'pending'}
+    --
+    __ 进度统计 __
+    total_count   : int {default 0}
+    success_count : int {default 0}
+    fail_count    : int {default 0}
+    skip_count    : int {default 0}
+    --
+    __ 时间 __
+    started_at    : timestamptz
+    finished_at   : timestamptz
+    duration_ms   : int
+    --
+    __ 结果摘要 __
+    message       : text
+    --
+    created_at    : timestamptz {default now()}
+    updated_at    : timestamptz {default now()}
+  }
+
+  class sys_collect_task_detail <<采集明细(可选)>> {
+    + id : bigint {PK, auto}
+    + task_id : bigint {FK → sys_collect_task}
+    --
+    symbol        : varchar(10) {NOT NULL}
+    status        : varchar(16) {NOT NULL}
+    saved_count   : int {default 0}
+    error_message : text
+    duration_ms   : int
+    --
+    created_at    : timestamptz {default now()}
+  }
+
+  note right of sys_collect_task
+    **设计要点：**
+    1. task_type 统一所有采集类型，一表多用
+    2. params 用 JSONB，不同类型参数灵活扩展
+    3. 进度字段支持实时更新（配合 Redis 做前端轮询）
+    4. message 存完成摘要或错误概述
+    5. 明细表可选：全量采集时记录每只股票的结果
+  end note
+
+  sys_collect_task "1" --o "0..*" sys_collect_task_detail : task_id
+
+}
+
+' ════════════════════════════════════════════
+'  与现有数据类的关系
+' ════════════════════════════════════════════
+package "现有数据表 (参考)" #FAFAFA {
+  class stock_info <<聚合根>> {
+    + symbol : str {PK}
+  }
+  class tech_kline_daily <<日频>> {
+    + symbol + date {UK}
+  }
+  class fin_daily_basic <<日频>> {
+    + symbol + trade_date {UK}
+  }
+}
+
+note bottom of sys_collect_task_detail
+  symbol 关联 stock_info，但为松耦合
+  不加 FK 约束，允许采集失败时
+  symbol 不在 stock_info 中
+end note
+
+' ════════════════════════════════════════════
+'  Redis 实时进度（非持久化）
+' ════════════════════════════════════════════
+package "Redis (实时进度缓存)" #FFF9C4 {
+
+  class "collect:progress:{task_id}" as redis_progress <<Hash>> {
+    total      : int
+    done       : int
+    success    : int
+    fail       : int
+    skip       : int
+    status     : str
+    current    : str (当前处理的 symbol)
+    started_at : str (ISO)
+    __ TTL: 24h, 任务结束后自动过期 __
+  }
+
+  note right of redis_progress
+    前端每 3s 轮询 GET /collect/tasks/{id}/progress
+    后端从 Redis 读取，避免频繁查库
+    任务完成后写入 PostgreSQL 持久化
+  end note
+
+}
+
+@enduml
