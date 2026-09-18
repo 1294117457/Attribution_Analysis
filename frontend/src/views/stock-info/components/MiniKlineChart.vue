@@ -12,7 +12,7 @@
       v-else-if="klines.length"
       :klines="chartData"
       :show-main="showMain"
-      show-sub=""
+      :show-sub="showSub"
       :height="height"
     />
     <div v-else class="mini-kline-placeholder" :style="{ height: `${height}px` }">
@@ -33,10 +33,12 @@ const props = withDefaults(defineProps<{
   loading?: boolean
   height?: number
   showMain?: string[]
+  showSub?: string
 }>(), {
   loading: false,
   height: 160,
   showMain: () => [],
+  showSub: '',
 })
 
 const chartData = computed(() => {

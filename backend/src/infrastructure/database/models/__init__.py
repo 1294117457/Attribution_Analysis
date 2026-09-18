@@ -26,3 +26,4 @@ from infrastructure.database.models.mkt_calendar import MktCalendarDB           
 from infrastructure.database.models.mkt_market_daily import MktMarketDailyDB     # noqa: F401
 from infrastructure.database.models.mkt_sector_daily import MktSectorDailyDB     # noqa: F401
 from infrastructure.database.models.mkt_index_member import MktIndexMemberDB     # noqa: F401
+from infrastructure.database.models.sys_collect_task import SysCollectTaskDB, SysCollectTaskDetailDB  # noqa: F401

@@ -60,6 +60,7 @@ import {
   DataLine,
   Folder,
   Odometer,
+  Upload,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -79,6 +80,7 @@ const menuItems: MenuItem[] = [
   { path: '/home/index',      title: '数据大盘', icon: Odometer },
   { path: '/home/stock-panel', title: '股票信息', icon: DataLine },
   { path: '/home/pool',       title: '操作池',   icon: Folder },
+  { path: '/home/collect-manage', title: '采集管理', icon: Upload },
 ]
 
 function toggle() {
