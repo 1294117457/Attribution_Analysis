@@ -36,10 +36,6 @@
             <el-icon class="mr-1"><Folder /></el-icon>
             加入操作池
           </el-button>
-          <el-button :loading="syncingBasic" @click="syncDailyBasicHandler">
-            <el-icon class="mr-1"><TrendCharts /></el-icon>
-            同步估值
-          </el-button>
           <el-button type="primary" :loading="syncing" @click="syncStocksHandler">
             <el-icon class="mr-1"><Refresh /></el-icon>
             同步最新数据
@@ -72,6 +68,19 @@
             <el-option label="暂停上市" value="P" />
             <el-option label="全部" value="" />
           </el-select>
+          <el-select v-model="filters.st_filter" placeholder="ST筛选" clearable style="width: 110px" @change="onFilterChange">
+            <el-option label="排除ST" value="exclude" />
+            <el-option label="仅ST" value="only" />
+          </el-select>
+          <el-input-number
+            v-model="filters.min_total_mv"
+            placeholder="最低市值(亿)"
+            :min="0"
+            :precision="0"
+            :controls="false"
+            style="width: 130px"
+            @change="onFilterChange"
+          />
         </div>
       </div>
     </template>
@@ -154,9 +163,15 @@
           <span v-else class="text-gray-400 text-xs">—</span>
         </template>
       </el-table-column>
-      <el-table-column label="PE(TTM)" width="100" align="right" sortable>
+      <el-table-column label="PE(TTM)市盈率" width="120" align="right" sortable>
         <template #default="{ row }">
           <span v-if="row.pe_ttm != null" :class="peClass(row.pe_ttm)" class="mono">{{ row.pe_ttm.toFixed(1) }}</span>
+          <span v-else class="text-gray-400 text-xs">—</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="净利润率%" width="100" align="right" sortable>
+        <template #default="{ row }">
+          <span v-if="row.profit_margin != null" :class="row.profit_margin >= 0 ? 'text-red-500' : 'text-green-600'" class="mono">{{ row.profit_margin.toFixed(1) }}%</span>
           <span v-else class="text-gray-400 text-xs">—</span>
         </template>
       </el-table-column>
@@ -226,7 +241,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Search, Refresh, Folder, ArrowDown, ArrowUp, TrendCharts } from '@element-plus/icons-vue'
+import { Search, Refresh, Folder, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
 
 import PageWrapper from '@/components/PageWrapper.vue'
 import StockExpandRow from './components/StockExpandRow.vue'
@@ -236,7 +251,6 @@ import {
   queryStocks,
   getStockMeta,
   syncStocks,
-  syncDailyBasic,
 } from '@/views/stock-info/api'
 import type { StockInfo, StockMeta, StockQueryParams } from '@/views/stock-info/api'
 import type { Pool } from '@/views/stock-pool/api'
@@ -251,7 +265,6 @@ const page = ref(1)
 const pageSize = ref(20)
 const loading = ref(false)
 const syncing = ref(false)
-const syncingBasic = ref(false)
 const meta = ref<StockMeta>({ industries: [], markets: [], exchanges: [] })
 const selectedStocks = ref<StockInfo[]>([])
 const symbolPoolsMap = ref<Record<string, Pool[]>>({})
@@ -271,6 +284,8 @@ const filters = ref({
   exchange: '',
   is_hs: '',
   list_status: 'L',
+  st_filter: '' as string,
+  min_total_mv: undefined as number | undefined,
 })
 
 const advancedFilterCount = computed(() => {
@@ -280,6 +295,8 @@ const advancedFilterCount = computed(() => {
   if (filters.value.exchange) count++
   if (filters.value.is_hs) count++
   if (filters.value.list_status !== 'L') count++
+  if (filters.value.st_filter) count++
+  if (filters.value.min_total_mv != null) count++
   return count
 })
 
@@ -299,7 +316,7 @@ function onFilterChange() {
 }
 
 function resetFilters() {
-  filters.value = { q: '', industry: '', market: '', exchange: '', is_hs: '', list_status: 'L' }
+  filters.value = { q: '', industry: '', market: '', exchange: '', is_hs: '', list_status: 'L', st_filter: '', min_total_mv: undefined }
   page.value = 1
   loadStocks()
 }
@@ -315,6 +332,9 @@ async function loadStocks() {
     if (filters.value.exchange) params.exchange = filters.value.exchange
     if (filters.value.is_hs) params.is_hs = filters.value.is_hs
     if (filters.value.list_status) params.list_status = filters.value.list_status
+    if (filters.value.st_filter === 'exclude') params.exclude_st = true
+    else if (filters.value.st_filter === 'only') params.exclude_st = false
+    if (filters.value.min_total_mv != null) params.min_total_mv = filters.value.min_total_mv * 10000
 
     const data = await queryStocks(params)
     stocks.value = data.items || []
@@ -342,19 +362,6 @@ async function syncStocksHandler() {
     ElMessage.error('同步失败: ' + (e as Error).message)
   } finally {
     syncing.value = false
-  }
-}
-
-async function syncDailyBasicHandler() {
-  syncingBasic.value = true
-  try {
-    const res = await syncDailyBasic(3)
-    ElMessage.success(res.message || `同步完成，共 ${res.synced_count} 条`)
-    await loadStocks()
-  } catch (e) {
-    ElMessage.error('估值同步失败: ' + (e as Error).message)
-  } finally {
-    syncingBasic.value = false
   }
 }
 

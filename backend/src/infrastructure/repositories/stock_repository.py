@@ -13,6 +13,7 @@ from domain.stock_info.repository import StockInfoRepository
 from infrastructure.database.models.stock_info import StockInfoDB
 from infrastructure.database.models.tech_kline import TechKlineDailyDB
 from infrastructure.database.models.fin_daily_basic import FinDailyBasicDB
+from infrastructure.database.models.fin_report import FinReportDB
 
 
 class StockRepoImpl:
@@ -260,6 +261,8 @@ class StockRepoImpl:
         exchange: Optional[str] = None,
         is_hs: Optional[str] = None,
         list_status: Optional[str] = None,
+        exclude_st: Optional[bool] = None,
+        min_total_mv: Optional[float] = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[dict], int]:
@@ -293,6 +296,32 @@ class StockRepoImpl:
             .subquery("latest_basic")
         )
 
+        # 子查询：每只股票最新一期财报的净利润率 (n_income / revenue)
+        latest_report_date_sq = (
+            select(
+                FinReportDB.symbol,
+                func.max(FinReportDB.end_date).label("max_end_date"),
+            )
+            .where(FinReportDB.report_type == "1")
+            .group_by(FinReportDB.symbol)
+            .subquery("latest_report_date")
+        )
+        latest_report_sq = (
+            select(
+                FinReportDB.symbol,
+                (FinReportDB.n_income / func.nullif(FinReportDB.revenue, 0) * 100).label("profit_margin"),
+            )
+            .join(
+                latest_report_date_sq,
+                and_(
+                    FinReportDB.symbol == latest_report_date_sq.c.symbol,
+                    FinReportDB.end_date == latest_report_date_sq.c.max_end_date,
+                    FinReportDB.report_type == "1",
+                ),
+            )
+            .subquery("latest_report")
+        )
+
         stmt = (
             select(
                 StockInfoDB.symbol,
@@ -314,10 +343,12 @@ class StockRepoImpl:
                 latest_basic_sq.c.latest_close,
                 latest_basic_sq.c.total_mv,
                 latest_basic_sq.c.pe_ttm,
+                latest_report_sq.c.profit_margin,
             )
             .outerjoin(TechKlineDailyDB, StockInfoDB.symbol == TechKlineDailyDB.symbol)
             .outerjoin(latest_basic_sq, StockInfoDB.symbol == latest_basic_sq.c.symbol)
-            .group_by(StockInfoDB.id, latest_basic_sq.c.latest_close, latest_basic_sq.c.total_mv, latest_basic_sq.c.pe_ttm)
+            .outerjoin(latest_report_sq, StockInfoDB.symbol == latest_report_sq.c.symbol)
+            .group_by(StockInfoDB.id, latest_basic_sq.c.latest_close, latest_basic_sq.c.total_mv, latest_basic_sq.c.pe_ttm, latest_report_sq.c.profit_margin)
         )
         count_stmt = select(func.count()).select_from(StockInfoDB)
 
@@ -341,10 +372,24 @@ class StockRepoImpl:
             conditions.append(StockInfoDB.is_hs == is_hs)
         if list_status:
             conditions.append(StockInfoDB.list_status == list_status)
+        if exclude_st is True:
+            conditions.append(~StockInfoDB.name.ilike("%ST%"))
+        elif exclude_st is False:
+            conditions.append(StockInfoDB.name.ilike("%ST%"))
 
         if conditions:
             stmt = stmt.where(and_(*conditions))
             count_stmt = count_stmt.where(and_(*conditions))
+
+        # min_total_mv 需要在 JOIN 之后用 HAVING 过滤（来自子查询列）
+        if min_total_mv is not None:
+            stmt = stmt.having(latest_basic_sq.c.total_mv >= min_total_mv)
+            # count 也需要关联 latest_basic_sq 来过滤
+            count_stmt = (
+                count_stmt
+                .outerjoin(latest_basic_sq, StockInfoDB.symbol == latest_basic_sq.c.symbol)
+                .where(latest_basic_sq.c.total_mv >= min_total_mv)
+            )
 
         stmt = (
             stmt.order_by(StockInfoDB.symbol)
@@ -376,6 +421,7 @@ class StockRepoImpl:
                 "latest_close":  r.latest_close,
                 "total_mv":      r.total_mv,
                 "pe_ttm":        r.pe_ttm,
+                "profit_margin": round(r.profit_margin, 2) if r.profit_margin is not None else None,
             }
             for r in rows
         ]
