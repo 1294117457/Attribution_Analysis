@@ -540,3 +540,26 @@ export const getHolderNums = (params: {
   http
     .get<{ total: number; items: HolderNumItem[] }>('/holder-nums/', { params })
     .then(unwrap)
+
+// ── 分钟 K 线（pytdx） ────────────────────────────────────────
+
+/** 分钟 K 线数据 */
+export interface MinuteKline {
+  datetime:    string
+  interval:    string
+  open:        number
+  high:        number
+  low:         number
+  close:       number
+  volume:      number
+  amount:      number
+}
+
+/** GET /minute-klines/{symbol}  实时获取分钟 K 线（不落库） */
+export const getMinuteKlines = (
+  symbol: string,
+  params: { interval?: string; count?: number } = {}
+) =>
+  http
+    .get<{ total: number; items: MinuteKline[] }>(`/minute-klines/${symbol}`, { params })
+    .then(unwrap)
