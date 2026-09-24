@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from application.dto.page import Page
 from application.dto.pool import PoolMembershipVO
+from domain.concept.value_objects import ConceptBriefVO
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -35,6 +36,7 @@ class StockPanelQueryRequest(BaseModel):
     exclude_st: Optional[bool] = Field(None, description="排除 ST / 仅 ST")
     min_total_mv: Optional[float] = Field(None, ge=0, description="最低总市值(万元)")
     with_pools: bool = Field(False, description="是否附带所属操作池（避免 N+1）")
+    with_concepts: bool = Field(False, description="是否附带所属概念板块（详情抽屉预热用）")
     page: int = Field(1, ge=1, description="页码")
     page_size: int = Field(20, ge=1, le=500, description="每页条数")
 
@@ -77,6 +79,9 @@ class StockPanelItemVO(BaseModel):
 
     # ── 来自 stock_pool_members ⨝ stock_pools ────────────────
     pools: list[PoolMembershipVO] = Field(default_factory=list)
+
+    # ── 来自 stock_concept_members ⨝ concepts（with_concepts=true 时附带）──
+    concepts: list[ConceptBriefVO] = Field(default_factory=list)
 
 
 class StockPanelListVO(Page[StockPanelItemVO]):

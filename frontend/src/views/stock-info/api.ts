@@ -26,6 +26,64 @@ export interface PoolMembership {
   joined_at: string | null
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+//  概念板块相关 VO
+//  配套设计文档：docs/dev/06gainian/03-application-and-route-design.md §1.1
+// ═══════════════════════════════════════════════════════════════════════
+
+/** 概念数据源 */
+export type ConceptSource = 'em' | 'ths'
+
+/** 概念类型 */
+export type ConceptType =
+  | 'industry'   // 行业概念
+  | 'theme'      // 主题概念
+  | 'style'      // 风格概念
+  | 'region'     // 地域概念
+  | 'event'      // 事件概念
+  | 'other'      // 其他概念
+
+/** 概念类型展示标签 */
+export const CONCEPT_TYPE_LABELS: Record<ConceptType, string> = {
+  industry: '行业概念',
+  theme:    '主题概念',
+  style:    '风格概念',
+  region:   '地域概念',
+  event:    '事件概念',
+  other:    '其他概念',
+}
+
+/** 简略 VO（嵌入到 StockInfo.concepts，给详情抽屉预热用） */
+export interface ConceptBrief {
+  concept_id: number
+  name: string
+  source: ConceptSource
+}
+
+/** 分组 VO（详情抽屉「概念」Tab 用） */
+export interface ConceptGroupedVO {
+  concept_id: number
+  name: string
+  source: ConceptSource
+  concept_type: ConceptType
+  description: string | null
+}
+
+/** 概念 Tab 单个分组区块 */
+export interface ConceptTabSectionVO {
+  type: ConceptType
+  type_label: string
+  concepts: ConceptGroupedVO[]
+}
+
+/** 概念 Tab 完整渲染模型（与后端 ConceptTabContentVO 1:1） */
+export interface ConceptTabContentVO {
+  symbol: string
+  stock_name: string
+  sections: ConceptTabSectionVO[]
+  total_count: number
+}
+
 /** 股票信息（stock_basic / stock_info）
 
   后端 GET /stocks/ 响应（with_pools=true 时 items[].pools 会附带池信息）。 */
@@ -54,6 +112,9 @@ export interface StockInfo {
   kline_end:   string | null  // K 线结束日期（with_pools=true 时附带）
   // 🆕 所属操作池（with_pools=true 时由后端批量填充，避免 N+1）
   pools: PoolMembership[]
+
+  // 🆕 所属概念板块（with_concepts=true 时由后端批量填充，详情抽屉预热用）
+  concepts: ConceptBrief[]
 }
 
 /** 股票查询项（GET /stocks/ 响应，含富字段 + K 线统计） */
@@ -146,6 +207,8 @@ export interface StockQueryParams {
   min_total_mv?: number
   /** 是否附带所属操作池（true 时响应 items[].pools 填充，避免 N+1） */
   with_pools?:  boolean
+  /** 是否附带所属概念板块（true 时响应 items[].concepts 填充，详情抽屉预热用） */
+  with_concepts?: boolean
   page?:        number
   page_size?:   number
 }
@@ -582,3 +645,44 @@ export const getMinuteKlines = (
   http
     .get<{ total: number; items: MinuteKline[] }>(`/minute-klines/${symbol}`, { params })
     .then(unwrap)
+
+// ═══════════════════════════════════════════════════════════════════════
+//  🆕 概念板块 API（对应后端 06gainian）
+//  配套设计文档：docs/dev/06gainian/03-application-and-route-design.md §5
+// ═══════════════════════════════════════════════════════════════════════
+
+/** GET /api/v1/concepts/by-symbol/{symbol}  单股票所属概念（简略版 ConceptBrief） */
+export const getConceptsBySymbol = (symbol: string): Promise<ConceptBrief[]> =>
+  http.get<ConceptBrief[]>(`/concepts/by-symbol/${symbol}`).then(unwrap)
+
+/** GET /api/v1/concepts/tab-by-symbol/{symbol}  抽屉「概念」Tab 内容（按类型分组） */
+export const getConceptTabForSymbol = (
+  symbol: string,
+  params: { stock_name?: string } = {},
+): Promise<ConceptTabContentVO> =>
+  http.get<ConceptTabContentVO>(`/concepts/tab-by-symbol/${symbol}`, { params }).then(unwrap)
+
+/** GET /api/v1/concepts/{name}  单概念详情（含成分股） */
+export const getConceptDetail = (
+  name: string,
+  params: { source?: ConceptSource } = {},
+): Promise<{
+  concept_id: number
+  name: string
+  source: ConceptSource
+  concept_type: ConceptType
+  stock_count: number
+  description: string | null
+  is_active: boolean
+  last_synced_at: string | null
+  first_seen_at: string | null
+  members: { symbol: string; name: string; rank: number | null; latest_price: number | null }[]
+}> =>
+  http.get(`/concepts/${encodeURIComponent(name)}`, { params }).then(unwrap)
+
+/** GET /api/v1/concepts/sync/status  查询同步状态 */
+export const getConceptSyncStatus = (): Promise<{
+  last_synced_at: string | null
+  active_concepts: number
+}> =>
+  http.get('/concepts/sync/status').then(unwrap)

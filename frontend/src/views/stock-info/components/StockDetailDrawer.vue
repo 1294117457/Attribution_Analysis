@@ -47,6 +47,15 @@
             <KLineDrawerTab :symbol="stock.symbol" />
           </el-tab-pane>
 
+          <el-tab-pane label="概念" name="concepts">
+            <ConceptTab
+              v-if="stock"
+              :symbol="stock.symbol"
+              :stock-name="stock.name"
+              @concept-click="onConceptClick"
+            />
+          </el-tab-pane>
+
           <el-tab-pane label="归因分析" name="analysis">
             <div class="flex flex-col items-center justify-center py-8 gap-4">
               <div class="text-gray-500 text-sm text-center">
@@ -68,11 +77,14 @@
 import { ref, watch } from 'vue'
 import { Folder, DataLine } from '@element-plus/icons-vue'
 import KLineDrawerTab from './KLineDrawerTab.vue'
-import type { StockInfo } from '@/views/stock-info/api'
+import ConceptTab from './ConceptTab.vue'
+import type { StockInfo, ConceptGroupedVO } from '@/views/stock-info/api'
 
 const props = defineProps<{
   modelValue: boolean
   stock: StockInfo | null
+  /** 抽屉首次打开时是否立即加载「概念」Tab 数据（默认 true） */
+  prefetchConcepts?: boolean
 }>()
 
 defineEmits<{
@@ -95,6 +107,11 @@ function formatDate(v?: string) {
 function exchangeLabel(v?: string) {
   const map: Record<string, string> = { SSE: '上交所', SZSE: '深交所', BSE: '北交所' }
   return map[v || ''] || v || '—'
+}
+
+function onConceptClick(c: ConceptGroupedVO) {
+  // 占位：未来跳到概念详情页 / 打开新抽屉
+  console.log('[StockDetailDrawer] concept click', c)
 }
 </script>
 

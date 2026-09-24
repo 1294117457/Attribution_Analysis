@@ -102,11 +102,11 @@
       highlight-current-row
       empty-text="没有匹配的股票"
       row-key="symbol"
-      :expand-row-keys="expandedRows"
-      @row-click="toggleExpand"
+      @row-click="openDetailDrawer"
       @selection-change="onSelectionChange"
     >
-      <el-table-column type="expand">
+      <!-- 展开第二行（K线图）：点击 chevron 触发，行点击不会触发展开 -->
+      <el-table-column type="expand" width="48">
         <template #default="{ row }">
           <StockExpandRow :symbol="row.symbol" />
         </template>
@@ -129,7 +129,7 @@
           <div v-if="getStockPools(row.symbol).length > 0" class="flex flex-wrap gap-1">
             <el-tag
               v-for="p in getStockPools(row.symbol).slice(0, 3)"
-              :key="p.id"
+              :key="p.pool_id"
               size="small"
               :type="poolTypeTag(p.pool_type) as 'primary' | 'success' | 'warning' | 'info'"
               effect="plain"
@@ -210,6 +210,8 @@
           <span class="text-sm">{{ row.act_name || '—' }}</span>
         </template>
       </el-table-column>
+
+      <!-- 行末「详情」按钮列已移除：改为整行 hover pointer + chevron 触发展开/抽屉 -->
     </el-table>
 
     <!-- ═══ Bottom Area ═══ -->
@@ -234,6 +236,15 @@
     :stocks="selectedStocks"
     @done="onPoolDone"
   />
+
+  <!-- 详情抽屉 -->
+  <StockDetailDrawer
+    v-model="detailDrawerVisible"
+    :stock="detailDrawerStock"
+    @add-to-pool="onDrawerAddToPool"
+    @go-analysis="onDrawerGoAnalysis"
+    @close="closeDetailDrawer"
+  />
   </div>
 </template>
 
@@ -241,11 +252,15 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Search, Refresh, Folder, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
+import {
+  Search, Refresh, Folder, ArrowDown, ArrowUp,
+} from '@element-plus/icons-vue'
 
 import PageWrapper from '@/components/PageWrapper.vue'
 import StockExpandRow from './components/StockExpandRow.vue'
 import AddToPoolDialog from './components/AddToPoolDialog.vue'
+import StockDetailDrawer from './components/StockDetailDrawer.vue'
+import { useStockDetailDrawer } from './composables/useStockDetailDrawer'
 import {
   queryStocks,
   getStockMeta,
@@ -270,10 +285,17 @@ const syncing = ref(false)
 const meta = ref<StockMeta>({ industries: [], markets: [], exchanges: [] })
 const selectedStocks = ref<StockInfo[]>([])
 
-// ── 展开行 / 弹窗 ────────────────────────────────────────
+// ── 弹窗 / 抽屉 ─────────────────────────────────────────
 const tableRef = ref()
-const expandedRows = ref<string[]>([])
 const addToPoolVisible = ref(false)
+
+// 🆕 详情抽屉（composable 接管状态）
+const {
+  visible: detailDrawerVisible,
+  currentStock: detailDrawerStock,
+  open: openDetailDrawer,
+  close: closeDetailDrawer,
+} = useStockDetailDrawer()
 
 // ── 筛选 ──────────────────────────────────────────────────
 const showAdvanced = ref(false)
@@ -324,11 +346,10 @@ function resetFilters() {
 
 // ── 数据加载 ──────────────────────────────────────────────
 /**
- * 加载股票面板列表（with_pools=true 内嵌池信息，无 N+1 问题）
+ * 加载股票面板列表（with_pools=true + with_concepts=true）
  *
- * 路由 GET /api/v1/stock-panel/ 返回 StockPanelListVO：
- *   items[].pools[] 由后端一次性批量填充。
- * 前端直接读 row.pools，不再逐条反向查询。
+ * - pools：内嵌池信息，避免 N+1
+ * - concepts：内嵌概念简略版（详情抽屉预热用），需后端 ConceptFetcher 已注册
  */
 async function loadStocks() {
   loading.value = true
@@ -336,7 +357,8 @@ async function loadStocks() {
     const params: StockQueryParams = {
       page: page.value,
       page_size: pageSize.value,
-      with_pools: true, // 🆕 一次性返回所属池，替代 N+1 反向查询
+      with_pools: true,    // 一次性返回所属池
+      with_concepts: true, // 详情抽屉预热（仅简略 ConceptBrief[]）
     }
     if (filters.value.q) params.q = filters.value.q
     if (filters.value.industry) params.industry = filters.value.industry
@@ -400,13 +422,20 @@ function clearSelection() {
   selectedStocks.value = []
 }
 
-// ── 展开行 ──────────────────────────────────────────────
-function toggleExpand(row: StockInfo) {
-  const idx = expandedRows.value.indexOf(row.symbol)
-  if (idx >= 0) {
-    expandedRows.value.splice(idx, 1)
-  } else {
-    expandedRows.value = [row.symbol]
+// ── 详情抽屉事件 ────────────────────────────────────────
+function onDrawerAddToPool() {
+  // 把当前股票作为唯一选中项
+  if (detailDrawerStock.value) {
+    selectedStocks.value = [detailDrawerStock.value]
+    addToPoolVisible.value = true
+    closeDetailDrawer()
+  }
+}
+
+function onDrawerGoAnalysis() {
+  if (detailDrawerStock.value) {
+    router.push(`/home/stock/${detailDrawerStock.value.symbol}/analysis`)
+    closeDetailDrawer()
   }
 }
 
@@ -471,6 +500,7 @@ function poolTypeTag(type: string) {
 onMounted(async () => {
   // 🆕 不再调用 poolStore.fetchPools 和 loadAllStockPools
   // 池信息由 loadStocks(with_pools=true) 一次性下发，零 N+1
+  // 概念简略版由 with_concepts=true 一次性下发，供详情抽屉预热
   await Promise.all([loadMeta(), loadStocks()])
 })
 </script>
@@ -542,5 +572,55 @@ onMounted(async () => {
   background: #eff6ff;
   border-radius: 6px;
   border: 1px solid #bfdbfe;
+}
+
+/* 表格数据行 hover：强调可点击 */
+:deep(.el-table__row) {
+  cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+
+:deep(.el-table__row:hover > td) {
+  background-color: #f0f9ff !important;
+}
+
+/* 展开按钮（chevron）悬浮强化：scale + 阴影 + 渐变背景 */
+:deep(.el-table__expand-icon) {
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+              background-color 0.2s ease;
+  border-radius: 50%;
+}
+
+:deep(.el-table__expand-icon .el-icon) {
+  transition: color 0.2s ease;
+}
+
+:deep(.el-table__expand-icon:hover) {
+  transform: scale(1.4);
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  box-shadow:
+    0 4px 12px rgba(59, 130, 246, 0.35),
+    0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+
+:deep(.el-table__expand-icon:hover .el-icon),
+:deep(.el-table__expand-icon.expanded:hover .el-icon) {
+  color: #ffffff;
+}
+
+/* 展开态自身：轻微 scale，保持阴影反馈 */
+:deep(.el-table__expand-icon.expanded) {
+  transform: scale(1.1);
+  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  box-shadow:
+    0 2px 8px rgba(59, 130, 246, 0.3),
+    0 0 0 2px rgba(99, 102, 241, 0.12);
+}
+
+:deep(.el-table__expand-icon.expanded .el-icon) {
+  color: #ffffff;
 }
 </style>

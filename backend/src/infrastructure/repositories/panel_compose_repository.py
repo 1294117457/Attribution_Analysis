@@ -20,6 +20,8 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.dto.pool import PoolMembershipVO
+from domain.concept.repository import ConceptRepository
+from domain.concept.value_objects import ConceptBriefVO
 from domain.panel.repository import StockPanelComposeRepository
 from domain.panel.value_objects import StockPanelRow
 from infrastructure.database.models.fin_daily_basic import FinDailyBasicDB
@@ -49,8 +51,13 @@ class StockPanelComposeRepoImpl:
     - min_total_mv 走 HAVING 过滤
     """
 
-    def __init__(self, session: AsyncSession):
+    def __init__(
+        self,
+        session: AsyncSession,
+        concept_repo: Optional[ConceptRepository] = None,
+    ):
         self._session = session
+        self._concept_repo = concept_repo
 
     # ── 主查询：4 表快照 + 分页 + 多维筛选 ─────────────────────
 
@@ -311,6 +318,23 @@ class StockPanelComposeRepoImpl:
                 )
             )
         return out
+
+    # ── 批量反向查询概念（委托给 ConceptRepository）──────────
+
+    async def list_concepts_by_symbols(
+        self, symbols: list[str]
+    ) -> dict[str, list[ConceptBriefVO]]:
+        """按 symbols 批量查询所属概念
+
+        委托给 ConceptRepository.list_concepts_by_symbols。
+        若未注入 ConceptRepository（应用层未启用 with_concepts），
+        返回空 dict（保持向后兼容）。
+        """
+        if not symbols:
+            return {}
+        if self._concept_repo is None:
+            return {s: [] for s in symbols}
+        return await self._concept_repo.list_concepts_by_symbols(symbols)
 
 
 # ── Protocol 实现标注（运行时检查） ────────────────────────────

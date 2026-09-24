@@ -28,7 +28,7 @@ def get_panel_service(
 
 @router.get(
     "/",
-    summary="股票面板列表（分页 + 多维筛选 + 4 表快照 + 池信息）",
+    summary="股票面板列表（分页 + 多维筛选 + 4 表快照 + 池信息 + 概念信息）",
 )
 async def query_panels(
     q: Optional[str] = Query(None, description="代码 / 名称 / 拼音 模糊搜索"),
@@ -42,6 +42,13 @@ async def query_panels(
     with_pools: bool = Query(
         False, description="是否附带所属操作池（避免 N+1 反向查询）",
     ),
+    with_concepts: bool = Query(
+        False,
+        description=(
+            "是否附带所属概念板块（简略版 ConceptBriefVO，详情抽屉预热用）"
+            "；需后端 ConceptFetcher 已注册（AKShare）"
+        ),
+    ),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=500, description="每页条数"),
     service: StockPanelAppService = Depends(get_panel_service),
@@ -50,6 +57,10 @@ async def query_panels(
 
     若 with_pools=true，响应 items[].pools 字段会附带每只股票所属的操作池，
     无需前端逐条调用 /pools/by-symbol/{symbol}，避免 N+1 问题。
+
+    若 with_concepts=true 且后端 ConceptFetcher 已注册，
+    响应 items[].concepts 字段会附带每只股票所属的概念板块简略列表，
+    供详情抽屉预热使用。
 
     字段命名与前端 PaginatedResponse<StockInfo> 1:1 对齐：
     items / total / page / page_size / pages
@@ -64,6 +75,7 @@ async def query_panels(
         exclude_st=exclude_st,
         min_total_mv=min_total_mv,
         with_pools=with_pools,
+        with_concepts=with_concepts,
         page=page,
         page_size=page_size,
     )

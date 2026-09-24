@@ -174,4 +174,17 @@ def setup_default_registry() -> FetcherRegistry:
     reg.register_instance(MinuteKlineFetcher, pytdx_fetcher)
     reg.register_factory(MinuteKlineFetcher, PytdxFetcher)
 
+    # ── ConceptFetcher ─────────────────────────────────
+    # AKShare 概念板块采集器
+    # 注意：若 AKShare 未安装，import 会抛 RuntimeError；
+    # 此时 ConceptAppService 将不可用，详情抽屉「概念」Tab 会显示空。
+    try:
+        from infrastructure.collectors.akshare.fetcher import AkShareConceptFetcher
+
+        akshare_concept_fetcher = AkShareConceptFetcher()
+        reg.register_instance(ConceptFetcher, akshare_concept_fetcher)
+        reg.register_factory(ConceptFetcher, AkShareConceptFetcher)
+    except Exception as e:
+        logger.warning("ConceptFetcher (AKShare) 未注册: %s", e)
+
     return reg

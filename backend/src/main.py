@@ -52,6 +52,8 @@ from infrastructure.database.models import (                                    
     MktMarketDailyDB,
     MktSectorDailyDB,
     MktIndexMemberDB,
+    ConceptsDB,
+    ConceptMemberDB,
 )
 from route.api.router import api_router
 
