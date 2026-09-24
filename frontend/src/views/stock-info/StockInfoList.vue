@@ -584,43 +584,31 @@ onMounted(async () => {
   background-color: #f0f9ff !important;
 }
 
-/* 展开按钮（chevron）悬浮强化：scale + 阴影 + 渐变背景 */
+/* 展开按钮（chevron）悬浮岛效果：scale + 阴影 */
 :deep(.el-table__expand-icon) {
   position: relative;
   cursor: pointer;
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
-              box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-              background-color 0.2s ease;
   border-radius: 50%;
-}
-
-:deep(.el-table__expand-icon .el-icon) {
-  transition: color 0.2s ease;
+  background: #ffffff;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 1px 3px rgba(15, 23, 42, 0.08);
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 :deep(.el-table__expand-icon:hover) {
-  transform: scale(1.4);
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  transform: scale(1.35);
   box-shadow:
-    0 4px 12px rgba(59, 130, 246, 0.35),
-    0 0 0 3px rgba(99, 102, 241, 0.15);
+    0 6px 16px rgba(15, 23, 42, 0.14),
+    0 2px 6px rgba(15, 23, 42, 0.08);
 }
 
-:deep(.el-table__expand-icon:hover .el-icon),
-:deep(.el-table__expand-icon.expanded:hover .el-icon) {
-  color: #ffffff;
-}
-
-/* 展开态自身：轻微 scale，保持阴影反馈 */
+/* 展开态：保持浮起 */
 :deep(.el-table__expand-icon.expanded) {
-  transform: scale(1.1);
-  background: linear-gradient(135deg, #3b82f6, #6366f1);
+  transform: scale(1.15);
   box-shadow:
-    0 2px 8px rgba(59, 130, 246, 0.3),
-    0 0 0 2px rgba(99, 102, 241, 0.12);
-}
-
-:deep(.el-table__expand-icon.expanded .el-icon) {
-  color: #ffffff;
+    0 4px 12px rgba(15, 23, 42, 0.12),
+    0 2px 4px rgba(15, 23, 42, 0.06);
 }
 </style>
