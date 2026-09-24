@@ -200,6 +200,150 @@ top-area 分为两行：
 - 典型用途：分页组件（`el-pagination`）
 - **不需要分页的页面不传此插槽**，middle-area 会自动铺满
 
+### 3.5 标题栏 Tab（页面内多 Tab 切换）
+
+当一个页面需要在**多种数据类型/视图之间切换**（如"采集管理"的日K线 / 日频估值 / 股票信息），应当使用**标题栏 Tab** 而不是页面级的 `el-tabs`：
+
+- Tab 与页面标题同行展示，视觉上更紧凑、更统一
+- 不占用 toolbar 行的高度，保留 toolbar 给筛选/操作
+- URL 切换不重载组件，状态保留更自然
+
+#### 3.5.1 结构位置
+
+Tab 渲染在 `#title` 插槽内，**位于标题文字之后**，通过左侧 `border-left` 与标题文字分隔：
+
+```vue
+<template #title>
+  <el-icon class="mr-1"><Upload /></el-icon>
+  采集管理
+  <nav class="title-tabs">
+    <button
+      v-for="tab in tabDefs"
+      :key="tab.value"
+      class="title-tab"
+      :class="{ active: activeTab === tab.value }"
+      @click="switchTab(tab.value)"
+    >{{ tab.label }}</button>
+  </nav>
+</template>
+```
+
+#### 3.5.2 声明式 Tab 定义
+
+Tab 列表使用 `as const` 元组集中声明，便于 TS 类型推断、避免魔法字符串散落：
+
+```ts
+const tabDefs = [
+  { value: 'daily_kline', label: '日K线' },
+  { value: 'daily_basic', label: '日频估值' },
+  { value: 'stock_basic', label: '股票信息' },
+] as const
+
+const activeTab = ref<string>('daily_kline')
+
+function switchTab(tab: string) {
+  if (activeTab.value === tab) return
+  activeTab.value = tab
+  onTabChange()  // 副作用：重置数据、停止轮询、清空状态等
+}
+```
+
+> `switchTab` 务必做"相同值短路"，避免无意义的数据重载。
+
+#### 3.5.3 与 toolbar / middle-area 的联动
+
+切换 Tab 后，**toolbar 操作按钮**和**middle-area 主体内容**都应根据 `activeTab` 分支渲染，使用 `v-if / v-else-if` 模板：
+
+```vue
+<template #toolbar>
+  <div class="toolbar-actions">
+    <template v-if="activeTab === 'daily_kline'">…</template>
+    <template v-else-if="activeTab === 'daily_basic'">…</template>
+    <template v-else>…</template>
+  </div>
+</template>
+```
+
+middle-area 同理，根据 `activeTab` 渲染对应的表格/卡片。
+
+#### 3.5.4 视觉规范
+
+| 状态 | 文字颜色 | 字重 | 底部下划线 |
+|------|---------|------|-----------|
+| 默认 | `#94a3b8` | 500 | 透明 |
+| hover | `#64748b` | 500 | `#cbd5e1`（浅灰预览） |
+| active | `#1e40af` | 700 | `#3b82f6`，3px，圆角 1px |
+
+容器 `.title-tabs` 通过 `border-left: 1.5px solid #e2e8f0` 与标题分隔，`margin-left: 20px; padding-left: 20px`；`align-self: stretch` 让分隔线高度撑满 title 行。
+
+每个 `.title-tab` 的下划线使用 `::after` 伪元素绝对定位在 `bottom: -2px / -3px`，避免影响文字布局；过渡用 `color 0.2s ease`，下划线 `background-color 0.2s ease, height 0.15s ease`。
+
+#### 3.5.5 完整样式（直接复用）
+
+```css
+/* ── 标题栏 Tab ── */
+.title-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin-left: 20px;
+  padding-left: 20px;
+  border-left: 1.5px solid #e2e8f0;
+  align-self: stretch;
+}
+
+.title-tab {
+  position: relative;
+  padding: 2px 14px 6px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #94a3b8;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  white-space: nowrap;
+}
+
+.title-tab::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 10px;
+  right: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background-color 0.2s ease, height 0.15s ease;
+}
+
+.title-tab:hover {
+  color: #64748b;
+}
+.title-tab:hover::after {
+  background: #cbd5e1;
+}
+
+.title-tab.active {
+  color: #1e40af;
+  font-weight: 700;
+}
+.title-tab.active::after {
+  background: #3b82f6;
+  height: 3px;
+  bottom: -3px;
+}
+```
+
+#### 3.5.6 参考实现
+
+完整范式见 `src/views/collect-manage/CollectManage.vue`：
+
+- Tab 定义 + 切换：`CollectManage.vue:253-265`
+- 标题栏模板：`CollectManage.vue:3-15`
+- toolbar 联动：`CollectManage.vue:33-44`
+- 样式：`CollectManage.vue:567-620`
+
 ## 四、页面文件结构规范
 
 以 `stock-info` 模块为例：
