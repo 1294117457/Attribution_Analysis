@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Optional, Protocol, runtime_checkable
 from domain.panel.value_objects import StockPanelRow
 
 if TYPE_CHECKING:
+    from domain.concept.value_objects import ConceptBriefVO
     from application.dto.pool import PoolMembershipVO
 
 
@@ -54,5 +55,17 @@ class StockPanelComposeRepository(Protocol):
 
         性能：单次 SQL，symbol IN (:symbols) 命中
         ix_stock_pool_members_symbol 索引，symbols 数量上限 ≤ page_size（500）。
+        """
+        ...
+
+    async def list_concepts_by_symbols(
+        self, symbols: list[str]
+    ) -> dict[str, list["ConceptBriefVO"]]:
+        """批量反向查询概念成员关系
+
+        返回 dict[symbol, list[ConceptBriefVO]]。
+        未出现在 dict key 中的 symbol 表示无活跃概念。
+        由调用方（StockPanelAppService）注入 ConceptRepository 实现，
+        本 Protocol 仅声明签名。
         """
         ...
