@@ -1,4 +1,16 @@
-"""股票 API 路由"""
+"""股票 API 路由
+
+⚠️ 历史说明：
+    旧版 GET / （分页 + 4 表快照 + 池信息）已迁移至
+    application/panel_service.py::StockPanelAppService +
+    route/api/v1/panel.py::GET /api/v1/stock-panel/。
+
+    本文件保留 GET / 作为**向后兼容薄包装**，内部委托给
+    StockPanelAppService.query_panels，便于旧调用方（如 Dashboard）
+    无需修改即可继续工作。
+
+新代码请使用 GET /api/v1/stock-panel/。
+"""
 
 from __future__ import annotations
 
@@ -11,9 +23,15 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from application.dto.stock import StockQueryRequest, StockUpdateRequest
+from application.dto.panel import StockPanelQueryRequest
+from application.dto.stock import StockUpdateRequest
+from application.panel_service import StockPanelAppService
 from application.stock_service import StockAppService
-from infrastructure.collectors.interfaces import FetcherProtocol
+from infrastructure.collectors import get_registry
+from infrastructure.collectors.protocols import (
+    DailyBasicFetcher,
+    StockBasicFetcher,
+)
 from infrastructure.database.connection import get_db
 from route.schemas import response as R
 
@@ -30,17 +48,32 @@ def get_stock_service(
     return StockAppService(session=db)
 
 
+def get_panel_service(
+    db: AsyncSession = Depends(get_db),
+) -> StockPanelAppService:
+    """面板应用服务（兼容旧 /stocks/ 路由委托使用）"""
+    return StockPanelAppService(session=db)
+
+
 @lru_cache
-def get_stock_fetcher() -> FetcherProtocol:
+def get_stock_fetcher() -> StockBasicFetcher:
     """股票基本信息采集器（单例）— 与 K 线共用 Tushare"""
-    from infrastructure.collectors.tushare import TushareFetcher
-    from domain.kline.schemas import KlineBO
-    return TushareFetcher(KlineBO)
+    return get_registry().get(StockBasicFetcher)
+
+
+@lru_cache
+def get_daily_basic_fetcher() -> DailyBasicFetcher:
+    """日频估值采集器（单例）— 与 K 线共用 Tushare"""
+    return get_registry().get(DailyBasicFetcher)
 
 
 # ── 查询路由 ──────────────────────────────────────────────
 
-@router.get("/", summary="股票列表（分页+多维筛选）")
+@router.get(
+    "/",
+    summary="股票列表（向后兼容，已迁移至 /stock-panel/）",
+    deprecated=True,
+)
 async def query_stocks(
     q: Optional[str] = Query(None, description="代码 / 名称模糊搜索"),
     industry: Optional[str] = Query(None, description="行业"),
@@ -50,12 +83,17 @@ async def query_stocks(
     list_status: Optional[str] = Query("L", description="上市状态 L/D/P/全部"),
     exclude_st: Optional[bool] = Query(None, description="排除ST股票"),
     min_total_mv: Optional[float] = Query(None, ge=0, description="最低总市值(万元)"),
+    with_pools: bool = Query(False, description="是否附带所属操作池（避免 N+1 反向查询）"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=500, description="每页条数"),
-    service: StockAppService = Depends(get_stock_service),
+    panel_service: StockPanelAppService = Depends(get_panel_service),
 ):
-    """分页 + 多维筛选 + K线统计的股票列表（StockPanel.vue 主列表用）"""
-    request = StockQueryRequest(
+    """⚠️ 已废弃：迁移至 GET /api/v1/stock-panel/
+
+    本路由保留为**向后兼容薄包装**，内部委托 StockPanelAppService.query_panels。
+    新代码请直接使用 /api/v1/stock-panel/，字段与响应完全一致。
+    """
+    request = StockPanelQueryRequest(
         q=q,
         industry=industry,
         market=market,
@@ -64,10 +102,11 @@ async def query_stocks(
         list_status=list_status,
         exclude_st=exclude_st,
         min_total_mv=min_total_mv,
+        with_pools=with_pools,
         page=page,
         page_size=page_size,
     )
-    response = await service.query_stocks(request)
+    response = await panel_service.query_panels(request)
     return R.ok(response.model_dump())
 
 
@@ -117,7 +156,7 @@ async def upsert_stock(
 async def sync_stocks(
     list_status: str = Query("L", description="上市状态 L/D/P"),
     service: StockAppService = Depends(get_stock_service),
-    fetcher: FetcherProtocol = Depends(get_stock_fetcher),
+    fetcher: StockBasicFetcher = Depends(get_stock_fetcher),
 ):
     """全量同步 A股股票基本信息
 
@@ -161,7 +200,7 @@ async def sync_daily_basic(
     ),
     days: int = Query(1, ge=1, le=30, description="往回拉取天数（默认1天）"),
     db: AsyncSession = Depends(get_db),
-    fetcher: FetcherProtocol = Depends(get_stock_fetcher),
+    fetcher: DailyBasicFetcher = Depends(get_daily_basic_fetcher),
 ):
     """从 Tushare daily_basic 同步全市场日频估值
 

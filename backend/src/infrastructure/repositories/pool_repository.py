@@ -335,7 +335,7 @@ class StockPoolRepoImpl(StockPoolRepository):
         result = await self._session.execute(stmt)
         return result.scalar() or 0
 
-    # ── 反向查询 ─────────────────────────────────────────────────────────────
+    # ── 反向查询（单股）──────────────────────────────────────────────────────
 
     async def find_pools_by_symbol(self, symbol: str) -> list[StockPool]:
         stmt = (
@@ -352,3 +352,7 @@ class StockPoolRepoImpl(StockPoolRepository):
         result = await self._session.execute(stmt)
         dbs = result.scalars().all()
         return [self._to_entity_light(db) for db in dbs]
+
+    # 注：批量反向查询 list_membership_by_symbols 已迁移至
+    # infrastructure/repositories/panel_compose_repository.py::StockPanelComposeRepoImpl
+    # 由面板组合仓储统一提供（避免服务层跨仓储编排）

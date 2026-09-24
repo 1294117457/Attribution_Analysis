@@ -34,7 +34,8 @@ from domain.kline.repository import KlineRepository
 from domain.kline.value_objects import StockCode
 from domain.stock_info.repository import StockInfoRepository
 from domain.stock_info.entity import StockInfo
-from infrastructure.collectors.interfaces import CollectParams, FetcherProtocol
+from infrastructure.collectors.interfaces import CollectParams
+from infrastructure.collectors.protocols import KlineFetcher
 from infrastructure.indicators import IndicatorCalculator
 from infrastructure.repositories.kline_repository import KlineRepoImpl
 from infrastructure.repositories.stock_repository import StockRepoImpl
@@ -68,7 +69,7 @@ class KlineAppService:
     async def collect(
         self,
         request: KlineCollectRequest,
-        fetcher: FetcherProtocol,
+        fetcher: KlineFetcher,
     ) -> KlineCollectResponse:
         """采集 K 线 + 自动算指标"""
         try:
@@ -121,7 +122,7 @@ class KlineAppService:
         self,
         symbols: list[str],
         days: int,
-        fetcher: FetcherProtocol,
+        fetcher: KlineFetcher,
     ) -> dict[str, KlineCollectResponse]:
         """批量采集多只股票（每只的 K 线 + 指标一并入库）"""
         results: dict[str, KlineCollectResponse] = {}

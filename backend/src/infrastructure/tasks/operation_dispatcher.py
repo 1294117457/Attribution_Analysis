@@ -59,8 +59,8 @@ class OperationDispatcher:
                     await op_session.commit()
 
                     from application.kline_service import KlineAppService
-                    from infrastructure.collectors.tushare.fetcher import TushareFetcher
-                    from domain.kline.schemas import KlineBO
+                    from infrastructure.collectors import get_registry
+                    from infrastructure.collectors.protocols import KlineFetcher
                     from application.dto.kline import KlineCollectRequest
 
                     done = 0
@@ -79,7 +79,7 @@ class OperationDispatcher:
                         async with AsyncSessionLocal() as task_session:
                             try:
                                 kline_service = KlineAppService(session=task_session)
-                                fetcher = TushareFetcher(KlineBO)
+                                fetcher = get_registry().create(KlineFetcher)
                                 request = KlineCollectRequest(
                                     symbol=symbol,
                                     days=days,

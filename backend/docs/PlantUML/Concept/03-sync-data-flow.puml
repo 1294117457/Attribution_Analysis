@@ -1,0 +1,297 @@
+@startuml Concept_Sync_DataFlow
+
+title 概念同步数据流 — AKShare → concepts + stock_concept_members
+
+left to right direction
+
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam classFontSize 11
+skinparam packageFontSize 13
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  概念同步（采集 → 持久化）数据流 — 四层 + 来源表
+'
+'  配套设计文档：
+'    · docs/dev/06gainian/README.md                     — 统一设计
+'    · docs/dev/06gainian/02-infrastructure-design.md
+'
+'  本图描述：
+'    同步任务 ConceptSyncOperation 如何分步调用：
+'    AKShareFetcher.fetch_concept_list()
+'    → ConceptRepository.upsert_concept()
+'    → AKShareFetcher.fetch_concept_stocks(name)
+'    → ConceptRepository.upsert_members()
+'
+'  UML 绘制规范：docs/config/uml类图设计规范.md
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  左上角便签 N_src：同步步骤 + 服务流伪代码
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+note as N_src
+  <b>概念同步流程（两阶段）</b>
+  • 阶段一：采集概念清单（akshare_fetch）
+  • 阶段二：采集成分股（akshare_fetch + repository）
+  ────────────────
+  <b>ConceptSyncOperation.sync_all()</b>
+  ① 拉全量概念清单：
+       bos = fetcher.fetch_concept_list()
+       → list[ConceptListBO]
+  ② 逐个同步（对 i 个概念）：
+       • upsert_concept(concept)
+         → concepts 表 INSERT/UPDATE
+       • fetch_concept_stocks(name)
+         → list[ConceptStockBO]
+       • upsert_members(concept.id, members)
+         → stock_concept_members 全量覆盖
+  ③ 统计失败项，返回 ConceptSyncResult
+
+  ────────────────
+  <b>预计耗时（单线程）：</b>
+  500 概念 × (0.3s delay + 0.5s fetch)
+  ≈ 7 分钟
+  可通过并发压缩到 2-3 分钟
+end note
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  第一行：模型层（4 个子 package，横向线性）
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+package "▌ 模型层" {
+
+  ' ── ① 请求层 ─────────────────────────────────────
+  package "① 请求层" {
+    class ConceptSyncRequest <<NEW>> {
+      + source : str = "em"
+      + concept_names? : list[str]
+      + force_resync : bool = False
+    }
+
+    class ConceptSyncResult <<NEW>> {
+      + total_concepts : int
+      + total_members : int
+      + failed_concepts : list[str]
+      + elapsed_ms : int
+      + synced_at : datetime
+    }
+  }
+
+  ' ── ② 仓储层 ─────────────────────────────────────
+  package "② 仓储层" {
+    class ConceptRepository <<NEW, Protocol>> {
+      + upsert_concept(c: Concept) : Concept
+      + upsert_members(concept_id, members) : int
+      + get_concept_by_name(name, source) : Optional[Concept]
+      + count_concepts() : int
+      + get_last_synced_at(source) : Optional[datetime]
+    }
+
+    class StockPanelComposeRepository <<UNCHANGED>> {
+      + list_paginated(...)
+      + list_membership_by_symbols(...)
+      + list_concepts_by_symbols(...)
+    }
+  }
+
+  ' ── ③ 领域层 ─────────────────────────────────────
+  package "③ 领域层" {
+
+    class ConceptListBO <<NEW>> {
+      + name : str
+      + code : str
+      + source : ConceptSource
+      + concept_type : ConceptType
+      + stock_count : int
+      + description? : str
+      --
+      + to_entity() : Concept
+    }
+
+    class ConceptStockBO <<NEW>> {
+      + symbol : str
+      + name : str
+      + source : ConceptSource
+      + rank? : int
+      + latest_price? : float
+      --
+      + to_entity(concept_id) : ConceptMember
+    }
+
+    class Concept <<NEW>> {
+      - id? : int
+      - name : str
+      - source : ConceptSource
+      - concept_type : ConceptType
+      - stock_count : int
+      - is_active : bool
+      - first_seen_at : datetime
+      - last_synced_at? : datetime
+      --
+      + create(...) : Concept
+      + mark_synced(member_count, at?)
+    }
+
+    class ConceptMember <<NEW>> {
+      - symbol : str
+      - concept_id : int
+      - source : ConceptSource
+      - joined_at : datetime
+      --
+      + create(...) : ConceptMember
+    }
+
+    class ConceptBriefVO <<NEW, frozen>> {
+      + concept_id : int
+      + name : str
+      + source : str
+    }
+
+    ConceptListBO  ..> Concept       : <<to_entity>>
+    ConceptStockBO ..> ConceptMember : <<to_entity>>
+  }
+
+  ' ── ④ 应用层 ─────────────────────────────────────
+  package "④ 应用层" {
+
+    class ConceptSyncOperation <<NEW>> {
+      - _repo : ConceptRepository
+      - _fetcher : ConceptFetcher
+      --
+      + sync_all() : ConceptSyncResult
+      - _sync_one(bo: ConceptListBO) : int
+    }
+
+    class ConceptAppService <<NEW>> {
+      - _repo : ConceptRepository
+      - _fetcher : ConceptFetcher
+      --
+      + sync_concepts(req) : ConceptSyncResultVO
+      + query_concepts(req) : ConceptListVO
+      + get_concept_detail(name, source) : ConceptDetailVO
+      + list_for_symbols(symbols) : dict
+    }
+  }
+
+}
+
+
+' ─────────────────────────────────────────────────────────────────
+'  线性依赖（第一行内）
+' ─────────────────────────────────────────────────────────────────
+ConceptSyncRequest        --> ConceptSyncOperation
+ConceptSyncOperation     ..> ConceptListBO        : <<fetch 返回>>
+ConceptSyncOperation     ..> ConceptStockBO       : <<fetch 返回>>
+ConceptSyncOperation     ..> Concept             : <<upsert>>
+ConceptSyncOperation     ..> ConceptMember        : <<upsert>>
+ConceptSyncOperation     ..> ConceptRepository     : <<写入>>
+ConceptSyncOperation     ..> ConceptFetcher        : <<采集>>
+ConceptSyncOperation     --> ConceptSyncResult    : <<产出>>
+
+ConceptAppService        --> ConceptRepository
+ConceptAppService        --> ConceptFetcher
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  第二行：来源表（3 张表，横向排列）
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+package "▌ 来源表" {
+
+  left to right direction
+
+  T1 -[hidden]- T2
+  T2 -[hidden]- T3
+
+  ' ── AKShare HTTP ──────────────────────────────────────
+  class "东方财富 HTTP API\n(akshare)" as T1 #C8E6C9 {
+    + stock_board_concept_name_em()
+    + stock_board_concept_cons_em(symbol=name)
+    --
+    __ 步骤 ①：fetch_concept_list() 一次性拉取全部概念 __
+    __ 步骤 ②：fetch_concept_stocks(name) 对每个概念拉成分股 __
+  }
+
+  class "concepts" as T2 #C8E6C9 {
+    + id {PK}
+    + name {UQ}     ' (name, source) 唯一约束
+    + source
+    + concept_type
+    + description
+    + stock_count
+    + is_active
+    + first_seen_at
+    + last_synced_at
+    --
+    __ upsert_concept：命中约束则 UPDATE，未命中则 INSERT __
+    __ 重新上线时 is_active = TRUE __
+  }
+
+  class "stock_concept_members" as T3 #C8E6C9 {
+    + symbol {PK,FK}
+    + concept_id {PK,FK}
+    + joined_at
+    + source
+    --
+    __ upsert_members：DELETE + INSERT（全量覆盖）__
+  }
+
+}
+
+
+' ─────────────────────────────────────────────────────────────────
+'  ConceptRepository ↔ 来源表
+' ─────────────────────────────────────────────────────────────────
+ConceptRepository ..> T1 : <<fetch_concept_list>>
+ConceptRepository ..> T2 : <<upsert_concept>>
+ConceptRepository ..> T3 : <<upsert_members>>
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  ConceptFetcher ↔ AKShare HTTP
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+package "采集层 (Collectors / ACL)" #ECEFF1 {
+  class ConceptFetcher <<Protocol>> {
+    + fetch_concept_list() : list[Any]
+    + fetch_concept_stocks(name) : list[Any]
+    + source_name : str
+  }
+
+  class AkShareConceptFetcher <<NEW>> {
+    + source_name = "AkShare"
+    + fetch_concept_list() : list[ConceptListBO]
+    + fetch_concept_stocks(name) : list[ConceptStockBO]
+    --
+    + _fetch_with_retry(fn, retries=2)
+    + _parse_list(df) : list[ConceptListBO]
+    + _parse_stocks(df, name) : list[ConceptStockBO]
+  }
+
+  ConceptFetcher <|.. AkShareConceptFetcher
+  AkShareConceptFetcher --> T1 : <<HTTP>>
+}
+
+ConceptSyncOperation ..> ConceptFetcher
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  类内便签 N_sync：同步策略说明
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+note bottom of T3
+  <b>全量覆盖语义（upsert_members）</b>
+  ① DELETE FROM stock_concept_members
+       WHERE concept_id = :concept_id
+  ② INSERT INTO stock_concept_members ...
+  ────────────────
+  <b>优势：</b>
+  • 东方财富成分股随时变化，全量覆盖保证与源一致
+  • 无需追踪"哪些股票新增/退出"，直接替换
+  • 代码简单，无状态追踪逻辑
+
+  <b>劣势：</b>
+  • 删除大量行（成分股多时）
+  • 无历史记录（需要历史则改用 INSERT + 软删）
+end note
+
+
+@enduml

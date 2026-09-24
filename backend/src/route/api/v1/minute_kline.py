@@ -8,15 +8,17 @@ from functools import lru_cache
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from infrastructure.collectors.pytdx.fetcher import PytdxFetcher
+from infrastructure.collectors import get_registry
+from infrastructure.collectors.protocols import MinuteKlineFetcher
 from route.schemas import response as R
 
 router = APIRouter(prefix="/minute-klines", tags=["分钟K线"])
 
 
 @lru_cache
-def get_pytdx_fetcher() -> PytdxFetcher:
-    return PytdxFetcher()
+def get_minute_kline_fetcher() -> MinuteKlineFetcher:
+    """分钟 K 线采集器依赖（单例）"""
+    return get_registry().get(MinuteKlineFetcher)
 
 
 class MinuteKlineItem(BaseModel):
@@ -35,7 +37,7 @@ async def get_minute_klines(
     symbol: str,
     interval: str = Query("5min", description="周期: 1min/5min/15min/30min/60min"),
     count: int = Query(200, ge=1, le=1200, description="获取K线数量"),
-    fetcher: PytdxFetcher = Depends(get_pytdx_fetcher),
+    fetcher: MinuteKlineFetcher = Depends(get_minute_kline_fetcher),
 ):
     """实时从通达信拉取分钟 K 线，不存储"""
     try:

@@ -1,0 +1,288 @@
+@startuml Concept_Query_DataFlow
+
+title 概念查询数据流 — StockPanel with concepts（list_concepts_by_symbols）
+
+left to right direction
+
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam classFontSize 11
+skinparam packageFontSize 13
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  概念查询（Panel 嵌入场景）数据流 — 四层 + 来源表
+'
+'  配套设计文档：
+'    · docs/dev/06gainian/README.md                     — 统一设计
+'    · docs/dev/06gainian/03-application-and-route-design.md
+'
+'  本图描述：
+'    当前端 GET /api/v1/stock-panel/?with_concepts=true 时，
+'    后端如何在 StockPanelAppService 编排下，
+'    通过 StockPanelComposeRepository.list_concepts_by_symbols(symbols)
+'    一次性批量反查每只股票所属的概念，结果合并到 StockPanelItemVO.concepts。
+'
+'  UML 绘制规范：docs/config/uml类图设计规范.md
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  左上角便签 N_src：组装关系 + 服务流伪代码
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+note as N_src
+  <b>StockPanelItemVO.concepts 由 2 张表组装：</b>
+  • stock_concept_members  → JOIN 条件（symbol IN :symbols）
+  • concepts               → 补齐 name / source / is_active 过滤
+  ────────────────
+  <b>StockPanelAppService.query_panels(req)</b>
+  ① rows, total = repo.list_paginated(req)
+                              ← 1× SQL（4 表 JOIN）
+  ② pool_map = repo.list_membership_by_symbols(symbols)
+                              ← 1× SQL（批量池，已有）
+  ③ concept_map = repo.list_concepts_by_symbols(symbols) ← 🆕
+                              ← 1× SQL（symbol IN + JOIN concepts）
+  ④ items = [_to_vo(r, pool_map, concept_map) for r in rows]
+  ⑤ StockPanelListVO.from_list(items, total, page, page_size)
+
+  ────────────────
+  <b>SQL 总量：</b>
+  with_pools=false, with_concepts=false  → 1×（仅主查询）
+  with_pools=true,  with_concepts=false  → 2×（+1 批量池）
+  with_pools=false, with_concepts=true   → 2×（+1 批量概念）← 本图
+  with_pools=true,  with_concepts=true   → 3×（+1 池 +1 概念）
+end note
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  第一行：模型层（4 个子 package，横向线性）
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+package "▌ 模型层" {
+
+  ' ── ① 请求层 ─────────────────────────────────────
+  package "① 请求层" {
+    class StockPanelQueryRequest <<CHANGED>> #FFE0B2 {
+      + q? : str
+      + industry? : str
+      + market? : str
+      + exchange? : str
+      + is_hs? : str
+      + list_status? : str = "L"
+      + exclude_st? : bool
+      + min_total_mv? : float
+      + with_pools : bool = False
+      + with_concepts : bool = False  ' ← 🆕 新增
+      + page : int = 1
+      + page_size : int = 20
+    }
+  }
+
+  ' ── ② 仓储层 ─────────────────────────────────────
+  package "② 仓储层" {
+    class StockPanelComposeRepository <<CHANGED, Protocol>> #FFE0B2 {
+      + list_paginated(...) : tuple[list[StockPanelRow], int]
+      + list_membership_by_symbols(symbols)
+      +   : dict[symbol, list[PoolMembershipVO]]
+      + list_concepts_by_symbols(symbols)              ' ← 🆕 新增
+      +   : dict[symbol, list[ConceptBriefVO]]
+    }
+
+    class ConceptRepository <<NEW, Protocol>> #C8E6C9 {
+      + upsert_concept(c: Concept) : Concept
+      + upsert_members(concept_id, members) : int
+      + get_concept_by_id(id) : Optional[Concept]
+      + get_concept_by_name(name, source) : Optional[Concept]
+      + list_concepts_by_symbol(symbol) : list[ConceptBriefVO]
+      + list_concepts_by_symbols(symbols)
+      +   : dict[symbol, list[ConceptBriefVO]]
+      + list_concepts(...) : tuple[list[Concept], int]
+      + count_concepts(...) : int
+      + get_last_synced_at(source) : Optional[datetime]
+    }
+  }
+
+  ' ── ③ 领域层 ─────────────────────────────────────
+  package "③ 领域层" {
+
+    class Concept <<NEW>> #C8E6C9 {
+      - id? : int
+      - name : str
+      - source : ConceptSource
+      - concept_type : ConceptType
+      - description?
+      - stock_count : int
+      - is_active : bool
+      - first_seen_at : datetime
+      - last_synced_at? : datetime
+    }
+
+    class ConceptMember <<NEW>> #C8E6C9 {
+      - symbol : str
+      - concept_id : int
+      - source : ConceptSource
+      - joined_at : datetime
+    }
+
+    class "ConceptBrief\n<<值对象, NEW, frozen>>" as ConceptBriefVO {
+      + concept_id : int
+      + name : str
+      + source : str  ' "em" / "ths"
+    }
+
+    class StockPanelRow <<UNCHANGED>> #E0E0E0 {
+      + symbol : str
+      + name : str
+      + industry : str?
+      + market : str?
+      + ... stock_info 13 fields ...
+      + ... kline 3 fields ...
+      + ... fin_daily_basic 3 fields ...
+      + ... fin_report 1 field ...
+    }
+
+    ConceptRepository ..> Concept       : <<聚合根>>
+    ConceptRepository ..> ConceptMember  : <<子实体>>
+    ConceptRepository ..> ConceptBriefVO : <<查询投影>>
+  }
+
+  ' ── ④ 应用层 ─────────────────────────────────────
+  package "④ 应用层" {
+
+    class "Page[T]\n<<Generic>>" as Page #C8E6C9 {
+      + items : List[T]
+      + total : int
+      + page : int
+      + page_size : int
+      + pages : int
+      --
+      + from_list(items, total, page, page_size) : Page[T]
+    }
+
+    class StockPanelItemVO <<CHANGED>> #FFE0B2 {
+      + symbol : str
+      + name : str
+      + ...13 stock_info fields...
+      + ...3 kline fields...
+      + ...3 fin_daily_basic fields...
+      + ...1 fin_report field...
+      + pools : list[PoolMembershipVO]      ' ← 既有
+      + concepts : list[ConceptBriefVO]    ' ← 🆕 新增
+    }
+
+    class StockPanelListVO <<CHANGED>> #FFE0B2 {
+      __ extends Page[StockPanelItemVO] __
+    }
+
+    class StockPanelAppService <<CHANGED>> #FFE0B2 {
+      - _panel_repo : StockPanelComposeRepository
+      - _concept_app? : ConceptAppService  ' 🆕
+      --
+      + query_panels(req) : StockPanelListVO
+    }
+
+    class PoolMembershipVO <<UNCHANGED>> #E0E0E0 {
+      + pool_id : int
+      + name : str
+      + pool_type : str
+      + joined_at? : str
+    }
+
+    Page <|-- StockPanelListVO : <<继承>>
+    StockPanelItemVO ..> Page : <<T 参数>>
+    StockPanelItemVO --> ConceptBriefVO : <<concepts>>
+    StockPanelItemVO --> PoolMembershipVO : <<pools>>
+  }
+
+}
+
+
+' ─────────────────────────────────────────────────────────────────
+'  线性依赖（第一行内）
+' ─────────────────────────────────────────────────────────────────
+StockPanelQueryRequest        --> StockPanelComposeRepository
+StockPanelComposeRepository  ..> StockPanelRow          : <<产出>>
+StockPanelComposeRepository  ..> ConceptBriefVO         : <<反查产出>>
+StockPanelComposeRepository  ..> ConceptRepository     : <<内部委托>>
+StockPanelRow               --> StockPanelItemVO        : <<1:1 字段映射>>
+StockPanelAppService        --> StockPanelComposeRepository
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  第二行：来源表（2 张表，横向排列）
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+package "▌ 来源表" {
+
+  left to right direction
+
+  T1 -[hidden]- T2
+
+  class "stock_infos" as T1 #E0E0E0 {
+    + symbol {PK}
+    + name
+    + industry
+    + market
+    + ts_code
+    + area
+    + list_date
+    + list_status
+    + is_hs
+    + total_shares
+    + act_name
+    + act_ent_type
+    ' ← 主查询聚合行（本图省略其他 4 张表细节，
+    '    完整流程见 StockInfo/03-panel-compose.puml）
+  }
+
+  class "concepts" as T2a #C8E6C9 {
+    + id {PK}
+    + name
+    + source
+    + is_active
+    + ...
+    --
+    __ 用于 JOIN 补全 name / source __
+  }
+
+  class "stock_concept_members" as T2 #C8E6C9 {
+    + symbol {PK,FK}
+    + concept_id {PK,FK}
+    + joined_at
+    + source
+    --
+    __ 反向查询路径 __
+    SELECT cm.symbol, c.id, c.name, c.source
+    FROM stock_concept_members cm
+    JOIN concepts c ON c.id = cm.concept_id
+    WHERE cm.symbol IN (:symbols)
+      AND c.is_active = TRUE
+  }
+
+  T2a -[hidden]- T2
+}
+
+
+' ─────────────────────────────────────────────────────────────────
+'  ConceptBriefVO 与来源表的关系
+' ─────────────────────────────────────────────────────────────────
+ConceptBriefVO ..> T2   : <<反向查询>>
+ConceptBriefVO ..> T2a  : <<JOIN 补全>>
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  ConceptRepository 与来源表的关系
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+ConceptRepository ..> T2  : <<list_concepts_by_symbols>>
+ConceptRepository ..> T2a : <<JOIN concepts>>
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  类内便签 N_sql：SQL 路径说明
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+note bottom of T2
+  <b>SQL 路径：批量反向查询</b>
+  ① symbol IN (:symbols) — 命中 ix_concept_member_symbol 索引
+  ② JOIN concepts — is_active = TRUE 过滤
+  ③ 批量一次查完，symbols ≤ page_size（500）
+end note
+
+
+@enduml

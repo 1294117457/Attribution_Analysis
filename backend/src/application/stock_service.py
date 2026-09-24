@@ -1,17 +1,18 @@
 """股票应用服务
 
 用例编排：
-- 查询股票列表 / 详情
+- 查询股票列表 / 详情（简单版，DataCollect/StockManage 用）
 - 新增 / 更新 / 删除股票
 - 同步股票（从外部数据源全量导入）
 - 元数据查询（枚举值）
+
+面板列表面板（分页 + 4 表快照 + 池信息）已迁移至 application.panel_service.StockPanelAppService。
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,16 +23,14 @@ from application.dto.stock import (
     StockListItemResponse,
     StockListResponse,
     StockMetaResponse,
-    StockQueryItemResponse,
-    StockQueryRequest,
-    StockQueryResponse,
     StockUpdateRequest,
     SyncStockResponse,
 )
 from application.exceptions import StockNotFoundError
 from domain.stock_info.entity import StockInfo
 from domain.stock_info.repository import StockInfoRepository
-from infrastructure.collectors.interfaces import CollectParams, FetcherProtocol
+from infrastructure.collectors.interfaces import CollectParams
+from infrastructure.collectors.protocols import StockBasicFetcher
 from infrastructure.repositories.stock_repository import StockRepoImpl
 
 logger = logging.getLogger(__name__)
@@ -61,28 +60,6 @@ class StockAppService:
             total=len(items),
             page=1,
             page_size=len(items) or 1,
-            items=items,
-        )
-
-    async def query_stocks(self, request: StockQueryRequest) -> StockQueryResponse:
-        """分页 + 多维筛选 + K线统计（StockPanel.vue 主列表用）"""
-        rows, total = await self._repo.list_with_kline_stats_paginated(
-            q=request.q,
-            industry=request.industry,
-            market=request.market,
-            exchange=request.exchange,
-            is_hs=request.is_hs,
-            list_status=request.list_status,
-            exclude_st=request.exclude_st,
-            min_total_mv=request.min_total_mv,
-            page=request.page,
-            page_size=request.page_size,
-        )
-        items = [StockQueryItemResponse(**row) for row in rows]
-        return StockQueryResponse(
-            total=total,
-            page=request.page,
-            page_size=request.page_size,
             items=items,
         )
 
@@ -163,7 +140,7 @@ class StockAppService:
 
     async def sync_stocks(
         self,
-        fetcher: FetcherProtocol,
+        fetcher: StockBasicFetcher,
         list_status: str = "L",
     ) -> SyncStockResponse:
         """全量同步 A股 股票元数据

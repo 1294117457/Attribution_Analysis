@@ -1,4 +1,8 @@
-"""股票应用层 DTO"""
+"""股票应用层 DTO
+
+本文件仅保留股票单只 CRUD 所需的 DTO。
+面板列表面板（分页 + 4 表快照 + 池信息）的 DTO 已迁移至 application/dto/panel.py。
+"""
 
 from __future__ import annotations
 
@@ -8,7 +12,10 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
-# ── 请求 DTO ──────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+#  请求 DTO
+# ═══════════════════════════════════════════════════════════════════════════════
+
 
 class StockUpdateRequest(BaseModel):
     """更新股票信息请求"""
@@ -25,22 +32,10 @@ class StockUpsertRequest(BaseModel):
     market: Optional[str] = None
 
 
-class StockQueryRequest(BaseModel):
-    """股票列表查询请求（支持分页/搜索/多维筛选）"""
+# ═══════════════════════════════════════════════════════════════════════════════
+#  响应 DTO
+# ═══════════════════════════════════════════════════════════════════════════════
 
-    q: Optional[str] = Field(None, description="代码 / 名称模糊搜索")
-    industry: Optional[str] = Field(None, description="行业")
-    market: Optional[str] = Field(None, description="市场类型")
-    exchange: Optional[str] = Field(None, description="交易所 SSE/SZSE/BSE")
-    is_hs: Optional[str] = Field(None, description="沪深港通 N/H/S")
-    list_status: Optional[str] = Field("L", description="上市状态 L/D/P/全部")
-    exclude_st: Optional[bool] = Field(None, description="排除ST股票")
-    min_total_mv: Optional[float] = Field(None, ge=0, description="最低总市值(万元)")
-    page: int = Field(1, ge=1, description="页码")
-    page_size: int = Field(20, ge=1, le=500, description="每页条数")
-
-
-# ── 响应 DTO ──────────────────────────────────────────────
 
 class StockItemResponse(BaseModel):
     """股票详情响应（单只）"""
@@ -53,7 +48,11 @@ class StockItemResponse(BaseModel):
 
 
 class StockListItemResponse(BaseModel):
-    """股票列表项（含 K 线统计）"""
+    """股票列表项（含 K 线统计，简洁版）
+
+    用于 /stocks/ 简单列表（DataCollect/StockManage 等不需要富字段的场景）。
+    面板主列表请使用 application.dto.panel.StockPanelItemVO。
+    """
     symbol: str
     name: Optional[str] = None
     industry: Optional[str] = None
@@ -61,45 +60,17 @@ class StockListItemResponse(BaseModel):
     record_count: int = 0
     kline_start: Optional[date] = None
     kline_end: Optional[date] = None
-
-
-class StockQueryItemResponse(BaseModel):
-    """股票查询项（富字段 + K线统计 + 最新估值，StockInfoList.vue 主列表用）"""
-    symbol: str
-    ts_code: Optional[str] = None
-    name: Optional[str] = None
-    area: Optional[str] = None
-    industry: Optional[str] = None
-    market: Optional[str] = None
-    exchange: Optional[str] = None
-    list_date: Optional[str] = None
-    list_status: Optional[str] = None
-    is_hs: Optional[str] = None
-    act_name: Optional[str] = None
-    act_ent_type: Optional[str] = None
-    record_count: int = 0
-    kline_start: Optional[date] = None
-    kline_end: Optional[date] = None
-    latest_close: Optional[float] = None
-    total_mv: Optional[float] = None
-    pe_ttm: Optional[float] = None
-    profit_margin: Optional[float] = None
 
 
 class StockListResponse(BaseModel):
-    """股票列表响应（含分页，DataCollect/StockManage 用）"""
+    """股票列表响应（含分页，简单版）
+
+    用于 /stocks/ 简单列表场景。面板主列表请使用 StockPanelListVO。
+    """
     total: int
     page: int = 1
     page_size: int = 20
     items: list[StockListItemResponse]
-
-
-class StockQueryResponse(BaseModel):
-    """股票查询响应（StockPanel.vue 用，富字段）"""
-    total: int
-    page: int = 1
-    page_size: int = 20
-    items: list[StockQueryItemResponse]
 
 
 class StockDeleteResponse(BaseModel):

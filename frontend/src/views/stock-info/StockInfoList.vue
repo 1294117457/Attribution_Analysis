@@ -134,7 +134,7 @@
               :type="poolTypeTag(p.pool_type) as 'primary' | 'success' | 'warning' | 'info'"
               effect="plain"
               class="cursor-pointer"
-              @click.stop="router.push(`/home/pool/${p.id}`)"
+              @click.stop="router.push(`/home/pool/${p.pool_id}`)"
             >
               {{ p.name }}
             </el-tag>
@@ -246,17 +246,19 @@ import { Search, Refresh, Folder, ArrowDown, ArrowUp } from '@element-plus/icons
 import PageWrapper from '@/components/PageWrapper.vue'
 import StockExpandRow from './components/StockExpandRow.vue'
 import AddToPoolDialog from './components/AddToPoolDialog.vue'
-import { usePoolStore } from '@/stores/pool'
 import {
   queryStocks,
   getStockMeta,
   syncStocks,
 } from '@/views/stock-info/api'
-import type { StockInfo, StockMeta, StockQueryParams } from '@/views/stock-info/api'
-import type { Pool } from '@/views/stock-pool/api'
+import type {
+  StockInfo,
+  StockMeta,
+  StockQueryParams,
+  PoolMembership,
+} from '@/views/stock-info/api'
 
 const router = useRouter()
-const poolStore = usePoolStore()
 
 // ── 列表状态 ──────────────────────────────────────────────
 const stocks = ref<StockInfo[]>([])
@@ -267,7 +269,6 @@ const loading = ref(false)
 const syncing = ref(false)
 const meta = ref<StockMeta>({ industries: [], markets: [], exchanges: [] })
 const selectedStocks = ref<StockInfo[]>([])
-const symbolPoolsMap = ref<Record<string, Pool[]>>({})
 
 // ── 展开行 / 弹窗 ────────────────────────────────────────
 const tableRef = ref()
@@ -322,10 +323,21 @@ function resetFilters() {
 }
 
 // ── 数据加载 ──────────────────────────────────────────────
+/**
+ * 加载股票面板列表（with_pools=true 内嵌池信息，无 N+1 问题）
+ *
+ * 路由 GET /api/v1/stock-panel/ 返回 StockPanelListVO：
+ *   items[].pools[] 由后端一次性批量填充。
+ * 前端直接读 row.pools，不再逐条反向查询。
+ */
 async function loadStocks() {
   loading.value = true
   try {
-    const params: StockQueryParams = { page: page.value, page_size: pageSize.value }
+    const params: StockQueryParams = {
+      page: page.value,
+      page_size: pageSize.value,
+      with_pools: true, // 🆕 一次性返回所属池，替代 N+1 反向查询
+    }
     if (filters.value.q) params.q = filters.value.q
     if (filters.value.industry) params.industry = filters.value.industry
     if (filters.value.market) params.market = filters.value.market
@@ -365,20 +377,6 @@ async function syncStocksHandler() {
   }
 }
 
-async function loadAllStockPools() {
-  const symbols = stocks.value.map((s) => s.symbol)
-  await Promise.all(
-    symbols.map(async (symbol) => {
-      try {
-        const result = await poolStore.findPoolsBySymbol(symbol)
-        symbolPoolsMap.value[symbol] = result.pools
-      } catch {
-        symbolPoolsMap.value[symbol] = []
-      }
-    })
-  )
-}
-
 // ── 分页 ──────────────────────────────────────────────────
 function onPageChange(p: number) {
   page.value = p
@@ -413,14 +411,21 @@ function toggleExpand(row: StockInfo) {
 }
 
 // ── 池操作完成回调 ────────────────────────────────────────
+/**
+ * 加池完成后：直接重载列表（池已内嵌到 row.pools，无需额外加载）
+ */
 async function onPoolDone() {
   clearSelection()
-  await loadAllStockPools()
+  await loadStocks()
 }
 
 // ── 工具函数 ──────────────────────────────────────────────
-function getStockPools(symbol: string): Pool[] {
-  return symbolPoolsMap.value[symbol] ?? []
+/**
+ * 直接从 row.pools 读取所属池信息（由后端 with_pools=true 一次性下发）
+ */
+function getStockPools(symbol: string): PoolMembership[] {
+  const stock = stocks.value.find(s => s.symbol === symbol)
+  return stock?.pools ?? []
 }
 
 function formatDate(v?: string) {
@@ -459,13 +464,14 @@ function marketType(v?: string): 'primary' | 'success' | 'warning' | 'danger' | 
 }
 
 function poolTypeTag(type: string) {
-  return ({ watchlist: 'warning', industry: 'success', strategy: 'primary', custom: 'info' })[type] || 'info'
+  return ({ watchlist: 'warning', industry: 'success', strategy: 'primary', custom: 'info' } as const)[type] || 'info'
 }
 
 // ── 生命周期 ──────────────────────────────────────────────
 onMounted(async () => {
-  await Promise.all([loadMeta(), loadStocks(), poolStore.fetchPools()])
-  await loadAllStockPools()
+  // 🆕 不再调用 poolStore.fetchPools 和 loadAllStockPools
+  // 池信息由 loadStocks(with_pools=true) 一次性下发，零 N+1
+  await Promise.all([loadMeta(), loadStocks()])
 })
 </script>
 

@@ -21,7 +21,7 @@ from route.schemas.response import (
     ok, created, bad_request, not_found, err,
 )
 
-router = APIRouter(prefix="/api/v1", tags=["操作池"])
+router = APIRouter(tags=["操作池"])
 
 
 def get_pool_service(db: AsyncSession = Depends(get_db)) -> StockPoolAppService:

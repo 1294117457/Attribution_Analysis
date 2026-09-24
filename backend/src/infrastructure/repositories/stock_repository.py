@@ -1,4 +1,8 @@
-"""股票信息仓储实现"""
+"""股票信息仓储实现
+
+实现 domain/stock_info/repository.py 中的 StockInfoRepository 接口。
+面板组合查询（4 表 JOIN）已迁移至 infrastructure/repositories/panel_compose_repository.py。
+"""
 
 from __future__ import annotations
 
@@ -12,8 +16,6 @@ from domain.stock_info.entity import StockInfo
 from domain.stock_info.repository import StockInfoRepository
 from infrastructure.database.models.stock_info import StockInfoDB
 from infrastructure.database.models.tech_kline import TechKlineDailyDB
-from infrastructure.database.models.fin_daily_basic import FinDailyBasicDB
-from infrastructure.database.models.fin_report import FinReportDB
 
 
 class StockRepoImpl:
@@ -253,180 +255,6 @@ class StockRepoImpl:
         total = (await self._session.execute(count_stmt)).scalar_one()
         return [self._to_entity(r) for r in rows], int(total)
 
-    async def list_with_kline_stats_paginated(
-        self,
-        q: Optional[str] = None,
-        industry: Optional[str] = None,
-        market: Optional[str] = None,
-        exchange: Optional[str] = None,
-        is_hs: Optional[str] = None,
-        list_status: Optional[str] = None,
-        exclude_st: Optional[bool] = None,
-        min_total_mv: Optional[float] = None,
-        page: int = 1,
-        page_size: int = 20,
-    ) -> tuple[list[dict], int]:
-        """分页 + 多维筛选 + K线统计 + 最新估值（前端主列表用）"""
-
-        # 子查询：每只股票在 fin_daily_basics 中最新 trade_date
-        latest_date_sq = (
-            select(
-                FinDailyBasicDB.symbol,
-                func.max(FinDailyBasicDB.trade_date).label("max_date"),
-            )
-            .group_by(FinDailyBasicDB.symbol)
-            .subquery("latest_date")
-        )
-
-        # 子查询：用 max_date 取对应行的 close / total_mv / pe_ttm
-        latest_basic_sq = (
-            select(
-                FinDailyBasicDB.symbol,
-                FinDailyBasicDB.close.label("latest_close"),
-                FinDailyBasicDB.total_mv,
-                FinDailyBasicDB.pe_ttm,
-            )
-            .join(
-                latest_date_sq,
-                and_(
-                    FinDailyBasicDB.symbol == latest_date_sq.c.symbol,
-                    FinDailyBasicDB.trade_date == latest_date_sq.c.max_date,
-                ),
-            )
-            .subquery("latest_basic")
-        )
-
-        # 子查询：每只股票最新一期财报的净利润率 (n_income / revenue)
-        latest_report_date_sq = (
-            select(
-                FinReportDB.symbol,
-                func.max(FinReportDB.end_date).label("max_end_date"),
-            )
-            .where(FinReportDB.report_type == "1")
-            .group_by(FinReportDB.symbol)
-            .subquery("latest_report_date")
-        )
-        latest_report_sq = (
-            select(
-                FinReportDB.symbol,
-                (FinReportDB.n_income / func.nullif(FinReportDB.revenue, 0) * 100).label("profit_margin"),
-            )
-            .join(
-                latest_report_date_sq,
-                and_(
-                    FinReportDB.symbol == latest_report_date_sq.c.symbol,
-                    FinReportDB.end_date == latest_report_date_sq.c.max_end_date,
-                    FinReportDB.report_type == "1",
-                ),
-            )
-            .subquery("latest_report")
-        )
-
-        stmt = (
-            select(
-                StockInfoDB.symbol,
-                StockInfoDB.ts_code,
-                StockInfoDB.name,
-                StockInfoDB.area,
-                StockInfoDB.industry,
-                StockInfoDB.market,
-                StockInfoDB.exchange,
-                StockInfoDB.list_date,
-                StockInfoDB.list_status,
-                StockInfoDB.is_hs,
-                StockInfoDB.act_name,
-                StockInfoDB.act_ent_type,
-                StockInfoDB.total_shares,
-                func.count(TechKlineDailyDB.id).label("record_count"),
-                func.min(TechKlineDailyDB.date).label("kline_start"),
-                func.max(TechKlineDailyDB.date).label("kline_end"),
-                latest_basic_sq.c.latest_close,
-                latest_basic_sq.c.total_mv,
-                latest_basic_sq.c.pe_ttm,
-                latest_report_sq.c.profit_margin,
-            )
-            .outerjoin(TechKlineDailyDB, StockInfoDB.symbol == TechKlineDailyDB.symbol)
-            .outerjoin(latest_basic_sq, StockInfoDB.symbol == latest_basic_sq.c.symbol)
-            .outerjoin(latest_report_sq, StockInfoDB.symbol == latest_report_sq.c.symbol)
-            .group_by(StockInfoDB.id, latest_basic_sq.c.latest_close, latest_basic_sq.c.total_mv, latest_basic_sq.c.pe_ttm, latest_report_sq.c.profit_margin)
-        )
-        count_stmt = select(func.count()).select_from(StockInfoDB)
-
-        conditions = []
-        if q:
-            like = f"%{q}%"
-            conditions.append(
-                or_(
-                    StockInfoDB.symbol.ilike(like),
-                    StockInfoDB.name.ilike(like),
-                    StockInfoDB.ts_code.ilike(like),
-                )
-            )
-        if industry:
-            conditions.append(StockInfoDB.industry == industry)
-        if market:
-            conditions.append(StockInfoDB.market == market)
-        if exchange:
-            conditions.append(StockInfoDB.exchange == exchange)
-        if is_hs:
-            conditions.append(StockInfoDB.is_hs == is_hs)
-        if list_status:
-            conditions.append(StockInfoDB.list_status == list_status)
-        if exclude_st is True:
-            conditions.append(~StockInfoDB.name.ilike("%ST%"))
-        elif exclude_st is False:
-            conditions.append(StockInfoDB.name.ilike("%ST%"))
-
-        if conditions:
-            stmt = stmt.where(and_(*conditions))
-            count_stmt = count_stmt.where(and_(*conditions))
-
-        # min_total_mv 需要在 JOIN 之后用 HAVING 过滤（来自子查询列）
-        if min_total_mv is not None:
-            stmt = stmt.having(latest_basic_sq.c.total_mv >= min_total_mv)
-            # count 也需要关联 latest_basic_sq 来过滤
-            count_stmt = (
-                count_stmt
-                .outerjoin(latest_basic_sq, StockInfoDB.symbol == latest_basic_sq.c.symbol)
-                .where(latest_basic_sq.c.total_mv >= min_total_mv)
-            )
-
-        stmt = (
-            stmt.order_by(StockInfoDB.symbol)
-            .limit(page_size)
-            .offset((page - 1) * page_size)
-        )
-
-        rows = (await self._session.execute(stmt)).all()
-        total = (await self._session.execute(count_stmt)).scalar_one()
-
-        items = [
-            {
-                "symbol":        r.symbol,
-                "ts_code":       r.ts_code,
-                "name":          r.name,
-                "area":          r.area,
-                "industry":      r.industry,
-                "market":        r.market,
-                "exchange":      r.exchange,
-                "list_date":     _fmt_yyyymmdd(r.list_date),
-                "list_status":   r.list_status,
-                "is_hs":         r.is_hs,
-                "act_name":      r.act_name,
-                "act_ent_type":  r.act_ent_type,
-                "total_shares":  r.total_shares,
-                "record_count":  r.record_count,
-                "kline_start":   r.kline_start,
-                "kline_end":     r.kline_end,
-                "latest_close":  r.latest_close,
-                "total_mv":      r.total_mv,
-                "pe_ttm":        r.pe_ttm,
-                "profit_margin": round(r.profit_margin, 2) if r.profit_margin is not None else None,
-            }
-            for r in rows
-        ]
-        return items, int(total)
-
     async def distinct_meta(self) -> dict[str, list[str]]:
         """获取 industry / market / exchange 的去重值"""
 
@@ -440,12 +268,6 @@ class StockRepoImpl:
             "markets":    await _distinct_values(StockInfoDB.market),
             "exchanges":  await _distinct_values(StockInfoDB.exchange),
         }
-
-
-def _fmt_yyyymmdd(d) -> Optional[str]:
-    if d is None:
-        return None
-    return d.strftime("%Y%m%d")
 
 
 StockRepoImpl.__implements_protocol__ = StockInfoRepository

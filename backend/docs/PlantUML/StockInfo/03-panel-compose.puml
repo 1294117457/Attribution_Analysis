@@ -1,6 +1,6 @@
-@startuml StockPanel_DataFlow
+@startuml StockPanel_Compose_DataFlow
 
-title StockPanel 列表数据流 — 四层 + 来源表
+title StockPanel 面板组合数据流 — 四层 + 来源表
 
 left to right direction
 
@@ -9,114 +9,161 @@ skinparam classAttributeIconSize 0
 skinparam classFontSize 11
 skinparam packageFontSize 13
 
-' ════════════════════════════════════════════════
-'  第一行：四层模型层（请求 → 仓储 → 领域 → 应用）
-' ════════════════════════════════════════════════
+' ═══════════════════════════════════════════════════════════════════════════
+'  StockPanel 面板组合查询 — 四层数据流图
+'  统一设计文档：docs/dev/05listn1/README.md
+'  详细设计说明：docs/dev/05listn1/03-panel-compose-design.md
+'
+'  修正要点（对照原始设计 B）：
+'  ① Page[T] 字段从 list/pageNum/pageSize 改为 items/total/page/page_size/pages
+'     —— 与前端 PaginatedResponse<T> 对齐
+'  ② 新增 PoolMembershipVO（pool_id/name/pool_type/joined_at），
+'     内嵌到 StockPanelItemVO.pools 字段（with_pools=True 时填充）
+'  ③ StockPanelRow 归属 domain/panel/，不属于任何单一聚合根
+'  ④ 去除 PoolMembershipVO ..> Page 的错误箭头（PoolMembershipVO 非 T 参数）
+' ═══════════════════════════════════════════════════════════════════════════
+
+' ═══════════════════════════════════════════════════════════════════════════
+'  第一行：模型层（4 个子 package，横向线性）
+' ═══════════════════════════════════════════════════════════════════════════
 package "▌ 模型层" {
 
+  ' ── ① 请求层 ─────────────────────────────────────
   package "① 请求层" {
     class StockPanelQueryRequest <<NEW>> {
-      + q : str?
-      + industry : str?
-      + market : str?
-      + exchange : str?
-      + is_hs : str?
-      + list_status : str = "L"
-      + exclude_st : bool?
-      + min_total_mv : float?
-      + pageNum : int = 1
-      + pageSize : int = 20
+      + q : Optional[str]
+      + industry : Optional[str]
+      + market : Optional[str]
+      + exchange : Optional[str]
+      + is_hs : Optional[str]
+      + list_status : Optional[str] = "L"
+      + exclude_st : Optional[bool]
+      + min_total_mv : Optional[float]
+      + with_pools : bool = False
+      + page : int = 1
+      + page_size : int = 20
     }
-
-    note bottom of StockPanelQueryRequest
-      前端 → 后端
-    end note
   }
 
+  ' ── ② 仓储层 ─────────────────────────────────────
   package "② 仓储层" {
     class StockPanelComposeRepository <<Protocol, NEW>> {
-      + list_paginated(...) :
-          tuple[list[StockPanelRow], int]
+      + list_paginated(
+      +   q, industry, market, exchange,
+      +   is_hs, list_status, exclude_st,
+      +   min_total_mv, with_pools,
+      +   page, page_size
+      + )
+      +   : tuple[list[StockPanelRow], int]
+      + list_membership_by_symbols(symbols)
+      +   : dict[symbol, list[PoolMembershipVO]]
     }
-
-    note bottom of StockPanelComposeRepository
-      领域层 Protocol
-      基础设施实现：
-      StockPanelComposeRepoImpl
-    end note
   }
 
+  ' ── ③ 领域层 ─────────────────────────────────────
   package "③ 领域层" {
     class StockPanelRow <<值对象, NEW, frozen>> {
+      ' ── stock_infos ────────────────────────────────
       + symbol : str
-      + ts_code : str?
-      + name : str?
-      + area : str?
-      + industry : str?
-      + market : str?
-      + exchange : str?
-      + list_date : str?
-      + list_status : str?
-      + is_hs : str?
-      + act_name : str?
-      + act_ent_type : str?
-      + total_shares : int?
+      + ts_code : Optional[str]
+      + name : Optional[str]
+      + area : Optional[str]
+      + industry : Optional[str]
+      + market : Optional[str]
+      + exchange : Optional[str]
+      + list_date : Optional[str]
+      + list_status : Optional[str]
+      + is_hs : Optional[str]
+      + act_name : Optional[str]
+      + act_ent_type : Optional[str]
+      + total_shares : Optional[int]
+      ' ── tech_kline_dailys（聚合）────────────────
       + record_count : int
-      + kline_start : date?
-      + kline_end : date?
-      + latest_close : float?
-      + total_mv : float?
-      + pe_ttm : float?
-      + profit_margin : float?
+      + kline_start : Optional[date]
+      + kline_end : Optional[date]
+      ' ── fin_daily_basics（最新一行）───────────────
+      + latest_close : Optional[float]
+      + total_mv : Optional[float]
+      + pe_ttm : Optional[float]
+      ' ── fin_reports（最新一期）───────────────────
+      + profit_margin : Optional[float]
     }
-
-    note bottom of StockPanelRow
-      4 表 JOIN + 聚合的投影
-      不可变，不属于任何聚合根
-    end note
   }
 
+  ' ── ④ 应用层 ─────────────────────────────────────
   package "④ 应用层" {
-    class "Page[T]\n<<Generic, NEW>>" as Page {
-      + list : List[T]
+
+    class "Page[T]\n<<Generic, NEW>>" as Page #C8E6C9 {
+      + items : List[T]
       + total : int
-      + pageNum : int
-      + pageSize : int
+      + page : int
+      + page_size : int
       + pages : int
       --
-      + from_list_to_page(items,
-                          total,
-                          page_num,
-                          page_size) : Page[T]
+      + from_list(items, total,
+                  page_num, page_size)
+        : Page[T]
     }
 
     class StockPanelItemVO <<NEW>> {
-      -- 与 StockPanelRow 字段 1:1 --
-      + symbol, ts_code, name
-      + area, industry, market, exchange
-      + list_date, list_status, is_hs
-      + act_name, act_ent_type
-      + total_shares
-      + record_count
-      + kline_start, kline_end
-      + latest_close, total_mv, pe_ttm
-      + profit_margin
+      ' ── stock_infos ────────────────────────────────
+      + symbol : str
+      + ts_code : Optional[str]
+      + name : Optional[str]
+      + area : Optional[str]
+      + industry : Optional[str]
+      + market : Optional[str]
+      + exchange : Optional[str]
+      + list_date : Optional[str]
+      + list_status : Optional[str]
+      + is_hs : Optional[str]
+      + act_name : Optional[str]
+      + act_ent_type : Optional[str]
+      + total_shares : Optional[int]
+      ' ── tech_kline_dailys ────────────────────────
+      + record_count : int
+      + kline_start : Optional[date]
+      + kline_end : Optional[date]
+      ' ── fin_daily_basics ────────────────────────
+      + latest_close : Optional[float]
+      + total_mv : Optional[float]
+      + pe_ttm : Optional[float]
+      ' ── fin_reports ──────────────────────────────
+      + profit_margin : Optional[float]
+      ' ── stock_pool_members ⨝ stock_pools ─────
+      + pools : list[PoolMembershipVO] = []
     }
 
-    class StockPanelListVO <<NEW>> {
+    class StockPanelListVO <<NEW>> #C8E6C9 {
       __ extends Page[StockPanelItemVO] __
       无新增字段
     }
 
+    class PoolMembershipVO <<NEW>> #C8E6C9 {
+      + pool_id : int
+      + name : str
+      + pool_type : str
+      + joined_at : Optional[str] = None
+    }
+
     Page <|-- StockPanelListVO : <<继承>>
     StockPanelItemVO ..> Page : <<T 参数>>
+    StockPanelItemVO --> PoolMembershipVO : <<pools>>
   }
 
 }
 
-' ════════════════════════════════════════════════
-'  第二行：四张来源表（横向排列）
-' ════════════════════════════════════════════════
+' ─────────────────────────────────────────────────────────────────
+'  线性依赖（第一行内）
+' ─────────────────────────────────────────────────────────────────
+StockPanelQueryRequest       --> StockPanelComposeRepository
+StockPanelComposeRepository ..> StockPanelRow      : <<产出>>
+StockPanelRow               --> StockPanelItemVO   : <<1:1 字段映射>>
+
+
+' ═══════════════════════════════════════════════════════════════════════════
+'  第二行：来源表（4 张表，横向排列）
+' ═══════════════════════════════════════════════════════════════════════════
 package "▌ 来源表" {
 
   left to right direction
@@ -128,29 +175,37 @@ package "▌ 来源表" {
   class "stock_infos" as T1 #E0E0E0 {
     + symbol {PK}
     + name
-    + industry, market, exchange
+    + industry
+    + market
+    + exchange
     + area
-    + list_date, list_status
-    + is_hs, total_shares
-    + act_name, act_ent_type
     + ts_code
+    + list_date
+    + list_status
+    + is_hs
+    + total_shares
+    + act_name
+    + act_ent_type
   }
 
   class "tech_kline_dailys" as T2 #E0E0E0 {
     + symbol {FK}
     + date
-    + open, high, low, close
-    -- 聚合取 COUNT/MIN/MAX --
-    + record_count
-    + kline_start
-    + kline_end
+    + open
+    + high
+    + low
+    + close
+    ' ── 聚合列（COUNT / MIN / MAX）──
+    + record_count = COUNT(*)
+    + kline_start = MIN(date)
+    + kline_end = MAX(date)
   }
 
   class "fin_daily_basics" as T3 #E0E0E0 {
     + symbol {FK}
     + trade_date
-    -- 聚合取最新一行 --
-    + close
+    ' ── 子查询：取每只股票最新一行 ─
+    + close : latest_close
     + total_mv
     + pe_ttm
   }
@@ -158,43 +213,46 @@ package "▌ 来源表" {
   class "fin_reports" as T4 #E0E0E0 {
     + symbol {FK}
     + end_date
+    + report_type
     + n_income
     + revenue
-    -- 计算字段 --
-    + profit_margin
-      = n_income / revenue × 100
+    ' ── 子查询：取最新一期（report_type=1）──
+    ' ── profit_margin = n_income / revenue × 100 ─
   }
 
 }
 
-' ─────────────────────────────────────────────
-'  线性依赖箭头（关系细节见便签）
-' ─────────────────────────────────────────────
-
-StockPanelQueryRequest --> StockPanelComposeRepository
-StockPanelComposeRepository ..> StockPanelRow : <<产出>>
-StockPanelRow --> StockPanelItemVO : <<1:1 字段映射>>
-
+' ─────────────────────────────────────────────────────────────────
+'  StockPanelRow 与来源表的关系（在便签中说明，不单独画线）
+' ─────────────────────────────────────────────────────────────────
 StockPanelRow ..> T1
 StockPanelRow ..> T2
 StockPanelRow ..> T3
 StockPanelRow ..> T4
 
-' ─────────────────────────────────────────────
-'  关系说明便签
-' ─────────────────────────────────────────────
+
+' ═══════════════════════════════════════════════════════════════════════════
+'  关系便签 N_src（符合规范 §7：最多 2 个便签）
+' ═══════════════════════════════════════════════════════════════════════════
 note as N_src
   <b>StockPanelRow 由 4 张表组装：</b>
-  • stock_infos       → 组合（基本信息）
-  • tech_kline_dailys → 聚合（COUNT / MIN / MAX）
-  • fin_daily_basics  → 最新一行
-  • fin_reports       → 最新一期（profit_margin = n_income / revenue × 100）
+  • stock_infos           → 组合（基本信息 13 字段）
+  • tech_kline_dailys      → 聚合（COUNT / MIN / MAX）
+  • fin_daily_basics       → 最新一行（子查询 MAX trade_date）
+  • fin_reports            → 最新一期
+                             （子查询 MAX end_date，report_type=1，
+                              profit_margin = n_income / revenue × 100）
   ────────────────
   <b>StockPanelAppService.query_panels(req)</b>
-  ① repo.list_paginated(req) → (list[StockPanelRow], int)
-  ② items = [_to_vo(r) for r in rows] → list[StockPanelItemVO]
-  ③ StockPanelListVO.from_list_to_page(items, total,
-       req.pageNum, req.pageSize) → StockPanelListVO
+  ① rows, total = repo.list_paginated(req)
+                            ← 1× SQL（4 表 JOIN）
+  ② 若 req.with_pools:
+       pool_map = repo.list_membership_by_symbols(symbols)
+                            ← 1× SQL（批量反向）
+  ③ items = [_to_vo(r, pools) for r in rows]
+  ④ StockPanelListVO.from_list(
+       items, total, req.page, req.page_size
+     )
 end note
 
 

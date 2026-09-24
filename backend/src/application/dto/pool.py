@@ -9,6 +9,28 @@ from pydantic import BaseModel, Field
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# 通用 DTO
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class PoolMembershipVO(BaseModel):
+    """池成员关系 DTO（列表 / 详情通用）
+
+    统一放置于 pool DTO 模块，供以下场景复用：
+    - StockQueryItemResponse.pools（列表 with_pools=True）
+    - StockAnalysisResponse.pools（详情分析页）
+
+    字段对齐前后端命名规范，与前端 PoolMembership 接口对应。
+    """
+    pool_id: int
+    name: str
+    pool_type: str
+    joined_at: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # 请求 DTO
 # ═══════════════════════════════════════════════════════════════════════════════
 

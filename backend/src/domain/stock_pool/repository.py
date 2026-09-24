@@ -1,4 +1,8 @@
-"""操作池 - 仓储接口"""
+"""操作池 - 仓储接口
+
+list_membership_by_symbols 已迁移至 domain.panel.repository.StockPanelComposeRepository，
+由面板组合仓储统一提供（让"列表快照 + 池反查"在同一组合仓储中编排）。
+"""
 
 from __future__ import annotations
 
@@ -65,7 +69,7 @@ class StockPoolRepository(Protocol):
 
     async def count_members(self, pool_id: int) -> int: ...
 
-    # ── 反向查询 ─────────────────────────────────────────────────────────────
+    # ── 反向查询（单股）──────────────────────────────────────────────────────
 
     async def find_pools_by_symbol(self, symbol: str) -> list[StockPool]: ...
 
