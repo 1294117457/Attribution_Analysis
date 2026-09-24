@@ -38,15 +38,4 @@ class StockInfoRepository(Protocol):
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[StockInfo], int]: ...
-    async def list_with_kline_stats_paginated(
-        self,
-        q: Optional[str] = None,
-        industry: Optional[str] = None,
-        market: Optional[str] = None,
-        exchange: Optional[str] = None,
-        is_hs: Optional[str] = None,
-        list_status: Optional[str] = None,
-        page: int = 1,
-        page_size: int = 20,
-    ) -> tuple[list[dict], int]: ...
     async def distinct_meta(self) -> dict[str, list[str]]: ...

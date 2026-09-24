@@ -1,14 +1,24 @@
 @startuml StockInfo_N1_Fix
 
+title StockInfo N+1 修复 — 跨层类图修改概览
+
+left to right direction
+
 skinparam linetype ortho
 skinparam classAttributeIconSize 0
-skinparam packageStyle rectangle
-skinparam classFontSize 13
-skinparam packageFontSize 14
+skinparam classFontSize 12
+skinparam packageFontSize 13
 
 ' ═══════════════════════════════════════════════════════════════════════════
-'  StockInfo N+1 优化 — 围绕 StockInfo 聚合根的类设计
+'  StockInfo N+1 优化 — 阶段一：with_pools 参数 + 批量反向查询
 '  主题：将"列表 + N 次反向查询池"合并为单次请求返回
+'  统一设计文档：docs/dev/05listn1/README.md
+'  设计演进：02-modification.md → 05listn1/README.md（统一）
+'
+'  修正要点：
+'  ① 去除原设计 B 中"复用 PoolVO"的方案，统一新增 PoolMembershipVO
+'  ② PoolMembershipVO 字段补 join_at，部署于 application/dto/pool.py
+'  ③ StockPoolBrief 设计定义后决定不实施（统一设计文档达成）
 ' ═══════════════════════════════════════════════════════════════════════════
 
 legend right
@@ -26,20 +36,31 @@ package "持久层 (Persistence / ORM)" #ECEFF1 {
 
   class StockInfoDB <<UNCHANGED>> #E0E0E0 {
     + symbol {PK}
-    + name, industry, market ...
-    + list_date, list_status ...
+    + name
+    + industry
+    + market
+    + list_date
+    + list_status
+    + is_hs
+    + total_shares
+    + act_name
+    + act_ent_type
   }
 
   class StockPoolDB <<UNCHANGED>> #E0E0E0 {
     + id {PK}
-    + name, pool_type ...
-    + is_default, is_archived ...
+    + name
+    + pool_type
+    + is_default
+    + is_archived
   }
 
   class StockPoolMemberDB <<UNCHANGED>> #E0E0E0 {
     + pool_id {PK,FK}
     + symbol {PK,FK}
-    + memo, sort_order, added_at
+    + memo
+    + sort_order
+    + added_at
   }
 
 }
@@ -49,62 +70,143 @@ StockInfoDB "1" --o "0..*" StockPoolMemberDB : symbol
 
 
 ' ═══════════════════════════════════════════════════════════════════════════
-'  2. 领域层 — StockInfo 聚合根不变，仅新增值对象
+'  2. 领域层 — 聚合根 + 仓储协议
 ' ═══════════════════════════════════════════════════════════════════════════
 package "领域层 (Domain)" #F5F5DC {
 
-  ' ── StockInfo 聚合根 ──────────────────────────────────
   class StockInfo <<聚合根, UNCHANGED>> #E0E0E0 {
     + symbol
     + name
     + industry : Industry?
     + market : Market?
     --
-    to_dict / create
+    to_dict() : dict
+    create() : StockInfo
   }
 
   class StockPool <<聚合根, UNCHANGED>> #E0E0E0 {
-    + id, name
+    + id
+    + name
     + pool_type : PoolType
-    + is_default, is_archived
+    + is_default
+    + is_archived
   }
 
-  ' ── 新增：StockPoolBrief 值对象 ──────────────────────────
-  class StockPoolBrief <<值对象, NEW>> #C8E6C9 {
+  class StockInfoRepository <<UNCHANGED>> #E0E0E0 {
+    + list_with_kline_stats_paginated(
+    +   q, industry, market, exchange,
+    +   is_hs, list_status, exclude_st,
+    +   min_total_mv, page, page_size
+    + )
+  }
+
+  class StockPoolRepository <<Protocol, CHANGED>> #FFE0B2 {
+    + find_pools_by_symbol(symbol)
+    +   : list[StockPool]
+    + list_membership_by_symbols(symbols)  ' 🆕
+    +   : dict[symbol, list[PoolMembershipVO]]
+  }
+
+  StockInfoRepository ..> StockInfo
+  StockPoolRepository ..> StockPool
+}
+
+
+' ═══════════════════════════════════════════════════════════════════════════
+'  3. DTO 层 — 新增 PoolMembershipVO（统一放置于 pool DTO 模块）
+' ═══════════════════════════════════════════════════════════════════════════
+package "DTO 层 (API Boundary)" #FFF3E0 {
+
+  class "Page[T]\n<<Generic>>" as Page <<NEW>> #C8E6C9 {
+    + items : List[T]
+    + total : int
+    + page : int
+    + page_size : int
+    + pages : int
+    --
+    + from_list(items, total,
+                page_num, page_size)
+      : Page[T]
+  }
+
+  class PoolMembershipVO <<NEW>> #C8E6C9 {
     + pool_id : int
     + name : str
     + pool_type : str
+    + joined_at : Optional[str] = None
     --
-    __ 用于列表场景的轻量快照 __
-    __ 不包含 members / color / icon __
+    __ 池成员关系 DTO，列表/详情通用 __
+    __ 字段对齐前后端命名规范 __
+    __ 部署：application/dto/pool.py __
   }
 
+  class StockQueryRequest <<CHANGED>> #FFE0B2 {
+    + q : Optional[str]
+    + industry : Optional[str]
+    + market : Optional[str]
+    + exchange : Optional[str]
+    + is_hs : Optional[str]
+    + list_status : Optional[str]
+    + exclude_st : Optional[bool]
+    + min_total_mv : Optional[float]
+    + with_pools : bool = False    ' 🆕 新增参数
+    + page : int = 1
+    + page_size : int = 20
+  }
+
+  class StockQueryItemResponse <<CHANGED>> #FFE0B2 {
+    + symbol : str
+    + ts_code : Optional[str]
+    + name : Optional[str]
+    + industry : Optional[str]
+    + market : Optional[str]
+    + exchange : Optional[str]
+    + list_date : Optional[str]
+    + list_status : Optional[str]
+    + is_hs : Optional[str]
+    + act_name : Optional[str]
+    + act_ent_type : Optional[str]
+    + total_shares : Optional[int]
+    + record_count : int
+    + kline_start : Optional[str]
+    + kline_end : Optional[str]
+    + latest_close : Optional[float]
+    + total_mv : Optional[float]
+    + pe_ttm : Optional[float]
+    + profit_margin : Optional[float]
+    + pools : list[PoolMembershipVO] = []  ' 🆕 新增字段
+  }
+
+  class StockQueryResponse <<UNCHANGED>> #E0E0E0 {
+    + total : int
+    + page : int
+    + page_size : int
+    + items : list[StockQueryItemResponse]
+  }
+
+  StockQueryItemResponse "1" *-- "0..*" PoolMembershipVO : pools >
+  StockQueryResponse   "1" *-- "1..*" StockQueryItemResponse : items >
+
+  note bottom of PoolMembershipVO
+    统一放置于 application/dto/pool.py
+    不重复定义在 stock.py / panel.py 中
+  end note
 }
 
-StockInfo ..> StockPoolBrief : <<查询时附带>>
-StockPool ..> StockPoolBrief : <<投影/降维>>
-
 
 ' ═══════════════════════════════════════════════════════════════════════════
-'  3. 仓储层 — 新增批量反向查询方法
+'  4. 仓储实现层（Infra）— 新增批量反向查询实现
 ' ═══════════════════════════════════════════════════════════════════════════
-package "仓储层 (Repository)" #F3E5F5 {
-
-  class StockInfoRepository <<UNCHANGED>> #E0E0E0 {
-    + list_with_kline_stats_paginated() : tuple[list[dict], int]
-  }
-
-  class StockPoolRepository <<CHANGED>> #FFE0B2 {
-    + find_pools_by_symbol(symbol) : list[StockPool]  <<旧, 保留>>
-    + list_membership_by_symbols(symbols) <<新>>
-      : dict[symbol, list[StockPoolBrief]]
-  }
+package "仓储实现层 (Infra / Repository Impl)" #F3E5F5 {
 
   class StockRepoImpl <<UNCHANGED>> #E0E0E0
   class PoolRepoImpl <<CHANGED>> #FFE0B2 {
-    + 实现 list_membership_by_symbols
-    __ 用 symbol IN (:symbols) + is_archived=False __
-    __ 单次 SQL 返回全部映射 __
+    + list_membership_by_symbols(symbols)
+        : dict[symbol, list[PoolMembershipVO]]
+    --
+    __ WHERE symbol IN (:symbols) __
+    __ AND is_archived = false __
+    __ ORDER BY is_default DESC, updated_at DESC __
   }
 
   StockInfoRepository <|.. StockRepoImpl
@@ -118,100 +220,95 @@ PoolRepoImpl ..> StockPoolDB
 
 
 ' ═══════════════════════════════════════════════════════════════════════════
-'  4. 应用服务层 — 编排合并逻辑
+'  5. 应用服务层 — 注入 pool_repo，编排合并
 ' ═══════════════════════════════════════════════════════════════════════════
 package "应用服务 (Application)" #E3F2FD {
 
   class StockAppService <<CHANGED>> #FFE0B2 {
+    - _repo : StockInfoRepository
+    - _pool_repo : StockPoolRepository   ' 🆕 新依赖
+    --
     + query_stocks(request)
-    __ 1) repo.list_with_kline_stats_paginated() __
-    __ 2) 若 with_pools=True: __
-    __    pool_repo.list_membership_by_symbols() __
-    __ 3) 合并 pools 到每个 stock item __
+      : StockQueryResponse
   }
 
   class StockPoolAppService <<UNCHANGED>> #E0E0E0 {
-    + find_pools_by_symbol() <<保留, 给详情页用>>
+    + find_pools_by_symbol(symbol)
+      : list[StockPool]
   }
 
   StockAppService --> StockRepoImpl
   StockAppService --> PoolRepoImpl : <<新依赖>>
   StockPoolAppService --> PoolRepoImpl
 
+  note bottom of StockAppService
+    query_stocks(req) 伪代码：
+    ① rows, total = await repo.list_with_kline_stats_paginated(...)
+    ② 若 req.with_pools:
+         pool_map = await _pool_repo.list_membership_by_symbols(
+                       [r["symbol"] for r in rows]
+                    )
+    ③ items = [StockQueryItemResponse(**r, pools=pool_map.get(r["symbol"], []))
+                for r in rows]
+    ④ return StockQueryResponse(total, page, page_size, items)
+  end note
 }
 
 
 ' ═══════════════════════════════════════════════════════════════════════════
-'  5. DTO 层 — 新增轻量 VO + 修改 StockQueryItemResponse
-' ═══════════════════════════════════════════════════════════════════════════
-package "DTO 层 (API Boundary)" #FFF3E0 {
-
-  class PoolMembershipVO <<NEW>> #C8E6C9 {
-    + pool_id : int
-    + name : str
-    + pool_type : str
-    __ 列表展示专用, 不含 color/icon __
-  }
-
-  class StockQueryRequest <<CHANGED>> #FFE0B2 {
-    + q, industry, market ...
-    + with_pools : bool = False <<新参数>>
-  }
-
-  class StockQueryItemResponse <<CHANGED>> #FFE0B2 {
-    + symbol, name, industry ...
-    + latest_close, total_mv, pe_ttm ...
-    + pools : list[PoolMembershipVO] <<新字段>>
-    __ 默认空列表, with_pools=True 时填充 __
-  }
-
-  class StockQueryResponse <<UNCHANGED>> #E0E0E0 {
-    + total
-    + items : list[StockQueryItemResponse]
-  }
-
-  StockQueryItemResponse "1" *-- "0..*" PoolMembershipVO
-
-}
-
-
-' ═══════════════════════════════════════════════════════════════════════════
-'  6. 路由层 — 新增 query 参数
+'  6. 路由层 — 新增 with_pools query 参数
 ' ═══════════════════════════════════════════════════════════════════════════
 package "路由层 (Route)" #FCE4EC {
 
   class GET_Stocks <<CHANGED>> #FFE0B2 {
-    GET /api/v1/stocks/
-    + with_pools : bool = False <<新 query 参数>>
+    + GET /api/v1/stocks/
+    +   q, industry, market, exchange
+    +   is_hs, list_status, exclude_st
+    +   min_total_mv
+    +   with_pools : bool = False    ' 🆕 新增参数
+    +   page, page_size
+    --
+    __ 默认 false，向后兼容 __
   }
 
   class GET_PoolsBySymbol <<UNCHANGED>> #E0E0E0 {
-    GET /api/v1/pools/by-symbol/{symbol}
-    __ 单股查询保留, 详情页/其他场景用 __
+    + GET /api/v1/pools/by-symbol/{symbol}
+    --
+    __ 保留：详情页 / 其他场景 __
   }
 
 }
 
 
 ' ═══════════════════════════════════════════════════════════════════════════
-'  7. 调用对比（前后 HTTP 数）— 用类图节点表示，不混用 actor/boundary
+'  7. 调用对比（Before vs After）
 ' ═══════════════════════════════════════════════════════════════════════════
 package "调用对比 (Before vs After)" #FAFAFA {
 
   class "Frontend\n(StockInfoList.vue)" as FE <<UI>> #E0E0E0 {
-    + 列表 + 池信息展示
+    + 列表展示
+    + 池信息展示
   }
 
-  class "Before: 21 HTTP / 页" as Before <<OLD>> #FFCDD2 {
+  class "Before : 23 HTTP / 页" as Before <<OLD>> #FFCDD2 {
     + 1× GET /stocks/?page=1&page_size=20
+    + 1× GET /stocks/meta
+    + 1× GET /pools?limit=100
     + 20× GET /pools/by-symbol/{symbol}
-    __ 每个 symbol 一次反向查询 __
+    --
+    __ Promise.all(symbols.map(...)) __
+    __ 典型 N+1 反模式 __
   }
 
-  class "After: 1 HTTP / 页" as After <<NEW>> #C8E6C9 {
+  class "After : 3 HTTP / 页" as After <<NEW>> #C8E6C9 {
     + 1× GET /stocks/?page=1&page_size=20&with_pools=true
-    __ 单次响应, items[].pools 已含池信息 __
+    + 1× GET /stocks/meta
+    --
+    __ pools 已内嵌在 items[].pools 中 __
   }
+
+  Before --> StockAppService : <<旧路径>>
+  After  --> StockAppService : <<新路径>>
 
 }
 
@@ -222,14 +319,11 @@ FE --> After
 ' ═══════════════════════════════════════════════════════════════════════════
 '  关系汇总
 ' ═══════════════════════════════════════════════════════════════════════════
-StockAppService ..> StockQueryRequest : <<读取 with_pools>>
-StockAppService ..> StockQueryItemResponse : <<构造>>
-StockAppService ..> PoolMembershipVO : <<组装>>
-GET_Stocks --> StockAppService
+GET_Stocks        --> StockAppService
 GET_PoolsBySymbol --> StockPoolAppService
 
-' 领域依赖
-StockAppService ..> StockInfo : <<返回领域层数据>>
-StockPoolBrief ..> StockPool : <<投影>>
+StockAppService ..> StockQueryRequest       : <<读取>>
+StockAppService ..> StockQueryItemResponse  : <<构造>>
+StockAppService ..> PoolMembershipVO        : <<组装>>
 
 @enduml

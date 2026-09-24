@@ -11,8 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.kline_service import KlineAppService
 from application.dto.kline import KlineCollectRequest
-from domain.kline.schemas import KlineBO
-from infrastructure.collectors.interfaces import CollectParams, FetcherProtocol
+from infrastructure.collectors import get_registry
+from infrastructure.collectors.interfaces import CollectParams
+from infrastructure.collectors.protocols import (
+    DailyBasicFetcher,
+    KlineFetcher,
+    StockBasicFetcher,
+)
 from infrastructure.database.connection import get_db, AsyncSessionLocal
 from infrastructure.database.models.stock_info import StockInfoDB
 from infrastructure.database.models.sys_collect_task import SysCollectTaskDB, SysCollectTaskDetailDB
@@ -22,11 +27,6 @@ from route.schemas import response as R
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/collect", tags=["采集任务"])
-
-
-def _get_tushare_fetcher() -> FetcherProtocol:
-    from infrastructure.collectors.tushare import TushareFetcher
-    return TushareFetcher(KlineBO)
 
 
 # ── POST /collect/tasks — 创建并启动采集任务 ─────────────────
@@ -241,9 +241,9 @@ async def _collect_daily_kline(task_id: int, params: dict):
     else:
         collect_kwargs["days"] = days
 
-    fetcher_pool: asyncio.Queue[FetcherProtocol] = asyncio.Queue()
+    fetcher_pool: asyncio.Queue[KlineFetcher] = asyncio.Queue()
     for _ in range(concurrency):
-        fetcher_pool.put_nowait(_get_tushare_fetcher())
+        fetcher_pool.put_nowait(get_registry().create(KlineFetcher))
 
     sem = asyncio.Semaphore(concurrency)
     success = fail = 0
@@ -347,7 +347,7 @@ async def _collect_daily_basic(task_id: int, params: dict):
         "status": "running", "current": "",
     })
 
-    fetcher = _get_tushare_fetcher()
+    fetcher = get_registry().get(DailyBasicFetcher)
     success = fail = total_saved = 0
     logger.info("估值同步任务 %d 启动: %d 个日期 %s", task_id, len(dates), dates)
 
@@ -402,7 +402,7 @@ async def _collect_stock_basic(task_id: int, params: dict):
     })
 
     try:
-        fetcher = _get_tushare_fetcher()
+        fetcher = get_registry().get(StockBasicFetcher)
         async with AsyncSessionLocal() as session:
             svc = StockAppService(session=session)
             result = await svc.sync_stocks(fetcher, list_status=params.get("list_status", "L"))

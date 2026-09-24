@@ -13,8 +13,8 @@ from application.dto.kline import (
     KlineDeleteRequest,
     KlineQueryRequest,
 )
-from domain.kline.schemas import KlineBO
-from infrastructure.collectors.interfaces import FetcherProtocol
+from infrastructure.collectors import get_registry
+from infrastructure.collectors.protocols import KlineFetcher
 from infrastructure.database.connection import get_db
 from route.schemas import response as R
 
@@ -30,10 +30,9 @@ def get_kline_service(
 
 
 @lru_cache
-def get_kline_fetcher() -> FetcherProtocol:
-    """K 线采集器依赖（单例）— 唯一数据源：Tushare"""
-    from infrastructure.collectors.tushare import TushareFetcher
-    return TushareFetcher(KlineBO)
+def get_kline_fetcher() -> KlineFetcher:
+    """K 线采集器依赖（单例）"""
+    return get_registry().get(KlineFetcher)
 
 
 # ── 查询路由 ──────────────────────────────────────────────
@@ -90,7 +89,7 @@ async def get_kline_by_date(
 async def collect_kline(
     request: KlineCollectRequest,
     service: KlineAppService = Depends(get_kline_service),
-    fetcher: FetcherProtocol = Depends(get_kline_fetcher),
+    fetcher: KlineFetcher = Depends(get_kline_fetcher),
 ):
     """采集并存储K线数据"""
     response = await service.collect(request, fetcher)
@@ -106,7 +105,7 @@ async def collect_batch(
     symbols: list[str] = Query(..., description="股票代码列表"),
     days: int = Query(30, ge=1, le=3650, description="回溯天数"),
     service: KlineAppService = Depends(get_kline_service),
-    fetcher: FetcherProtocol = Depends(get_kline_fetcher),
+    fetcher: KlineFetcher = Depends(get_kline_fetcher),
 ):
     """批量采集多只股票的K线数据"""
     results = await service.collect_batch(symbols, days, fetcher)

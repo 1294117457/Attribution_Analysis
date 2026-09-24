@@ -1,8 +1,12 @@
 """Tushare Pro 数据采集器（ACL 实现）
 
-实现 FetcherProtocol，使用 tushare.pro_api() 拉取数据：
+实现 KlineFetcher / StockBasicFetcher / DailyBasicFetcher 三个小协议
+（通过结构化类型自动满足，无需显式继承）。
+
+使用 tushare.pro_api() 拉取数据：
 - 日线行情（daily）
 - 股票基本信息（stock_basic）
+- 日频估值指标（daily_basic）
 
 环境变量:
 - TUSHARE_TOKEN  (在 .env 中配置，Pydantic-Settings 读取)
@@ -20,7 +24,7 @@ from domain.kline.schemas import KlineBO
 from domain.stock_info.schemas import StockInfoBO
 from domain.fin_daily_basic.schemas import FinDailyBasicBO
 from infrastructure.collectors.base import BaseCollector
-from infrastructure.collectors.interfaces import CollectParams, FetcherProtocol
+from infrastructure.collectors.interfaces import CollectParams
 from infrastructure.collectors.tushare.parser import TushareKlineParser
 
 logger = logging.getLogger(__name__)

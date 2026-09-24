@@ -23,6 +23,7 @@ from application.exceptions import (
     PoolOperationConflictError,
 )
 from infrastructure.config import get_settings
+from infrastructure.collectors.registry import setup_default_registry
 from infrastructure.database.base import Base
 from infrastructure.database.connection import async_engine, close_db
 # ORM 模型导入（仅用于触发模型注册，Base.metadata.create_all 会扫描所有继承 Base 的类）
@@ -53,7 +54,6 @@ from infrastructure.database.models import (                                    
     MktIndexMemberDB,
 )
 from route.api.router import api_router
-from route.api.v1.pool import router as pool_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -76,6 +76,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await _migrate_daily_klines_indicators(conn)
         # 初始化操作池：创建默认池
         await _ensure_default_pool(conn)
+
+    # 注册数据源到采集器注册中心
+    setup_default_registry()
+
     yield
     await close_db()
 
@@ -213,7 +217,6 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(api_router)
-    app.include_router(pool_router)
     return app
 
 
@@ -299,6 +302,15 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=502,
             content={"code": 502, "message": str(exc), "data": None},
+        )
+
+    @app.exception_handler(KeyError)
+    async def registry_not_found(request: Request, exc: KeyError):
+        """注册中心未找到对应的协议实现（通常是启动配置缺失）"""
+        logging.error("数据源未注册: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"code": 503, "message": f"数据源未配置: {exc}", "data": None},
         )
 
     @app.exception_handler(Exception)
