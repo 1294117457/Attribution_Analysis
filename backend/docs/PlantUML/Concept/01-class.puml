@@ -1,0 +1,532 @@
+@startuml Concept_Feature_ClassOverview
+
+title 概念板块（AKShare）— 跨层类图修改概览
+
+left to right direction
+
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam classFontSize 12
+skinparam packageFontSize 13
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  概念板块接入方案（AKShare 数据源）
+'  统一设计文档：docs/dev/06gainian/README.md
+'  详细设计说明：
+'    · 01-domain-design.md                — 领域层（BO/Entity/VO/Repository Protocol）
+'    · 02-infrastructure-design.md         — DB/ORM/Repository/Collector/AKShare Fetcher
+'    · 03-application-and-route-design.md  — DTO/Service/Route/前端
+'
+'  数据治理决策：⭐ 采用「独立聚合」而非「合并到 stock_infos」
+'    理由：
+'    ① 概念是 N:M 关系，与 stock_info 的 1:1 语义冲突
+'    ② 同步周期不同：stock_info（Tushare，低频）vs concept（AKShare，高频）
+'    ③ 数据源不同：避免违反 SRP
+'    ④ 与现有 stock_pools + stock_pool_members 模式 1:1 对齐
+'    ⑤ 查询性能：symbol IN (:symbols) 命中索引，避免全表扫描
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+
+legend right
+  |= 颜色 |= 含义 |
+  | <#C8E6C9>绿 | 新增（NEW） |
+  | <#FFE0B2>橙 | 修改（CHANGED） |
+  | <#E0E0E0>灰 | 不变（UNCHANGED） |
+endlegend
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  1. 持久层（DB / ORM）— 2 张新表
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+package "持久层 (Persistence / ORM)" #ECEFF1 {
+
+  class StockInfoDB <<UNCHANGED>> #E0E0E0 {
+    + symbol {PK}
+    + name
+    + industry      ' ← 1:1 字段，Tushare 低频同步
+    + market
+    + ...
+    --
+    __ 概念通过 stock_concept_members 间接关联，不直接持有 __
+  }
+
+  class "concepts" as ConceptsDB <<NEW>> #C8E6C9 {
+    + id {PK}
+    + name {UQ}      ' ← (name, source) 联合唯一
+    + source         ' ← "em" / "ths"
+    + concept_type   ' ← industry/theme/style/region/event/other
+    + description?
+    + stock_count    ' ← 采集时记录
+    + is_active       ' ← 软删除（FALSE 时保留历史）
+    + first_seen_at  ' ← 不变
+    + last_synced_at ' ← 每次 sync 更新
+    --
+    __ 索引 __
+    ix_concepts_source
+    ix_concepts_active (WHERE is_active=TRUE)
+  }
+
+  class "stock_concept_members" as ConceptMemberDB <<NEW>> #C8E6C9 {
+    + symbol {PK,FK}
+    + concept_id {PK,FK}
+    + joined_at
+    + source
+    --
+    __ 索引 __
+    ix_concept_member_symbol
+    ix_concept_member_concept
+    --
+    __ 注意：symbol 不引用 stock_infos（已退市股票仍保留历史）__
+  }
+
+  StockInfoDB ..> ConceptMemberDB    : <<间接关联>>
+  ConceptsDB  ..> ConceptMemberDB     : <<1:N>>
+}
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  2. 采集层（Collectors / ACL）
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+package "采集层 (Collectors / ACL)" #ECEFF1 {
+
+  ' ── Protocol（已定义于 protocols.py）───────────────────────
+  class ConceptFetcher <<UNCHANGED>> #E0E0E0 {
+    + fetch_concept_list() : list[Any]
+    + fetch_concept_stocks(name) : list[Any]
+    + source_name : str
+  }
+
+  ' ── AKShare 实现 ────────────────────────────────────────
+  class AkShareConceptFetcher <<NEW>> #C8E6C9 {
+    + source_name = "AkShare"
+    + fetch_concept_list() : list[ConceptListBO]
+    + fetch_concept_stocks(name) : list[ConceptStockBO]
+    --
+    + _ensure_ak()                ' 延迟 import
+    + _fetch_with_retry(fn, retries=2)
+    + _parse_list(df) : list[ConceptListBO]  ' 静态
+    + _parse_stocks(df, name) : list[ConceptStockBO]  ' 静态
+    --
+    RETRY_DELAY = 1.0s
+    REQUEST_DELAY = 0.3s
+  }
+
+  class AkShareParser <<NEW>> #C8E6C9 {
+    + parse_list(df) : list[ConceptListBO]
+    + parse_stocks(df, concept_name) : list[ConceptStockBO]
+    --
+    __ 解析东方财富 DataFrame，异常行跳过不中断 __
+  }
+
+  ' ── 同步任务编排 ─────────────────────────────────────────
+  class ConceptSyncOperation <<NEW>> #C8E6C9 {
+    - _repo : ConceptRepository
+    - _fetcher : ConceptFetcher
+    --
+    + sync_all() : ConceptSyncResult
+    - _sync_one(bo) : int
+    --
+    __ 步骤：fetch_concept_list → upsert_concept → fetch_concept_stocks → upsert_members __
+  }
+
+  ' ── 注册中心 ────────────────────────────────────────────
+  class FetcherRegistry <<CHANGED>> #FFE0B2 {
+    + register_factory(ConceptFetcher, AkShareConceptFetcher)
+    + get_fetcher(ConceptFetcher) : ConceptFetcher
+  }
+
+  ConceptFetcher           <|.. AkShareConceptFetcher : <<实现>>
+  AkShareConceptFetcher   --> AkShareParser           : <<委托解析>>
+  FetcherRegistry        ..> AkShareConceptFetcher    : <<注册>>
+  ConceptSyncOperation    --> ConceptFetcher          : <<使用>>
+}
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  3. 领域层（Domain）
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+package "领域层 (Domain)" #ECEFF1 {
+
+  ' ── 枚举 ────────────────────────────────────────────────
+  class ConceptSource <<NEW>> #C8E6C9 {
+    + EM = "em"      ' 东方财富（默认）
+    + THS = "ths"    ' 同花顺
+  }
+
+  class ConceptType <<NEW>> #C8E6C9 {
+    + INDUSTRY = "industry"  ' 行业概念
+    + THEME = "theme"       ' 主题概念（如"碳中和"）
+    + STYLE = "style"       ' 风格概念（如"高股息"）
+    + REGION = "region"     ' 地域概念（如"雄安"）
+    + EVENT = "event"       ' 事件概念（如"中字头"）
+    + OTHER = "other"
+  }
+
+  ' ── BO：业务对象（采集层 → 应用层）─────────────────────────
+  class ConceptListBO <<NEW>> #C8E6C9 {
+    + name : str
+    + code : str
+    + source : ConceptSource
+    + concept_type : ConceptType
+    + stock_count : int = 0
+    + description? : str
+    + raw_payload? : dict
+    --
+    + to_entity() : Concept
+    + normalize_name(v)  ' 去噪声字符
+  }
+
+  class ConceptStockBO <<NEW>> #C8E6C9 {
+    + symbol : str
+    + name : str
+    + source : ConceptSource
+    + rank? : int
+    + latest_price? : float
+    --
+    + to_entity(concept_id) : ConceptMember
+    + normalize_symbol()   ' zfill(6)
+  }
+
+  ' ── 实体（聚合根）───────────────────────────────────────
+  class Concept <<NEW>> #C8E6C9 {
+    - id? : int
+    - name : str
+    - source : ConceptSource
+    - concept_type : ConceptType
+    - description?
+    - stock_count : int = 0
+    - is_active : bool = True
+    - first_seen_at : datetime
+    - last_synced_at? : datetime
+    --
+    + create(...) : Concept         ' 工厂方法
+    + mark_synced(member_count, at?)  ' 同步后调用
+    + deactivate()              ' 软删除
+    --
+    __ 不变式：name + source 联合唯一__
+  }
+
+  class ConceptMember <<NEW>> #C8E6C9 {
+    - symbol : str
+    - concept_id : int
+    - source : ConceptSource
+    - joined_at : datetime
+    --
+    + create(...) : ConceptMember
+    --
+    __ 不变式：(symbol, concept_id) 联合唯一__
+  }
+
+  ' ── 值对象（不可变，只读）─────────────────────────────────
+  class ConceptBriefVO <<NEW, frozen>> #C8E6C9 {
+    + concept_id : int
+    + name : str
+    + source : str
+    --
+    __ 嵌入到 StockPanelItemVO.concepts __
+  }
+
+  ' ── 领域异常 ────────────────────────────────────────────
+  class ConceptNotFoundError <<NEW>> #C8E6C9 {
+    + message : str
+    + __init__(id?, name?)
+  }
+
+  ' ── Repository Protocol ──────────────────────────────────
+  class ConceptRepository <<NEW, Protocol>> #C8E6C9 {
+    + upsert_concept(c: Concept) : Concept
+    + upsert_members(concept_id, members) : int
+    + get_concept_by_id(id) : Optional[Concept]
+    + get_concept_by_name(name, source) : Optional[Concept]
+    + list_concepts_by_symbol(symbol) : list[ConceptBriefVO]
+    + list_concepts_by_symbols(symbols) : dict[symbol, list[ConceptBriefVO]]
+    + list_concepts_by_symbol_grouped(symbol) : list[ConceptGroupedVO]  ← 🆕 抽屉 Tab 用
+    + list_concepts(...) : tuple[list[Concept], int]
+    + count_concepts(...) : int
+    + get_last_synced_at(source) : Optional[datetime]
+  }
+
+  ' ── 既有 panel 协议（修改：新增 concept 反查）───────────────
+  class StockPanelComposeRepository <<CHANGED>> #FFE0B2 {
+    + list_paginated(...)
+    + list_membership_by_symbols(symbols) : dict
+    + list_concepts_by_symbols(symbols) : dict  ← 🆕
+  }
+
+  ' ── 关系 ────────────────────────────────────────────────
+  ConceptSource    -[hidden]- ConceptType
+  ConceptListBO   ..> Concept             : <<to_entity>>
+  ConceptStockBO  ..> ConceptMember        : <<to_entity>>
+  ConceptMember   --> Concept             : <<FK>>
+  ConceptRepository ..> Concept             : <<聚合根>>
+  ConceptRepository ..> ConceptMember      : <<子实体>>
+  ConceptRepository ..> ConceptBriefVO     : <<查询投影>>
+  ConceptRepository ..> StockPanelComposeRepository
+      : <<list_concepts_by_symbols 委托>>
+}
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  4. 应用层（Application Service / DTO）
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+package "应用层 (Application)" #ECEFF1 {
+
+  ' ── 请求 DTO ────────────────────────────────────────────
+  class ConceptQueryRequest <<NEW>> #C8E6C9 {
+    + q? : str
+    + source? : str
+    + is_active? : bool
+    + page : int = 1
+    + page_size : int = 20
+  }
+
+  class ConceptSyncRequest <<NEW>> #C8E6C9 {
+    + source : str = "em"
+    + concept_names? : list[str]
+    + force_resync : bool = False
+  }
+
+  class StockPanelQueryRequest <<CHANGED>> #FFE0B2 {
+    ' ... 既有字段 ...
+    + with_pools : bool = False
+    + with_concepts : bool = False  ← 🆕
+    + page : int = 1
+    + page_size : int = 20
+  }
+
+  ' ── 响应 DTO ──────────────────────────────────────────────
+  class ConceptItemVO <<NEW>> #C8E6C9 {
+    + concept_id : int
+    + name : str
+    + source : str
+    + concept_type : str
+    + stock_count : int
+    + description? : str
+    + is_active : bool
+    + last_synced_at? : datetime
+    + first_seen_at? : datetime
+  }
+
+  class ConceptDetailVO <<NEW>> #C8E6C9 {
+    __ 继承 ConceptItemVO __
+    + members : list[ConceptMemberVO]
+  }
+
+  class ConceptMemberVO <<NEW>> #C8E6C9 {
+    + symbol : str
+    + name : str
+    + rank? : int
+    + latest_price? : float
+  }
+
+  class ConceptGroupedVO <<NEW>> #C8E6C9 {
+    + concept_id : int
+    + name : str
+    + source : str
+    + concept_type : str  ' industry/theme/style/region/event/other
+    + description? : str
+  }
+
+  class ConceptTabSectionVO <<NEW>> #C8E6C9 {
+    + type : str
+    + type_label : str
+    + concepts : list[ConceptGroupedVO]
+  }
+
+  class ConceptTabContentVO <<NEW>> #C8E6C9 {
+    + symbol : str
+    + stock_name : str
+    + sections : list[ConceptTabSectionVO]  ' 已按 industry → other 顺序
+    + total_count : int
+  }
+
+  class ConceptSyncResultVO <<NEW>> #C8E6C9 {
+    + total_concepts : int
+    + total_members : int
+    + failed_concepts : list[str]
+    + elapsed_ms : int
+    + synced_at : datetime
+  }
+
+  ' ── Page[T]（复用）───────────────────────────────────────
+  class "Page[T]\n<<Generic>>" as PageVO <<UNCHANGED>> #E0E0E0 {
+    + items : List[T]
+    + total : int
+    + page : int
+    + page_size : int
+    + pages : int
+    --
+    + from_list(items, total, page, page_size) : Page[T]
+  }
+
+  class ConceptListVO <<NEW>> #C8E6C9 {
+    __ extends Page[ConceptItemVO] __
+  }
+
+  ' ── Service ──────────────────────────────────────────────
+  class ConceptAppService <<NEW>> #C8E6C9 {
+    - _repo : ConceptRepository
+    - _fetcher : ConceptFetcher
+    --
+    + sync_concepts(req) : ConceptSyncResultVO
+    + query_concepts(req) : ConceptListVO
+    + get_concept_detail(name, source) : ConceptDetailVO
+    + list_for_symbol(symbol) : list[ConceptBriefVO]
+    + list_for_symbols(symbols) : dict[symbol, list[ConceptBriefVO]]
+    + get_tab_content_for_symbol(symbol, stock_name?) : ConceptTabContentVO  ← 🆕
+  }
+
+  ' ── 既有 Panel DTO/Service（修改）─────────────────────────
+  class StockPanelItemVO <<CHANGED>> #FFE0B2 {
+    ' ... stock_info 13 字段 ...
+    ' ... kline 3 字段 ...
+    ' ... fin_daily_basic 3 字段 ...
+    ' ... fin_report 1 字段 ...
+    + pools : list[PoolMembershipVO]       ' 既有
+    + concepts : list[ConceptBriefVO]       ' 🆕
+  }
+
+  class StockPanelListVO <<CHANGED>> #FFE0B2 {
+    __ extends Page[StockPanelItemVO] __
+  }
+
+  class StockPanelAppService <<CHANGED>> #FFE0B2 {
+    - _panel_repo : StockPanelComposeRepository
+    - _concept_app? : ConceptAppService    ' 🆕
+    --
+    + query_panels(req) : StockPanelListVO
+      伪代码：
+      ① repo.list_paginated(req)
+      ② pool_map = repo.list_membership_by_symbols(symbols)  [if with_pools]
+      ③ concept_map = repo.list_concepts_by_symbols(symbols)    [if with_concepts] 🆕
+      ④ items = [_to_vo(r, pool_map, concept_map)]
+  }
+
+  ' ── 依赖 ────────────────────────────────────────────────
+  ConceptAppService    --> ConceptRepository
+  ConceptAppService    --> ConceptFetcher
+  ConceptAppService    --> ConceptSyncOperation
+  PageVO               <|-- ConceptListVO
+  ConceptItemVO       ..> PageVO              : <<T 参数>>
+  StockPanelAppService --> ConceptAppService   : <<委托>>
+}
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  5. 路由层（Route / FastAPI）
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+package "路由层 (Route / FastAPI)" #ECEFF1 {
+
+  class ConceptRouter <<CHANGED>> #FFE0B2 {
+    + GET    /api/v1/concepts/                           list
+    + GET    /api/v1/concepts/{name}                     detail
+    + GET    /api/v1/concepts/by-symbol/{symbol}         reverse (light)
+    + GET    /api/v1/concepts/tab-by-symbol/{symbol}     🆕 reverse (grouped, for drawer Tab)
+    + POST   /api/v1/concepts/sync                       触发同步
+    + GET    /api/v1/concepts/sync/status                同步状态
+    --
+    Depends: get_concept_app_service
+  }
+
+  class StockPanelRouter <<CHANGED>> #FFE0B2 {
+    + GET /api/v1/stock-panel/?with_concepts=true ← 🆕 参数
+  }
+
+  ConceptRouter     --> ConceptAppService    : <<Depends>>
+  StockPanelRouter --> StockPanelAppService
+}
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  6. 前端（Vue / Element Plus）— 2026-09-24 修订：抽屉 + 详情按钮
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+package "前端 (Frontend)" #ECEFF1 {
+
+  class "StockInfoList.vue" as VueStockList <<CHANGED>> #FFE0B2 {
+    + table 表格
+    + ❌ 移除：el-table-column type="expand" + StockExpandRow（展开行被详情按钮取代）
+    + ❌ 移除：「概念」列（最大 3 tag + +N）— 改为抽屉 Tab 展示
+    + 🆕 行末「详情」按钮列（fixed="right"，primary，圆角，强化视觉）
+    + 🆕 抽屉状态：useStockDetailDrawer composable
+    + 🆕 @row-click / @click.stop 两条触发路径（等价打开抽屉）
+    + with_concepts=true 仍传（抽屉骨架屏预热用）
+  }
+
+  class "StockDetailDrawer.vue" as VueStockDrawer <<CHANGED>> #FFE0B2 {
+    + el-drawer 容器
+    + el-tabs
+    │   ├─ 基本信息（既有）
+    │   ├─ K 线图（既有，KLineDrawerTab）
+    │   ├─ 🆕 概念（ConceptTab，按 concept_type 分组）
+    │   └─ 归因分析（既有）
+    + props: stock, modelValue, prefetchConcepts?
+    + emits: update:modelValue, addToPool, goAnalysis, close
+  }
+
+  class "ConceptTab.vue" as VueConceptTab <<NEW>> #C8E6C9 {
+    + props: symbol, stock_name?
+    + emits: conceptClick
+    --
+    + load()  → GET /concepts/tab-by-symbol/{symbol}
+    + reload()
+    + onTagClick(c)
+    + watch(symbol, load, immediate=true)
+    --
+    + 渲染 data.sections（v-for）
+    + 每 section：title + count + ConceptTag 列表
+    + 底部 footer：总数 + 刷新按钮
+    --
+    + 状态：loading / data / error（空 / 失败 / 正常）
+  }
+
+  class "ConceptTag.vue" as VueConceptTag <<NEW>> #C8E6C9 {
+    + props: concept : ConceptGroupedVO
+    + emits: click
+    --
+    + tagType 按 concept_type 区分（primary/success/warning/info/danger）
+    + iconForType 按 concept_type 区分（OfficeBuilding/MagicStick/...）
+    + hovered ref（plain / dark 切换）
+    + el-tooltip 展示 description
+    --
+    + hover 动画：translateY(-1px) + box-shadow
+    + click.stop
+  }
+
+  class "useStockDetailDrawer.ts" as Composable <<NEW>> #C8E6C9 {
+    + visible : Ref<boolean>
+    + currentStock : Ref<StockInfo | null>
+    + open(stock)
+    + close()  ' 延迟 300ms 清空，避免动画闪屏
+    --
+    ' composable 抽离抽屉状态，StockInfoList 复用
+  }
+
+  class "api.ts" as TsApi <<CHANGED>> #FFE0B2 {
+    + interface ConceptBrief { concept_id, name, source }
+    + interface ConceptGroupedVO { concept_id, name, source, concept_type, description }
+    + type ConceptType = "industry" | "theme" | "style" | "region" | "event" | "other"
+    + interface ConceptTabSectionVO { type, type_label, concepts }
+    + interface ConceptTabContentVO { symbol, stock_name, sections, total_count }
+    + StockInfo.concepts : ConceptBrief[]
+    + getConceptsBySymbol(symbol)        ' GET /concepts/by-symbol/{symbol}
+    + getConceptTabForSymbol(symbol, params?) ' GET /concepts/tab-by-symbol/{symbol}
+  }
+
+  ' ── 删除的旧组件 ────────────────────────────
+  class "StockExpandRow.vue" as VueStockExpandRow <<REMOVED>> #FFCDD2 {
+    ' ❌ 2026-09-24 删除：被详情按钮取代
+    ' 包含日K / 分K 双 MiniKlineChart + 指标选择器
+    ' 保留 KLineDrawerTab 作为抽屉 K 线 Tab 的实现
+  }
+
+  ' ── 关系 ──────────────────────────────────
+  VueStockList    --> VueStockDrawer   : <<v-model 绑定>>
+  VueStockList    --> Composable        : <<useStockDetailDrawer>>
+  VueStockDrawer  --> VueConceptTab     : <<挂载「概念」Tab>>
+  VueConceptTab   --> VueConceptTag     : <<v-for 渲染>>
+  VueStockList    ..> TsApi             : <<queryStocks(with_concepts=true)>>
+  VueConceptTab    ..> TsApi             : <<getConceptTabForSymbol>>
+  VueStockList    ..> TsApi             : <<getConceptsBySymbol（预留）>>
+}
+
+
+@enduml

@@ -13,7 +13,22 @@ export interface PaginatedResponse<T> {
   items: T[]
 }
 
-/** 股票信息（stock_basic / stock_info） */
+/** 池成员关系（列表 / 详情通用）
+
+  与后端 PoolMembershipVO 对齐：
+  pool_id / name / pool_type / joined_at。
+  用于列表 with_pools=true 场景，避免前端逐条反向查询池。
+  */
+export interface PoolMembership {
+  pool_id: number
+  name: string
+  pool_type: string
+  joined_at: string | null
+}
+
+/** 股票信息（stock_basic / stock_info）
+
+  后端 GET /stocks/ 响应（with_pools=true 时 items[].pools 会附带池信息）。 */
 export interface StockInfo {
   symbol:    string   // 股票代码  000001
   ts_code:   string   // TS 统一代码  000001.SZ
@@ -33,7 +48,12 @@ export interface StockInfo {
   latest_close: number | null  // 最新收盘价
   total_mv:  number | null     // 总市值（万元）
   pe_ttm:    number | null     // 市盈率TTM
-  profit_margin: number | null  // 净利润率%
+  profit_margin: number | null // 净利润率%
+  record_count: number          // K 线记录数（with_pools=true 时附带）
+  kline_start: string | null   // K 线开始日期（with_pools=true 时附带）
+  kline_end:   string | null  // K 线结束日期（with_pools=true 时附带）
+  // 🆕 所属操作池（with_pools=true 时由后端批量填充，避免 N+1）
+  pools: PoolMembership[]
 }
 
 /** 股票查询项（GET /stocks/ 响应，含富字段 + K 线统计） */
@@ -124,6 +144,8 @@ export interface StockQueryParams {
   list_status?: string
   exclude_st?:  boolean
   min_total_mv?: number
+  /** 是否附带所属操作池（true 时响应 items[].pools 填充，避免 N+1） */
+  with_pools?:  boolean
   page?:        number
   page_size?:   number
 }
@@ -167,13 +189,6 @@ export interface TechnicalSummary {
   signals: string[]    // ["MA 多头排列", "MACD 金叉", ...]
 }
 
-/** 所在池（简短信息） */
-export interface PoolMembership {
-  pool_id: number
-  pool_name: string
-  joined_at: string | null
-}
-
 /** 完整分析响应 */
 export interface StockAnalysisResponse {
   stock: {
@@ -193,9 +208,14 @@ export interface StockAnalysisResponse {
 
 // ── 股票基础信息 ─────────────────────────────────────────────
 
-/** GET /stocks/  查询股票列表 */
+/**
+ * GET /api/v1/stock-panel/  面板列表（分页 + 多维筛选 + 4 表快照 + 池信息）
+ *
+ * 新端点，替代原 /stocks/ 的富字段查询职责。
+ * 响应字段与 StockInfo 接口 1:1 对齐（items/total/page/page_size）。
+ */
 export const queryStocks = (params: StockQueryParams = {}) =>
-  http.get<PaginatedResponse<StockInfo>>('/stocks/', { params }).then(unwrap)
+  http.get<PaginatedResponse<StockInfo>>('/stock-panel/', { params }).then(unwrap)
 
 /** GET /stocks/meta  获取行业/市场/交易所枚举值 */
 export const getStockMeta = (): Promise<StockMeta> =>
