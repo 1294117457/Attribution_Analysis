@@ -1,0 +1,201 @@
+@startuml StockPanel_DataFlow
+
+title StockPanel 列表数据流 — 四层 + 来源表
+
+left to right direction
+
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam classFontSize 11
+skinparam packageFontSize 13
+
+' ════════════════════════════════════════════════
+'  第一行：四层模型层（请求 → 仓储 → 领域 → 应用）
+' ════════════════════════════════════════════════
+package "▌ 模型层" {
+
+  package "① 请求层" {
+    class StockPanelQueryRequest <<NEW>> {
+      + q : str?
+      + industry : str?
+      + market : str?
+      + exchange : str?
+      + is_hs : str?
+      + list_status : str = "L"
+      + exclude_st : bool?
+      + min_total_mv : float?
+      + pageNum : int = 1
+      + pageSize : int = 20
+    }
+
+    note bottom of StockPanelQueryRequest
+      前端 → 后端
+    end note
+  }
+
+  package "② 仓储层" {
+    class StockPanelComposeRepository <<Protocol, NEW>> {
+      + list_paginated(...) :
+          tuple[list[StockPanelRow], int]
+    }
+
+    note bottom of StockPanelComposeRepository
+      领域层 Protocol
+      基础设施实现：
+      StockPanelComposeRepoImpl
+    end note
+  }
+
+  package "③ 领域层" {
+    class StockPanelRow <<值对象, NEW, frozen>> {
+      + symbol : str
+      + ts_code : str?
+      + name : str?
+      + area : str?
+      + industry : str?
+      + market : str?
+      + exchange : str?
+      + list_date : str?
+      + list_status : str?
+      + is_hs : str?
+      + act_name : str?
+      + act_ent_type : str?
+      + total_shares : int?
+      + record_count : int
+      + kline_start : date?
+      + kline_end : date?
+      + latest_close : float?
+      + total_mv : float?
+      + pe_ttm : float?
+      + profit_margin : float?
+    }
+
+    note bottom of StockPanelRow
+      4 表 JOIN + 聚合的投影
+      不可变，不属于任何聚合根
+    end note
+  }
+
+  package "④ 应用层" {
+    class "Page[T]\n<<Generic, NEW>>" as Page {
+      + list : List[T]
+      + total : int
+      + pageNum : int
+      + pageSize : int
+      + pages : int
+      --
+      + from_list_to_page(items,
+                          total,
+                          page_num,
+                          page_size) : Page[T]
+    }
+
+    class StockPanelItemVO <<NEW>> {
+      -- 与 StockPanelRow 字段 1:1 --
+      + symbol, ts_code, name
+      + area, industry, market, exchange
+      + list_date, list_status, is_hs
+      + act_name, act_ent_type
+      + total_shares
+      + record_count
+      + kline_start, kline_end
+      + latest_close, total_mv, pe_ttm
+      + profit_margin
+    }
+
+    class StockPanelListVO <<NEW>> {
+      __ extends Page[StockPanelItemVO] __
+      无新增字段
+    }
+
+    Page <|-- StockPanelListVO : <<继承>>
+    StockPanelItemVO ..> Page : <<T 参数>>
+  }
+
+}
+
+' ════════════════════════════════════════════════
+'  第二行：四张来源表（横向排列）
+' ════════════════════════════════════════════════
+package "▌ 来源表" {
+
+  left to right direction
+
+  T1 -[hidden]- T2
+  T2 -[hidden]- T3
+  T3 -[hidden]- T4
+
+  class "stock_infos" as T1 #E0E0E0 {
+    + symbol {PK}
+    + name
+    + industry, market, exchange
+    + area
+    + list_date, list_status
+    + is_hs, total_shares
+    + act_name, act_ent_type
+    + ts_code
+  }
+
+  class "tech_kline_dailys" as T2 #E0E0E0 {
+    + symbol {FK}
+    + date
+    + open, high, low, close
+    -- 聚合取 COUNT/MIN/MAX --
+    + record_count
+    + kline_start
+    + kline_end
+  }
+
+  class "fin_daily_basics" as T3 #E0E0E0 {
+    + symbol {FK}
+    + trade_date
+    -- 聚合取最新一行 --
+    + close
+    + total_mv
+    + pe_ttm
+  }
+
+  class "fin_reports" as T4 #E0E0E0 {
+    + symbol {FK}
+    + end_date
+    + n_income
+    + revenue
+    -- 计算字段 --
+    + profit_margin
+      = n_income / revenue × 100
+  }
+
+}
+
+' ─────────────────────────────────────────────
+'  线性依赖箭头（关系细节见便签）
+' ─────────────────────────────────────────────
+
+StockPanelQueryRequest --> StockPanelComposeRepository
+StockPanelComposeRepository ..> StockPanelRow : <<产出>>
+StockPanelRow --> StockPanelItemVO : <<1:1 字段映射>>
+
+StockPanelRow ..> T1
+StockPanelRow ..> T2
+StockPanelRow ..> T3
+StockPanelRow ..> T4
+
+' ─────────────────────────────────────────────
+'  关系说明便签
+' ─────────────────────────────────────────────
+note as N_src
+  <b>StockPanelRow 由 4 张表组装：</b>
+  • stock_infos       → 组合（基本信息）
+  • tech_kline_dailys → 聚合（COUNT / MIN / MAX）
+  • fin_daily_basics  → 最新一行
+  • fin_reports       → 最新一期（profit_margin = n_income / revenue × 100）
+  ────────────────
+  <b>StockPanelAppService.query_panels(req)</b>
+  ① repo.list_paginated(req) → (list[StockPanelRow], int)
+  ② items = [_to_vo(r) for r in rows] → list[StockPanelItemVO]
+  ③ StockPanelListVO.from_list_to_page(items, total,
+       req.pageNum, req.pageSize) → StockPanelListVO
+end note
+
+
+@enduml
