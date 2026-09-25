@@ -55,6 +55,13 @@ from infrastructure.database.models import (                                    
     ConceptsDB,
     ConceptMemberDB,
 )
+from infrastructure.tasks.collect import (
+    ConceptCollectTask,
+    DailyBasicCollectTask,
+    DailyKlineCollectTask,
+    StockBasicCollectTask,
+    setup_collect_task_registry,
+)
 from route.api.router import api_router
 
 logging.basicConfig(
@@ -81,6 +88,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # 注册数据源到采集器注册中心
     setup_default_registry()
+
+    # 注册采集任务到 CollectTaskRegistry（router 通过 get_collect_task_registry 读取）
+    setup_collect_task_registry([
+        DailyKlineCollectTask(),
+        DailyBasicCollectTask(),
+        StockBasicCollectTask(),
+        ConceptCollectTask(),       # 🆕 概念接入
+    ])
 
     yield
     await close_db()

@@ -1,0 +1,176 @@
+@startuml CollectTask_Hierarchy
+
+title 采集管理类设计 — 基类与子类继承关系（聚焦视图）
+
+left to right direction
+
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+skinparam classFontSize 12
+skinparam packageFontSize 14
+skinparam nodesep 80
+skinparam ranksep 60
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  本图聚焦：「BaseCollectTask 抽象基类」与 4 个 task_type 子类的继承关系
+'
+'  · 完整总览图（含数据类 / Registry / Router / 前端）：01-class.puml
+'  · 设计文档：docs/dev/07collect-class/01-collect-task-class-design.md
+'  · 概念专项：docs/dev/07collect-class/02-concept-collect-integration.md
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+
+legend right
+  |= 颜色 |= 含义 |
+  | <#C8E6C9>绿 | 新增 (NEW) |
+  | <#FFE0B2>橙 | 重构/迁移 (REFACTOR) |
+endlegend
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  1. 抽象基类 — 模板方法骨架
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+package "infrastructure/tasks/collect/base.py" #ECEFF1 {
+
+  abstract class BaseCollectTask <<ABSTRACT>> #C8E6C9 {
+    + name : ClassVar[str]
+    + _task_id : int {注入, execute_task 设置}
+    --
+    __ 抽象方法（子类必须实现）__
+    + {abstract} estimate_total(params : dict) : int
+    + {abstract} run(params : dict, on_unit_done : Callable) : TaskSummary
+    --
+    __ 钩子（子类可选覆盖，默认空实现）__
+    + pre_execute(params : dict)
+    + post_execute(params : dict, summary : TaskSummary)
+    --
+    __ 框架内部（子类勿调）__
+    - _update_progress(redis, task_id, label, result)
+    - _finish_task(session_factory, task_id, status, summary, message)
+    + {static} execute_task(task_id, handler, params)
+        **模板方法：** pre_execute → estimate_total → run → _finish_task
+        **取消检查：** 放在 on_unit_done 闭包内（每单元一次）
+  }
+
+  note right of BaseCollectTask
+    **子类契约：**
+    ① estimate_total 必须同步（router 同步调）
+    ② run 每完成一个单元立即 on_unit_done(result, label)
+    ③ 业务异常不逃出，包装成 UnitResult(success=False)
+    ④ 需要取消可 raise Cancelled()
+    ⑤ post_execute 在 finally 内保证清理
+
+    **钩子用途：**
+    · pre_execute：预热 fetcher 池 / 打开连接
+    · post_execute：释放资源 / 关闭连接
+  end note
+}
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  2. 数据类（不可变）— run() 的输入输出契约
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+package "数据契约 (frozen dataclass)" #FFF9C4 {
+
+  class UnitResult <<frozen>> #C8E6C9 {
+    + success : bool
+    + detail : str = ""
+    + error : str | None = None
+    + skipped : bool = False
+    + saved_count : int = 0
+    __ 单个单元的执行结果 __
+  }
+
+  class TaskSummary <<frozen>> #C8E6C9 {
+    + success : int
+    + fail : int
+    + skip : int = 0
+    + message : str = ""
+    + total_count : int = 0
+    + elapsed_ms : int = 0
+    __ 整个 run() 的收尾汇报 __
+  }
+
+  class Cancelled <<Exception>> #C8E6C9 {
+    __ 子类 run() 内 raise 即可中断 __
+    __ 框架在 on_unit_done 闭包内也支持主动 raise __
+  }
+
+  BaseCollectTask ..> UnitResult   : <<on_unit_done 入参>>
+  BaseCollectTask ..> TaskSummary  : <<run 返回值>>
+  BaseCollectTask ..> Cancelled    : <<raise 中断>>
+}
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  3. 4 个 task_type 子类 — 核心
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+package "4 个子类 (infrastructure/tasks/collect/*.py)" #ECEFF1 {
+
+  class DailyKlineCollectTask <<REFACTOR>> #FFE0B2 {
+    + name = "daily_kline"
+    - _concurrency : int
+    - _fetcher_pool : asyncio.Queue
+    --
+    + estimate_total(params) : int
+    + pre_execute(params) : 创建 N 个 KlineFetcher
+    + run(params, on_unit_done) : TaskSummary
+    __ 单元：每只股票 symbol __
+    __ 并发：Semaphore(N) + fetcher 池 __
+    __ 迁移自：collect_task.py:172-292 (121 行) __
+  }
+
+  class DailyBasicCollectTask <<REFACTOR>> #FFE0B2 {
+    + name = "daily_basic"
+    --
+    + estimate_total(params) : int
+    + run(params, on_unit_done) : TaskSummary
+    __ 单元：每个 trade_date __
+    __ 顺序：按日期循环 __
+    __ 迁移自：collect_task.py:294-352 (62 行) __
+  }
+
+  class StockBasicCollectTask <<REFACTOR>> #FFE0B2 {
+    + name = "stock_basic"
+    --
+    + estimate_total(params) : int = 1
+    + run(params, on_unit_done) : TaskSummary
+    __ 单元：仅 1 个（整体一次性） __
+    __ 迁移自：collect_task.py:354-400 (45 行) __
+  }
+
+  class ConceptCollectTask <<NEW>> #C8E6C9 {
+    + name = "concept"
+    - _fetcher : AkShareConceptFetcher
+    --
+    + estimate_total(params) : int
+    + run(params, on_unit_done) : TaskSummary
+    __ 单元：每个概念名 __
+    __ 复用：ConceptSyncOperation._sync_one() __
+    __ session：每概念独立（避免长事务） __
+  }
+
+  BaseCollectTask <|-- DailyKlineCollectTask
+  BaseCollectTask <|-- DailyBasicCollectTask
+  BaseCollectTask <|-- StockBasicCollectTask
+  BaseCollectTask <|-- ConceptCollectTask
+}
+
+
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+'  4. 子类单元语义对比表（用 note 形式展示）
+' ═════════════════════════════════════════════════════════════════════════════════════════════
+note as N_UnitSemantics #E1F5FE
+  |= 子类 |= 单元维度 |= 单元数(估) |= 并发模型 |= 失败策略 |
+  | DailyKline | symbol | ~5000 | Semaphore(N) + 池 | 累计 fail, 不中断 |
+  | DailyBasic | trade_date | 1~7 | 顺序循环 | 累计 fail, 不中断 |
+  | StockBasic | 整体 | 1 | 单次 | 直接 failed |
+  | **Concept** | **concept_name** | **~423** | **顺序循环** | **累计 fail, 不中断** |
+
+  **关键差异：**
+  · DailyKline 是"高频单元 + 高并发"，需要 fetcher 池
+  · DailyBasic 是"中频单元 + 顺序"，按日期跑
+  · StockBasic 是"无明确单元"，整体一次性
+  · **Concept** 与 DailyBasic 同模式（顺序），但 session 模型不同（每概念独立 session）
+end note
+
+@enduml

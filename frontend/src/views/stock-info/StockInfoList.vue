@@ -598,7 +598,7 @@ onMounted(async () => {
 /* 折叠态悬浮：scale + 浮起阴影 */
 :deep(.el-table__expand-icon:hover) {
   transform: scale(1.35);
-
+  
 }
 
 /* 展开态：保留 rotate(90deg)，叠加 scale，无常驻阴影 */
