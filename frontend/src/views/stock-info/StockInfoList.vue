@@ -105,8 +105,8 @@
       @row-click="openDetailDrawer"
       @selection-change="onSelectionChange"
     >
-      <!-- 展开第二行（K线图）：点击 chevron 触发，行点击不会触发展开 -->
-      <el-table-column type="expand" width="48">
+      <!-- 展开按钮放在第一列（左侧固定），行点击不会触发展开 -->
+      <el-table-column type="expand" width="48" fixed="left">
         <template #default="{ row }">
           <StockExpandRow :symbol="row.symbol" />
         </template>
@@ -584,31 +584,33 @@ onMounted(async () => {
   background-color: #f0f9ff !important;
 }
 
-/* 展开按钮（chevron）悬浮岛效果：scale + 阴影 */
+/* 展开按钮（chevron）悬浮岛效果：仅悬浮时显示 scale + 阴影
+ * Element Plus 展开态类名是 .el-table__expand-icon--expanded（BEM 修饰符），
+ * 该类给 button 加 transform: rotate(90deg)。我们必须保留该旋转，叠加 scale/shadow。
+ * 默认透明无边框，悬浮时浮起投影；展开态旋转 + 轻微放大，悬浮时再放大。
+ */
 :deep(.el-table__expand-icon) {
-  position: relative;
   cursor: pointer;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.06),
-    0 1px 3px rgba(15, 23, 42, 0.08);
   transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
               box-shadow 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* 折叠态悬浮：scale + 浮起阴影 */
 :deep(.el-table__expand-icon:hover) {
   transform: scale(1.35);
+
+}
+
+/* 展开态：保留 rotate(90deg)，叠加 scale，无常驻阴影 */
+:deep(.el-table__expand-icon--expanded) {
+  transform: rotate(90deg) scale(1.15);
+}
+
+/* 展开态悬浮：保留旋转，scale 进一步放大，浮起阴影 */
+:deep(.el-table__expand-icon--expanded:hover) {
+  transform: rotate(90deg) scale(1.35);
   box-shadow:
     0 6px 16px rgba(15, 23, 42, 0.14),
     0 2px 6px rgba(15, 23, 42, 0.08);
-}
-
-/* 展开态：保持浮起 */
-:deep(.el-table__expand-icon.expanded) {
-  transform: scale(1.15);
-  box-shadow:
-    0 4px 12px rgba(15, 23, 42, 0.12),
-    0 2px 4px rgba(15, 23, 42, 0.06);
 }
 </style>
