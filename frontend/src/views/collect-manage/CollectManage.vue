@@ -40,6 +40,16 @@
             <el-button size="small" @click="startTask('daily_basic', { days: 3 })">近3天</el-button>
             <el-button size="small" @click="startTask('daily_basic', { days: 7 })">近7天</el-button>
           </template>
+          <template v-else-if="activeTab === 'concept'">
+            <el-button type="primary" size="small" @click="startConcept()">
+              <el-icon class="mr-1"><Refresh /></el-icon>
+              全量同步概念
+            </el-button>
+            <el-button size="small" :disabled="!hasConceptHistory" @click="gotoStockInfo">
+              <el-icon class="mr-1"><View /></el-icon>
+              查看概念归属
+            </el-button>
+          </template>
           <template v-else>
             <el-button size="small" @click="startTask('stock_basic')">全量同步</el-button>
           </template>
@@ -92,8 +102,28 @@
               <el-radio-button :value="8">8</el-radio-button>
             </el-radio-group>
           </template>
-          <template v-else-if="activeTab === 'daily_basic'">
-            <span class="text-sm text-gray-400">暂无额外筛选条件</span>
+          <template v-else-if="activeTab === 'concept'">
+            <span class="filter-label">数据源</span>
+            <el-select v-model="conceptSource" size="small" style="width: 160px">
+              <el-option
+                v-for="opt in CONCEPT_SOURCE_OPTIONS"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-select>
+            <span class="filter-divider" />
+            <span class="filter-label">强制重传</span>
+            <el-switch
+              v-model="conceptForceResync"
+              size="small"
+              inline-prompt
+              active-text="是"
+              inactive-text="否"
+            />
+            <span class="text-xs text-gray-400 ml-1">
+              （当前采集器对所有概念均 upsert，强制开关仅作为审计记录）
+            </span>
           </template>
           <template v-else>
             <span class="text-sm text-gray-400">暂无额外筛选条件</span>
@@ -234,8 +264,9 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
+import { Upload, ArrowDown, ArrowUp, Refresh, View } from '@element-plus/icons-vue'
 
 import PageWrapper from '@/components/PageWrapper.vue'
 import {
@@ -245,6 +276,7 @@ import {
   cancelTask,
   type CollectTask,
   type TaskProgress,
+  CONCEPT_SOURCE_OPTIONS,
 } from './api'
 
 const LOG_PREFIX = '[CollectManage]'
@@ -254,6 +286,7 @@ const tabDefs = [
   { value: 'daily_kline', label: '日K线' },
   { value: 'daily_basic', label: '日频估值' },
   { value: 'stock_basic', label: '股票信息' },
+  { value: 'concept', label: '概念同步' },
 ] as const
 
 const activeTab = ref<string>('daily_kline')
@@ -275,6 +308,9 @@ const filterCount = computed(() => {
     if (klineConcurrency.value !== 3) n++
     return n
   }
+  if (activeTab.value === 'concept') {
+    return conceptForceResync.value ? 1 : 0
+  }
   return 0
 })
 
@@ -283,12 +319,25 @@ const klineDateRange = ref<[string, string] | null>(null)
 const klineExchange = ref<string[]>([])
 const klineConcurrency = ref(3)
 
+// ── 概念同步筛选 ──
+const conceptSource = ref<'em' | 'ths'>('em')
+const conceptForceResync = ref(false)
+
 // ── 任务列表 ──
 const tasks = ref<CollectTask[]>([])
 const taskTotal = ref(0)
 const taskPage = ref(1)
 const taskPageSize = ref(20)
 const tasksLoading = ref(false)
+
+/** 是否存在概念同步历史（用于「查看概念归属」按钮置灰判断） */
+const hasConceptHistory = computed(() => tasks.value.length > 0)
+
+/** 路由跳转（按 symbol 不一定，跳到列表即可） */
+const router = useRouter()
+function gotoStockInfo() {
+  router.push('/home/stock-info')
+}
 
 // ── 展开行 ──
 const tableRef = ref()
@@ -404,6 +453,16 @@ function startKline(base: Record<string, any>) {
   startTask('daily_kline', params)
 }
 
+/** 概念全量同步启动 */
+async function startConcept() {
+  const params: Record<string, any> = {
+    source: conceptSource.value,
+    force_resync: conceptForceResync.value,
+  }
+  console.log(LOG_PREFIX, 'startConcept', params)
+  await startTask('concept', params)
+}
+
 async function handleCancel(row: CollectTask) {
   try {
     const action = await ElMessageBox({
@@ -516,6 +575,13 @@ function formatParams(task: CollectTask): string {
   if (!task.params) return '-'
   const p = task.params
   const parts: string[] = []
+  if (task.task_type === 'concept') {
+    // 概念同步专用渲染
+    const source = p.source === 'ths' ? '同花顺' : '东方财富'
+    parts.push(source)
+    if (p.force_resync) parts.push('强制重传')
+    return parts.join(' · ') || '-'
+  }
   if (Array.isArray(p.exchange) && p.exchange.length > 0) {
     parts.push(p.exchange.join('/'))
   }
