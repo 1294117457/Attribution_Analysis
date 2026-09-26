@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: 200
+      minimum-idle: 20
+
+logging:
+  level:
+    com.attribution: INFO
+
+tushare:
+  token: ${TUSHARE_TOKEN}

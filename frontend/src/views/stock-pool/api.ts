@@ -131,13 +131,17 @@ export interface PoolKlineCollectRequest {
 
 export interface PoolListResponse {
   total: number
-  items: Pool[]
+  /** 当前页数据列表（与后端 PageVO.dataList 对齐） */
+  dataList: Pool[]
+  /** 兼容旧字段名 */
+  items?: Pool[]
 }
 
 export interface PoolMemberListResponse {
   pool_id: number
   total: number
-  items: PoolMember[]
+  dataList: PoolMember[]
+  items?: PoolMember[]
 }
 
 export interface PoolAddMembersResponse {

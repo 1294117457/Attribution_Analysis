@@ -178,6 +178,30 @@
       <el-table-column prop="industry" label="行业" width="120">
         <template #default="{ row }">{{ row.industry || '—' }}</template>
       </el-table-column>
+      <!-- 🆕 所属概念（with_concepts=true 时由后端批量填充 ConceptBrief[]，列上直接预览前 3 个） -->
+      <el-table-column label="所属概念" min-width="160">
+        <template #default="{ row }">
+          <div v-if="row.concepts && row.concepts.length > 0" class="flex flex-wrap gap-1">
+            <el-tag
+              v-for="c in row.concepts.slice(0, 3)"
+              :key="`${c.source}:${c.concept_id}`"
+              size="small"
+              :type="sourceTagType(c.source)"
+              effect="plain"
+            >
+              {{ c.name }}
+            </el-tag>
+            <el-tooltip
+              v-if="row.concepts.length > 3"
+              :content="row.concepts.slice(3).map(c => c.name).join(', ')"
+              placement="top"
+            >
+              <span class="text-xs text-gray-500 cursor-help">+{{ row.concepts.length - 3 }}</span>
+            </el-tooltip>
+          </div>
+          <span v-else class="text-xs text-gray-400">未归属</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="market" label="市场" width="100">
         <template #default="{ row }">
           <el-tag size="small" :type="marketType(row.market)" effect="light">
@@ -241,6 +265,7 @@
   <StockDetailDrawer
     v-model="detailDrawerVisible"
     :stock="detailDrawerStock"
+    :preheat-concepts="detailDrawerPreheatConcepts"
     @add-to-pool="onDrawerAddToPool"
     @go-analysis="onDrawerGoAnalysis"
     @close="closeDetailDrawer"
@@ -271,6 +296,7 @@ import type {
   StockMeta,
   StockQueryParams,
   PoolMembership,
+  ConceptSource,
 } from '@/views/stock-info/api'
 
 const router = useRouter()
@@ -293,6 +319,7 @@ const addToPoolVisible = ref(false)
 const {
   visible: detailDrawerVisible,
   currentStock: detailDrawerStock,
+  preheatConcepts: detailDrawerPreheatConcepts,
   open: openDetailDrawer,
   close: closeDetailDrawer,
 } = useStockDetailDrawer()
@@ -371,8 +398,8 @@ async function loadStocks() {
     if (filters.value.min_total_mv != null) params.min_total_mv = filters.value.min_total_mv * 10000
 
     const data = await queryStocks(params)
-    stocks.value = data.items || []
-    total.value = data.total || 0
+    stocks.value = data.dataList ?? data.items ?? []
+    total.value = data.total ?? 0
   } catch {
     stocks.value = []
     total.value = 0
@@ -494,6 +521,11 @@ function marketType(v?: string): 'primary' | 'success' | 'warning' | 'danger' | 
 
 function poolTypeTag(type: string) {
   return ({ watchlist: 'warning', industry: 'success', strategy: 'primary', custom: 'info' } as const)[type] || 'info'
+}
+
+/** 概念数据源 → el-tag type（与 collect-manage/api.ts 中 CONCEPT_SOURCE_OPTIONS 保持一致） */
+function sourceTagType(source: ConceptSource): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
+  return ({ em: 'primary', ths: 'success' } as const)[source] || 'info'
 }
 
 // ── 生命周期 ──────────────────────────────────────────────

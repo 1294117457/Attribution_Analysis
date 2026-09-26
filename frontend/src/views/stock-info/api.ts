@@ -5,12 +5,22 @@ import http, { unwrap } from '@/common/utils/http'
 //  类型定义
 // ═══════════════════════════════════════════════════════════════
 
-/** 分页响应 */
+/** 分页响应
+ *
+ * 对应后端 PageVO<T>（docs/design/api/02-page-vo.md §2.1）：
+ *   { total, page, pageSize, dataList: [...] }
+ *
+ * 历史代码里使用 items 字段（已废弃，请统一改用 dataList）。
+ */
 export interface PaginatedResponse<T> {
   total: number
   page: number
-  page_size: number
-  items: T[]
+  page_size?: number
+  pageSize?: number
+  /** 兼容旧名（建议使用 dataList） */
+  items?: T[]
+  /** 当前页数据列表（与后端 PageVO.dataList 对齐） */
+  dataList?: T[]
 }
 
 /** 池成员关系（列表 / 详情通用）
@@ -643,7 +653,7 @@ export const getMinuteKlines = (
   params: { interval?: string; count?: number } = {}
 ) =>
   http
-    .get<{ total: number; items: MinuteKline[] }>(`/minute-klines/${symbol}`, { params })
+    .get<PaginatedResponse<MinuteKline>>(`/minute-klines/${symbol}`, { params })
     .then(unwrap)
 
 // ═══════════════════════════════════════════════════════════════════════

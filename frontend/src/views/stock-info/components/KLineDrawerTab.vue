@@ -82,8 +82,11 @@ const ranges = [
 async function load() {
   loading.value = true
   try {
-    const data = (await getKlines(props.symbol, { limit: Number(range.value) })) as { items?: Kline[] }
-    klines.value = data.items || []
+    const data = (await getKlines(props.symbol, { limit: Number(range.value) })) as {
+      items?: Kline[]
+      dataList?: Kline[]
+    }
+    klines.value = data.dataList ?? data.items ?? []
   } catch {
     klines.value = []
   } finally {

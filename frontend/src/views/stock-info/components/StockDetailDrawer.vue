@@ -52,6 +52,7 @@
               v-if="stock"
               :symbol="stock.symbol"
               :stock-name="stock.name"
+              :preheat-concepts="preheatConcepts"
               @concept-click="onConceptClick"
             />
           </el-tab-pane>
@@ -78,13 +79,16 @@ import { ref, watch } from 'vue'
 import { Folder, DataLine } from '@element-plus/icons-vue'
 import KLineDrawerTab from './KLineDrawerTab.vue'
 import ConceptTab from './ConceptTab.vue'
-import type { StockInfo, ConceptGroupedVO } from '@/views/stock-info/api'
+import type { StockInfo, ConceptBrief, ConceptGroupedVO } from '@/views/stock-info/api'
 
 const props = defineProps<{
   modelValue: boolean
   stock: StockInfo | null
-  /** 抽屉首次打开时是否立即加载「概念」Tab 数据（默认 true） */
-  prefetchConcepts?: boolean
+  /**
+   * 列表阶段已下发的概念简略版（ConceptBrief[]），用于抽屉打开瞬间的预热渲染。
+   * 由父组件 useStockDetailDrawer 透传 —— 来源是 stock.concepts（后端 with_concepts=true）。
+   */
+  preheatConcepts?: ConceptBrief[]
 }>()
 
 defineEmits<{
