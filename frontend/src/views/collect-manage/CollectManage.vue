@@ -274,8 +274,12 @@ import {
   listTasks,
   getTaskProgress,
   cancelTask,
+  getConceptSyncStatus,
+  CONCEPT_SOURCE_LABELS,
   type CollectTask,
   type TaskProgress,
+  type ConceptSource,
+  type ConceptSyncParams,
   CONCEPT_SOURCE_OPTIONS,
 } from './api'
 
@@ -320,7 +324,7 @@ const klineExchange = ref<string[]>([])
 const klineConcurrency = ref(3)
 
 // ── 概念同步筛选 ──
-const conceptSource = ref<'em' | 'ths'>('em')
+const conceptSource = ref<ConceptSource>('em')
 const conceptForceResync = ref(false)
 
 // ── 任务列表 ──
@@ -330,8 +334,25 @@ const taskPage = ref(1)
 const taskPageSize = ref(20)
 const tasksLoading = ref(false)
 
-/** 是否存在概念同步历史（用于「查看概念归属」按钮置灰判断） */
-const hasConceptHistory = computed(() => tasks.value.length > 0)
+/** 是否存在概念同步历史（用于「查看概念归属」按钮置灰判断）
+ *
+ * 旧实现：`tasks.value.length > 0` —— 但 `tasks` 是当前 tab 的列表，刚切到 concept tab
+ * 时可能为空（loadTasks 尚未返回），导致按钮被错误置灰。
+ *
+ * 新实现：直接用后端「概念同步状态」接口（`getConceptSyncStatus`），零额外开销
+ * —— 后端返回的是 `concepts.last_synced_at`，与 sys_collect_tasks 解耦，
+ * 关注的是「DB 里有没有概念数据」而非「有没有跑过任务」。
+ */
+const hasConceptHistory = ref(false)
+
+async function loadConceptSyncStatus() {
+  try {
+    const status = await getConceptSyncStatus()
+    hasConceptHistory.value = !!(status?.last_synced_at || (status?.active_concepts ?? 0) > 0)
+  } catch {
+    hasConceptHistory.value = false
+  }
+}
 
 /** 路由跳转（按 symbol 不一定，跳到列表即可） */
 const router = useRouter()
@@ -363,8 +384,8 @@ async function loadTasks() {
       page: taskPage.value,
       page_size: taskPageSize.value,
     })
-    tasks.value = data.items || []
-    taskTotal.value = data.total || 0
+    tasks.value = data.dataList ?? data.items ?? []
+    taskTotal.value = data.total ?? 0
 
     const statusSummary = tasks.value.map((t) => `${t.id}:${t.status}`).join(', ')
     console.log(LOG_PREFIX, 'loadTasks', activeTab.value,
@@ -405,6 +426,10 @@ function onTabChange() {
   watchingIds.clear()
   taskPage.value = 1
   loadTasks()
+  // 🆕 切到 concept tab 时拉一次同步状态，用于按钮置灰
+  if (activeTab.value === 'concept') {
+    loadConceptSyncStatus()
+  }
 }
 
 function onTaskPageSizeChange(s: number) {
@@ -415,10 +440,14 @@ function onTaskPageSizeChange(s: number) {
 
 // ── 任务操作 ──
 
-async function startTask(taskType: string, params?: Record<string, any>) {
+async function startTask(
+  taskType: 'daily_kline' | 'daily_basic' | 'stock_basic' | 'concept',
+  params?: Record<string, any>,
+) {
   console.log(LOG_PREFIX, 'startTask', taskType, params)
   try {
-    const res = await createTask({ task_type: taskType, params })
+    // 类型断言：startTask 是统一入口，concept 分支已通过 startConcept() 收紧到 ConceptSyncParams
+    const res = await createTask({ task_type: taskType, params } as never)
     console.log(LOG_PREFIX, 'createTask response:', res)
     if (res.task_id) {
       ElMessage.success(res.message || '任务已创建')
@@ -455,7 +484,7 @@ function startKline(base: Record<string, any>) {
 
 /** 概念全量同步启动 */
 async function startConcept() {
-  const params: Record<string, any> = {
+  const params: ConceptSyncParams = {
     source: conceptSource.value,
     force_resync: conceptForceResync.value,
   }
@@ -535,6 +564,8 @@ async function pollOnce() {
         console.log(LOG_PREFIX, `task ${taskId} finished: ${p.status}`, p)
         if (p.status === 'success') {
           ElMessage.success(`采集完成: 成功 ${p.success}, 失败 ${p.fail}`)
+          // 🆕 概念同步成功后刷新「查看概念归属」按钮置灰状态
+          if (activeTab.value === 'concept') loadConceptSyncStatus()
         } else if (p.status === 'failed') {
           ElMessage.error('采集任务失败')
         } else if (p.status === 'cancelled') {
@@ -576,9 +607,10 @@ function formatParams(task: CollectTask): string {
   const p = task.params
   const parts: string[] = []
   if (task.task_type === 'concept') {
-    // 概念同步专用渲染
-    const source = p.source === 'ths' ? '同花顺' : '东方财富'
-    parts.push(source)
+    // 概念同步专用渲染 —— 使用 CONCEPT_SOURCE_LABELS 单点真理
+    // 未知 source 不再错误地显示成"东方财富"，而是显示原始字符串
+    const sourceLabel = p.source ? (CONCEPT_SOURCE_LABELS[p.source] ?? p.source) : '未知'
+    parts.push(sourceLabel)
     if (p.force_resync) parts.push('强制重传')
     return parts.join(' · ') || '-'
   }

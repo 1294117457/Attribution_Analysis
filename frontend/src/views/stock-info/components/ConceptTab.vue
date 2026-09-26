@@ -11,7 +11,7 @@
  * 配套设计文档：docs/dev/06gainian/04-frontend-detail-design.md §2.4.2
  -->
 <template>
-  <div v-loading="loading" class="concept-tab">
+  <div v-loading="loading && !data" class="concept-tab">
     <!-- 骨架屏：抽屉刚打开、用户尚未看热词时 -->
     <div v-if="!data && loading" class="concept-skeleton">
       <el-skeleton :rows="4" animated />
@@ -60,6 +60,31 @@
         </div>
       </div>
     </template>
+
+    <!-- 🆕 预热简略版：full data 还没回来时，先用 preheat 渲染一组 chip
+         命中目标：抽屉打开瞬间不再有「空白骨架屏」，用户立刻看到概念归属 -->
+    <div v-else-if="preheatConcepts && preheatConcepts.length > 0" class="concept-section">
+      <div class="section-title">
+        <span class="title-text">所属概念</span>
+        <el-tag size="small" type="info" effect="plain">
+          {{ preheatConcepts.length }}
+        </el-tag>
+        <span class="text-xs text-gray-400 ml-1">（预热数据，加载完成后展示分组）</span>
+      </div>
+      <div class="concept-list">
+        <el-tag
+          v-for="c in preheatConcepts"
+          :key="`${c.source}:${c.concept_id}`"
+          size="small"
+          :type="sourceTagType(c.source)"
+          effect="plain"
+          round
+          class="concept-preheat-chip"
+        >
+          {{ c.name }}
+        </el-tag>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -71,12 +96,20 @@ import {
   getConceptTabForSymbol,
   type ConceptTabContentVO,
   type ConceptGroupedVO,
+  type ConceptBrief,
+  type ConceptSource,
 } from '@/views/stock-info/api'
 import ConceptTag from './ConceptTag.vue'
 
 const props = defineProps<{
   symbol: string
   stock_name?: string
+  /**
+   * 列表阶段预热的概念简略版（ConceptBrief[]）。
+   * 由父组件 StockDetailDrawer 从 useStockDetailDrawer.preheatConcepts 透传。
+   * 抽屉打开瞬间即可渲染，无需等待 /concepts/tab-by-symbol 接口。
+   */
+  preheatConcepts?: ConceptBrief[]
 }>()
 
 const emit = defineEmits<{
@@ -109,6 +142,11 @@ function onTagClick(c: ConceptGroupedVO) {
   emit('conceptClick', c)
   // 占位反馈：未来跳到概念详情页
   ElMessage.info(`点击了概念：${c.name}（${c.source}）`)
+}
+
+/** 预热 chip 的染色：与 StockInfoList 表格保持一致 */
+function sourceTagType(source: ConceptSource): 'primary' | 'success' | 'warning' | 'info' | 'danger' {
+  return ({ em: 'primary', ths: 'success' } as const)[source] || 'info'
 }
 
 watch(() => props.symbol, load, { immediate: true })
@@ -148,6 +186,17 @@ watch(() => props.symbol, load, { immediate: true })
   flex-wrap: wrap;
   align-items: center;
   min-height: 24px;
+}
+
+/* 🆕 预热 chip：与正式 ConceptTag 区分透明度，避免视觉混淆 */
+.concept-preheat-chip {
+  margin: 0 4px 6px 0;
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+
+.concept-preheat-chip:hover {
+  opacity: 1;
 }
 
 .concept-footer {

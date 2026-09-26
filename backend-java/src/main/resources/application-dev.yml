@@ -1,0 +1,26 @@
+spring:
+  # 开发环境 — 连接远程 PostgreSQL + Redis
+  datasource:
+    url: jdbc:postgresql://8.148.204.54:5432/attribution
+    username: zhouch
+    password: zhouchenhui
+    driver-class-name: org.postgresql.Driver
+
+  data:
+    redis:
+      host: 8.148.204.54
+      port: 6379
+      database: 0
+      password: ${REDIS_PASSWORD:}
+      timeout: 5000
+      connect-timeout: 5000
+
+tushare:
+  token: ${TUSHARE_TOKEN:}
+
+logging:
+  level:
+    com.attribution: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.orm.jdbc.bind: TRACE
+    org.springframework.data.redis: INFO

@@ -1,0 +1,108 @@
+spring:
+  application:
+    name: attribution-analysis
+
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://8.148.204.54:5432/attribution}
+    username: ${DATABASE_USERNAME:zhouch}
+    password: ${DATABASE_PASSWORD:zhouchenhui}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 200
+      minimum-idle: 10
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: Asia/Shanghai
+        order_inserts: true
+        order_updates: true
+        batch_size: 50
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    validate-on-migrate: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:8.148.204.54}
+      port: ${REDIS_PORT:6379}
+      database: ${REDIS_DB:0}
+      password: ${REDIS_PASSWORD:}
+      timeout: 5000
+      connect-timeout: 5000
+      lettuce:
+        pool:
+          max-active: 100
+          max-idle: 50
+          min-idle: 5
+          max-wait: 2000
+
+  threads:
+    virtual:
+      enabled: true
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    serialization:
+      write-dates-as-timestamps: false
+      indent-output: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+server:
+  port: ${SERVER_PORT:8000}
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/plain
+  tomcat:
+    threads:
+      max: 200
+      min-spare: 10
+
+logging:
+  level:
+    root: INFO
+    com.attribution: DEBUG
+    org.springframework.web: INFO
+    org.hibernate.SQL: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"
+
+tushare:
+  token: ${TUSHARE_TOKEN:}
+  base-url: http://api.tushare.pro
+  timeout: 30000
+  max-retries: 3
+  rate-limit: 33
+
+collection:
+  task:
+    batch-size: 100
+    batch-delay: 1000
+    max-concurrency: 50
+    default-lookback-days: 365
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized

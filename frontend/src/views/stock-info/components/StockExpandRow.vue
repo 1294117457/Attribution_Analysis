@@ -182,7 +182,7 @@ async function loadDailyKlines() {
   dailyLoading.value = true
   try {
     const res = await getKlines(props.symbol, { limit: dailyRange.value, order_desc: true })
-    dailyKlines.value = res.items ?? []
+    dailyKlines.value = res.dataList ?? res.items ?? []
   } catch {
     dailyKlines.value = []
   } finally {
@@ -197,7 +197,7 @@ async function loadMinuteKlines() {
       interval: minuteInterval.value,
       count: minuteCount.value,
     })
-    minuteKlines.value = res.items ?? []
+    minuteKlines.value = res.dataList ?? res.items ?? []
   } catch {
     minuteKlines.value = []
   } finally {

@@ -94,8 +94,11 @@ export const useKlineStore = defineStore('kline', () => {
 
     loadingSymbols.value.add(symbol)
     try {
-      const data = (await getKlines(symbol, params)) as unknown as { items?: Kline[] }
-      const items = (data.items || []) as Kline[]
+      const data = (await getKlines(symbol, params)) as unknown as {
+        items?: Kline[]
+        dataList?: Kline[]
+      }
+      const items = (data.dataList ?? data.items ?? []) as Kline[]
       klineCache.value[cacheKey] = items
       // 顺便刷新单股 K 线缓存 (symbol -> klines)
       klineCache.value[symbol] = items
