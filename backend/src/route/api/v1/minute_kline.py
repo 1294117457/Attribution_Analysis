@@ -8,8 +8,8 @@ from functools import lru_cache
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from infrastructure.collectors import get_registry
-from infrastructure.collectors.protocols import MinuteKlineFetcher
+from infrastructure.adapter import get_registry
+from application.port.collector_port import MinuteKlineFetcher
 from route.schemas import response as R
 
 router = APIRouter(prefix="/minute-klines", tags=["分钟K线"])

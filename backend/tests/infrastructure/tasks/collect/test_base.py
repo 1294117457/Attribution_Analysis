@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from infrastructure.tasks.collect.base import (
+from infrastructure.adapter.scheduler.collect.base import (
     BaseCollectTask,
     Cancelled,
     TaskSummary,
@@ -93,7 +93,7 @@ def fake_redis(monkeypatch):
         return redis
 
     # Patch the symbol imported in base.py
-    import infrastructure.tasks.collect.base as base_mod
+    import infrastructure.adapter.scheduler.collect.base as base_mod
     monkeypatch.setattr(base_mod, "get_redis", _fake_get_redis)
     return redis
 
@@ -114,7 +114,7 @@ def fake_db(monkeypatch):
     def _factory():
         return cm
 
-    import infrastructure.tasks.collect.base as base_mod
+    import infrastructure.adapter.scheduler.collect.base as base_mod
     monkeypatch.setattr(base_mod, "AsyncSessionLocal", _factory)
     return session
 

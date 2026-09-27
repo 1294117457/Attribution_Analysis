@@ -1,7 +1,7 @@
 """采集任务管理 API
 
 重构后：router 仅负责 HTTP 协议，所有业务逻辑在
-`infrastructure.tasks.collect.*` 子类中实现。
+`infrastructure.adapter.scheduler.collect.*` 子类中实现。
 
 配套设计文档：
   docs/dev/07collect-class/01-collect-task-class-design.md
@@ -17,10 +17,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from infrastructure.database.connection import get_db
-from infrastructure.database.models.sys_collect_task import SysCollectTaskDB
-from infrastructure.redis import get_redis
-from infrastructure.tasks.collect import (
+from infrastructure.persistence.connection import get_db
+from infrastructure.persistence.models.sys_collect_task import SysCollectTaskDB
+from infrastructure.adapter.cache.redis_client import get_redis
+from infrastructure.adapter.scheduler.collect import (
     execute_task,
     get_collect_task_registry,
     request_cancel,

@@ -46,7 +46,7 @@ def client():
 def clean_db():
     """清理数据库"""
     from sqlalchemy import text
-    from infrastructure.database.connection import async_engine
+    from infrastructure.persistence.connection import async_engine
 
     async def _do():
         async with async_engine.begin() as conn:
@@ -61,8 +61,8 @@ def clean_db():
 @pytest.fixture(scope="function")
 def insert_kline():
     """辅助函数：插入 K 线（带显式 commit）"""
-    from infrastructure.database.connection import AsyncSessionLocal
-    from infrastructure.repositories.kline_repository import KlineRepoImpl
+    from infrastructure.persistence.connection import AsyncSessionLocal
+    from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl
     from domain.kline.entity import Kline
 
     def _do(symbol="000001", day=1, **overrides):

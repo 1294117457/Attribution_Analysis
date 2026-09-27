@@ -22,12 +22,12 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-from infrastructure.config import get_settings
-from infrastructure.database.base import Base
-from infrastructure.database.models.kline import DailyKlineDB
-from infrastructure.database.models.stock_info import StockInfoDB
-from infrastructure.repositories.kline_repository import KlineRepoImpl
-from infrastructure.repositories.stock_repository import StockRepoImpl
+from infrastructure.config.settings import get_settings
+from infrastructure.persistence.base import Base
+from infrastructure.persistence.models.kline import DailyKlineDB
+from infrastructure.persistence.models.stock_info import StockInfoDB
+from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl
+from infrastructure.persistence.repositories.stock_repository import StockRepoImpl
 
 from domain.kline.entity import Kline
 from domain.kline.value_objects import StockCode
