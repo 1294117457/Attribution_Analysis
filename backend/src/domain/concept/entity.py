@@ -15,7 +15,8 @@ from typing import Optional
 class ConceptSource(str, Enum):
     """概念数据来源"""
     EM = "em"      # 东方财富（默认）
-    THS = "ths"    # 同花顺
+    THS = "ths"    # 同花顺（fallback：push2.eastmoney.com 被 RST 时使用 q.10jqka.com.cn）
+    ADATA = "adata"  # adata 库（独家：按股票反查概念，带入选理由 reason）
 
 
 class ConceptType(str, Enum):

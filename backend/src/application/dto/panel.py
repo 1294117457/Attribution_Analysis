@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from application.dto.page import Page
 from application.dto.pool import PoolMembershipVO
-from domain.concept.value_objects import ConceptBriefVO
+from domain.concept.value_objects import ConceptMainVO
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -81,7 +81,11 @@ class StockPanelItemVO(BaseModel):
     pools: list[PoolMembershipVO] = Field(default_factory=list)
 
     # ── 来自 stock_concept_members ⨝ concepts（with_concepts=true 时附带）──
-    concepts: list[ConceptBriefVO] = Field(default_factory=list)
+    # 08concept 升级：从 list[ConceptBriefVO] 改为 list[ConceptMainVO]
+    # 兼容：ConceptMainVO 包含 ConceptBriefVO 所有字段 + display_order
+    concepts: list[ConceptMainVO] = Field(default_factory=list)
+    # 08concept 新增：溢出数（行内"+N"显示用），仅概念总数 > top_k 时 > 0
+    concepts_overflow: int = 0
 
 
 class StockPanelListVO(Page[StockPanelItemVO]):

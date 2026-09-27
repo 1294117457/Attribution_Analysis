@@ -150,6 +150,29 @@
         </template>
       </el-table-column>
 
+      <!-- 🆕 主概念列（最多 3 个 + +N 溢出，后端按 concept_type 业务排序）
+           数据来源：loadStocks(with_concepts=true) → row.concepts: ConceptMainVO[] -->
+      <el-table-column label="主概念" width="200" fixed="left">
+        <template #default="{ row }">
+          <div v-if="row.concepts && row.concepts.length > 0" class="flex flex-wrap gap-1">
+            <ConceptTag
+              v-for="c in row.concepts"
+              :key="c.concept_id"
+              :concept="c"
+              @click.stop="onMainConceptClick(c)"
+            />
+            <el-tooltip
+              v-if="row.concepts_overflow > 0"
+              :content="getConceptsOverflowTooltip(row)"
+              placement="top"
+            >
+              <span class="text-xs text-gray-500">+{{ row.concepts_overflow }}</span>
+            </el-tooltip>
+          </div>
+          <span v-else class="text-xs text-gray-400">暂无</span>
+        </template>
+      </el-table-column>
+
       <!-- 滚动列（按重要性从左到右排列） -->
       <el-table-column label="最新价" width="90" align="right" sortable>
         <template #default="{ row }">
@@ -260,6 +283,7 @@ import PageWrapper from '@/components/PageWrapper.vue'
 import StockExpandRow from './components/StockExpandRow.vue'
 import AddToPoolDialog from './components/AddToPoolDialog.vue'
 import StockDetailDrawer from './components/StockDetailDrawer.vue'
+import ConceptTag from './components/ConceptTag.vue'
 import { useStockDetailDrawer } from './composables/useStockDetailDrawer'
 import {
   queryStocks,
@@ -271,6 +295,7 @@ import type {
   StockMeta,
   StockQueryParams,
   PoolMembership,
+  ConceptMainVO,
 } from '@/views/stock-info/api'
 
 const router = useRouter()
@@ -455,6 +480,27 @@ async function onPoolDone() {
 function getStockPools(symbol: string): PoolMembership[] {
   const stock = stocks.value.find(s => s.symbol === symbol)
   return stock?.pools ?? []
+}
+
+/**
+ * 🆕 08concept：主概念 Tag 点击事件
+ *
+ * 当前阶段占位反馈（未来跳到概念详情页 / 打开新抽屉）。
+ * 当前不做路由跳转，避免与"行点击打开详情抽屉"的交互冲突。
+ */
+function onMainConceptClick(c: ConceptMainVO) {
+  ElMessage.info(`点击了主概念：${c.name}（${c.concept_type}，${c.source}）`)
+  // TODO(v1.1): router.push(`/home/concept/${c.concept_id}`)
+}
+
+/**
+ * 🆕 08concept：主概念列"+N"溢出 tooltip
+ *
+ * 拼接所有 row.concepts 后被截断的概念名称（实际上后端只下发 top_k 个，
+ * 因此这里仅展示溢出数；具体名称需打开抽屉"概念"Tab 查看）。
+ */
+function getConceptsOverflowTooltip(row: StockInfo): string {
+  return `还有 ${row.concepts_overflow} 个概念，点击「详情」抽屉的「概念」Tab 查看`
 }
 
 function formatDate(v?: string) {

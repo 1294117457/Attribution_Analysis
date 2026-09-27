@@ -4,12 +4,17 @@
 不做单表 CRUD，不做领域事件，不依赖其他应用服务。
 
 对应路由：GET /api/v1/stock-panel/
+
+08concept 增量：
+- `_build_main_concepts()`：对每只股票的 ConceptBriefVO[] 按 concept_type 业务优先级
+  排序并取 top_k，构造 ConceptMainVO + 计算 overflow 数
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.concept_service import ConceptAppService
@@ -19,15 +24,24 @@ from application.dto.panel import (
     StockPanelQueryRequest,
 )
 from application.dto.pool import PoolMembershipVO
-from domain.concept.value_objects import ConceptBriefVO
+from domain.concept.value_objects import (
+    CONCEPT_TYPE_PRIORITY,
+    ConceptBriefVO,
+    ConceptMainVO,
+)
 from domain.panel.repository import StockPanelComposeRepository
 from domain.panel.value_objects import StockPanelRow
 from infrastructure.collectors.registry import get_registry
 from infrastructure.collectors.protocols import ConceptFetcher
+from infrastructure.database.connection import get_db
 from infrastructure.repositories.concept_repository import ConceptRepoImpl
 from infrastructure.repositories.panel_compose_repository import (
     StockPanelComposeRepoImpl,
 )
+
+
+# 列表行内"主概念"列展示上限
+MAIN_CONCEPT_TOP_K = 3
 
 
 class StockPanelAppService:
@@ -63,6 +77,10 @@ class StockPanelAppService:
         - 1× 主查询（4 表 LEFT JOIN + 子查询）
         - 1× 批量反查池（symbol IN (:symbols)，仅 with_pools=True 时）
         - 1× 批量反查概念（symbol IN (:symbols)，仅 with_concepts=True 时）
+
+        08concept 增量：
+        - with_concepts=true 时，仓储返回 ConceptBriefVO（含 concept_type），
+          Service 层用 _build_main_concepts 排序取 top_k + 构造 ConceptMainVO
         """
         rows, total = await self._repo.list_paginated(
             q=req.q,
@@ -90,19 +108,98 @@ class StockPanelAppService:
         if req.with_concepts and rows and self._concept_app is not None:
             concept_map = await self._repo.list_concepts_by_symbols(symbols)
 
+        # 09concept：批量取概念快照（最多 1 次额外 SQL，避免每行 N+1）
+        snapshot_map: dict[str, dict] = {}
+        if concept_map and self._concept_app is not None:
+            # 收集所有 concept_name（去重）
+            all_names: set[str] = set()
+            for briefs in concept_map.values():
+                for b in briefs:
+                    all_names.add(b.name)
+            if all_names:
+                snapshot_map = await self._repo.list_snapshots_for_names(list(all_names))
+
+        # 08concept：构造每只股票的"主概念"视图 + 计算 overflow（注入 snapshot）
+        main_concept_map: dict[str, tuple[list[ConceptMainVO], int]] = {}
+        if concept_map:
+            main_concept_map = self._build_main_concepts(
+                concept_map,
+                snapshot_map=snapshot_map,
+                top_k=MAIN_CONCEPT_TOP_K,
+            )
+
         items = [
-            _to_vo(r, pool_map.get(r.symbol, []), concept_map.get(r.symbol, []))
+            _to_vo(
+                r,
+                pool_map.get(r.symbol, []),
+                main_concept_map.get(r.symbol, ([], 0)),
+            )
             for r in rows
         ]
         return StockPanelListVO.from_list(items, total, req.page, req.page_size)
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    #  08concept 新增方法
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _build_main_concepts(
+        concept_map: dict[str, list[ConceptBriefVO]],
+        snapshot_map: Optional[dict[str, dict]] = None,
+        top_k: int = MAIN_CONCEPT_TOP_K,
+    ) -> dict[str, tuple[list[ConceptMainVO], int]]:
+        """对每只股票的 ConceptBriefVO[] 排序并取 top_k，构造 ConceptMainVO 视图。
+
+        排序规则：
+        1. 按 concept_type 业务优先级（industry > theme > event > style > region > other）
+        2. 同 type 内按 name 字典序
+
+        返回 dict[symbol, (main_concepts, overflow_count)]，其中：
+        - main_concepts: top_k 个 ConceptMainVO（display_order 1-based）
+        - overflow_count: 概念总数 - top_k（前端展示"+N"用）
+        - snapshot: 09concept 新增，注入板块涨幅快照（{pct_change, color, ...}）
+        """
+        snapshot_map = snapshot_map or {}
+        out: dict[str, tuple[list[ConceptMainVO], int]] = {}
+        for symbol, briefs in concept_map.items():
+            if not briefs:
+                out[symbol] = ([], 0)
+                continue
+
+            # 排序：先 type 优先级，再 name
+            sorted_briefs = sorted(
+                briefs,
+                key=lambda b: (
+                    CONCEPT_TYPE_PRIORITY.get(b.concept_type, 99),
+                    b.name,
+                ),
+            )
+            top = sorted_briefs[:top_k]
+            main_vos = [
+                ConceptMainVO.from_brief(
+                    brief=b,
+                    display_order=idx + 1,
+                    snapshot=snapshot_map.get(b.name) or None,
+                )
+                for idx, b in enumerate(top)
+            ]
+            overflow = max(0, len(briefs) - top_k)
+            out[symbol] = (main_vos, overflow)
+        return out
 
 
 def _to_vo(
     r: StockPanelRow,
     pools: list[PoolMembershipVO],
-    concepts: list[ConceptBriefVO],
+    main_concepts_with_overflow: tuple[list[ConceptMainVO], int],
 ) -> StockPanelItemVO:
-    """StockPanelRow → StockPanelItemVO（字段 1:1 + pools/concepts 注入）"""
+    """StockPanelRow → StockPanelItemVO（字段 1:1 + pools/concepts 注入）
+
+    08concept 改动：
+    - concepts 字段类型由 ConceptBriefVO[] 升级为 ConceptMainVO[]
+    - 新增 concepts_overflow 字段（"+N" 显示）
+    """
+    main_concepts, overflow = main_concepts_with_overflow
     return StockPanelItemVO(
         symbol=r.symbol,
         ts_code=r.ts_code,
@@ -128,14 +225,15 @@ def _to_vo(
             if r.profit_margin is not None else None
         ),
         pools=pools,
-        concepts=concepts,
+        concepts=main_concepts,
+        concepts_overflow=overflow,
     )
 
 
 # ── 依赖注入工厂（路由层调用） ──────────────────────────────────────
 
 def get_panel_service(
-    session: AsyncSession,
+    session: AsyncSession = Depends(get_db),
 ) -> StockPanelAppService:
     """构造 StockPanelAppService 实例（路由 Depends 注入使用）
 
@@ -149,7 +247,9 @@ def get_panel_service(
             fetcher = registry.get(ConceptFetcher)
             concept_repo = ConceptRepoImpl(session)
             concept_app = ConceptAppService(repo=concept_repo, fetcher=fetcher)
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.warning("[panel] ConceptAppService 注入失败: %s", e)
             concept_app = None
 
     return StockPanelAppService(

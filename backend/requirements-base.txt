@@ -1,7 +1,11 @@
 # 大包 / C扩展 / 稳定依赖（几乎不变，Docker 层长期缓存）
 pandas==2.2.3
 sqlalchemy==2.0.35
-asyncpg==0.29.0
+asyncpg>=0.30.0
+greenlet>=3.0.3
 psycopg2-binary==2.9.10
 tushare==1.4.3
 tdxpy>=0.2.5
+akshare==1.16.91
+adata>=2.9.0     # 概念按股票反查（datacenter.eastmoney.com 唯一可用源）
+

@@ -10,17 +10,38 @@
 - MinuteKlineFetcher   — 分钟K线采集
 - StockBasicFetcher     — 股票基本信息采集
 - DailyBasicFetcher    — 日频估值采集
-- ConceptFetcher       — 概念板块采集（预留，AKShare 实现）
+- ConceptFetcher       — 概念板块采集
 """
 
 from __future__ import annotations
 
 import inspect
-from typing import Any, Protocol, TypeVar, runtime_checkable
-
-from infrastructure.collectors.interfaces import CollectParams
+from dataclasses import dataclass
+from datetime import date
+from typing import Any, Optional, Protocol, TypeVar, runtime_checkable
 
 P = TypeVar("P")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 通用采集参数
+# ═══════════════════════════════════════════════════════════════════════
+
+
+@dataclass
+class CollectParams:
+    """通用采集参数"""
+
+    symbol: Optional[str] = None
+    keyword: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    days: int = 30
+    adjust: str = "qfq"
+    list_status: str = "L"  # 上市状态（L/D/P）
+    # 预解析的名称：调用方已从本地 DB 查到时填入，避免 fetcher 再发一次远程请求
+    name: Optional[str] = None
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # 协议定义
@@ -98,14 +119,31 @@ class DailyBasicFetcher(Protocol):
 
 @runtime_checkable
 class ConceptFetcher(Protocol):
-    """概念板块采集协议（预留，AKShare 实现）"""
+    """概念板块采集协议
+
+    实现方：
+    - AkShareConceptFetcher  (THS 源，全量清单/行情/指数 K 线)
+    - AdataConceptFetcher    (THS 同源，按股票反查 + 入选理由)
+    """
 
     def fetch_concept_list(self) -> list[Any]:
         """获取概念板块列表"""
         ...
 
     def fetch_concept_stocks(self, concept_name: str) -> list[Any]:
-        """获取概念板块成分股"""
+        """获取概念板块成分股
+
+        实现注意：akshare THS 接口未提供成分股查询；返回空 list 表示该数据源
+        不支持此能力，调用方需做好降级处理。
+        """
+        ...
+
+    def fetch_concepts_by_stock(self, symbol: str) -> list[Any]:
+        """按股票代码反查所属概念列表（带入选理由）
+
+        实现注意：仅 AdataConceptFetcher 提供此能力；其他数据源返回空 list。
+        返回的 BO 应包含 `reason` 字段（adata 独有的入选理由）。
+        """
         ...
 
     @property

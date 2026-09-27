@@ -7,6 +7,9 @@
   - DailyBasicCollectTask
   - StockBasicCollectTask
   - ConceptCollectTask
+  - MembershipCollectTask   🆕 09concept
+  - SnapshotCollectTask     🆕 09concept
+  - IndexTHCollectTask      🆕 09concept
 
 抽象：
   - BaseCollectTask
@@ -18,7 +21,6 @@
 注册表：
   - CollectTaskRegistry
   - setup_collect_task_registry
-  - get_collect_task_registry
 
 取消标志：
   - request_cancel / is_cancelled / clear_cancel
@@ -37,6 +39,11 @@ from infrastructure.tasks.collect.base import (
     request_cancel,
 )
 from infrastructure.tasks.collect.concept import ConceptCollectTask
+from infrastructure.tasks.collect.concept_v2 import (
+    IndexTHCollectTask,
+    MembershipCollectTask,
+    SnapshotCollectTask,
+)
 from infrastructure.tasks.collect.daily_basic import DailyBasicCollectTask
 from infrastructure.tasks.collect.daily_kline import DailyKlineCollectTask
 from infrastructure.tasks.collect.registry import (
@@ -52,6 +59,10 @@ __all__ = [
     "DailyBasicCollectTask",
     "DailyKlineCollectTask",
     "StockBasicCollectTask",
+    # 🆕 09concept 新增 3 子任务
+    "MembershipCollectTask",
+    "SnapshotCollectTask",
+    "IndexTHCollectTask",
     # 抽象
     "BaseCollectTask",
     "UnitResult",

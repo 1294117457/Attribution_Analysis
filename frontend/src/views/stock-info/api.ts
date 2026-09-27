@@ -34,6 +34,11 @@ export interface PoolMembership {
 /** 概念数据源 */
 export type ConceptSource = 'em' | 'ths'
 
+/**
+ * 09concept: 默认改为 ths（EM 链路已 RST）
+ * 前端保留 'em' 类型仅为兼容历史代码，新数据全部是 ths 源。
+ */
+
 /** 概念类型 */
 export type ConceptType =
   | 'industry'   // 行业概念
@@ -53,11 +58,50 @@ export const CONCEPT_TYPE_LABELS: Record<ConceptType, string> = {
   other:    '其他概念',
 }
 
-/** 简略 VO（嵌入到 StockInfo.concepts，给详情抽屉预热用） */
+/** 简略 VO（嵌入到 StockInfo.concepts，给详情抽屉预热用）
+
+  08concept 增量：
+  - 新增 concept_type 可选字段，用于主概念列排序与前端染色
+  - 向后兼容：旧响应无该字段时默认 "other" */
 export interface ConceptBrief {
   concept_id: number
   name: string
   source: ConceptSource
+  /** 08concept 新增：概念类型 */
+  concept_type?: ConceptType
+}
+
+/** 主概念 VO（08concept 新增，列表行渲染专用）
+
+  与 ConceptBrief 的区别：
+  - ConceptBrief：通用简略视图（无业务排序）
+  - ConceptMainVO：业务排序视图（多了 display_order）
+
+  display_order: 1=最优先（industry），越大越靠后 */
+export interface ConceptMainVO {
+  concept_id: number
+  name: string
+  source: ConceptSource
+  concept_type: ConceptType
+  display_order: number
+  /** 09concept 新增：板块行情快照（None 表示暂无快照数据） */
+  snapshot?: ConceptSnapshot | null
+}
+
+/** 09concept 新增：概念板块行情快照（涨跌染色用） */
+export interface ConceptSnapshot {
+  concept_name: string
+  pct_change: number          // -1.32 / +1.32 / 0.0
+  rank_current: number | null
+  rank_total: number | null
+  rank_label: string          // "191/390"
+  up_count: number | null
+  down_count: number | null
+  up_down_label: string       // "90/372"
+  net_inflow_yi: number | null
+  turnover_yi: number | null
+  color: 'up' | 'down' | 'flat'
+  captured_at: string
 }
 
 /** 分组 VO（详情抽屉「概念」Tab 用） */
@@ -73,7 +117,14 @@ export interface ConceptGroupedVO {
 export interface ConceptTabSectionVO {
   type: ConceptType
   type_label: string
-  concepts: ConceptGroupedVO[]
+  /** 08concept：合并后 dict 可能携带 is_realtime / reason / concept_code 字段 */
+  concepts: (ConceptGroupedVO & {
+    concept_code?: string | null
+    is_realtime?: boolean
+    reason?: string | null
+    /** 09concept 新增：板块行情快照（涨跌染色用） */
+    snapshot?: ConceptSnapshot | null
+  })[]
 }
 
 /** 概念 Tab 完整渲染模型（与后端 ConceptTabContentVO 1:1） */
@@ -82,6 +133,10 @@ export interface ConceptTabContentVO {
   stock_name: string
   sections: ConceptTabSectionVO[]
   total_count: number
+  /** 08concept 新增：是否经过实时合并 */
+  is_merged?: boolean
+  /** 08concept 新增：合并时间（ISO 字符串） */
+  last_merged_at?: string | null
 }
 
 /** 股票信息（stock_basic / stock_info）
@@ -113,8 +168,16 @@ export interface StockInfo {
   // 🆕 所属操作池（with_pools=true 时由后端批量填充，避免 N+1）
   pools: PoolMembership[]
 
-  // 🆕 所属概念板块（with_concepts=true 时由后端批量填充，详情抽屉预热用）
-  concepts: ConceptBrief[]
+  /** 🆕 所属概念板块（with_concepts=true 时由后端批量填充，详情抽屉预热用）
+
+  08concept 升级：
+  - 类型从 ConceptBrief[] 升级为 ConceptMainVO[]
+  - 兼容：ConceptMainVO 包含 ConceptBrief 所有字段 + display_order
+  */
+  concepts: ConceptMainVO[]
+
+  /** 🆕 08concept：溢出数（行内"+N"显示用），仅概念总数 > top_k 时 > 0 */
+  concepts_overflow: number
 }
 
 /** 股票查询项（GET /stocks/ 响应，含富字段 + K 线统计） */
@@ -662,6 +725,23 @@ export const getConceptTabForSymbol = (
 ): Promise<ConceptTabContentVO> =>
   http.get<ConceptTabContentVO>(`/concepts/tab-by-symbol/${symbol}`, { params }).then(unwrap)
 
+/** 🆕 08concept：合并实时数据（adata 入选理由）
+ * GET /api/v1/concepts/tab-by-symbol/{symbol}?merge_live=true
+ *
+ * 与 getConceptTabForSymbol 的区别：
+ * - 默认：仅 DB 数据
+ * - 本接口：DB + adata 实时合并，含 is_realtime / reason / concept_code 字段
+ *
+ * 适用场景：详情抽屉「概念」Tab 的"实时刷新"按钮 */
+export const getConceptTabForSymbolMerged = (
+  symbol: string,
+  params: { stock_name?: string } = {},
+): Promise<ConceptTabContentVO> =>
+  http.get<ConceptTabContentVO>(
+    `/concepts/tab-by-symbol/${symbol}`,
+    { params: { ...params, merge_live: true } },
+  ).then(unwrap)
+
 /** GET /api/v1/concepts/{name}  单概念详情（含成分股） */
 export const getConceptDetail = (
   name: string,
@@ -686,3 +766,47 @@ export const getConceptSyncStatus = (): Promise<{
   active_concepts: number
 }> =>
   http.get('/concepts/sync/status').then(unwrap)
+
+// ═══════════════════════════════════════════════════════════════
+//  🆕 09concept 新增 API
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * GET /api/v1/concepts/{name}/snapshot  取单概念最新行情快照
+ *
+ * 用于主概念 Tag 涨跌染色（ConceptTag / ConceptTab）
+ */
+export const getConceptSnapshot = (name: string): Promise<ConceptSnapshot> =>
+  http.get<ConceptSnapshot>(`/concepts/${encodeURIComponent(name)}/snapshot`).then(unwrap)
+
+/**
+ * GET /api/v1/concepts/snapshots/batch  批量取多概念快照
+ *
+ * 用于主概念 Tag 批量涨跌染色（StockInfoList 一次性下发）
+ */
+export const getConceptSnapshotsBatch = (
+  names: string[],
+): Promise<Record<string, ConceptSnapshot>> =>
+  http
+    .get<Record<string, ConceptSnapshot>>('/concepts/snapshots/batch', {
+      params: { names: names.join(',') },
+    })
+    .then(unwrap)
+
+/**
+ * POST /api/v1/concepts/sync/membership  触发成分股反查同步
+ */
+export const triggerMembershipSync = (params?: { limit?: number }) =>
+  http.post('/concepts/sync/membership', params || {}).then(unwrap)
+
+/**
+ * POST /api/v1/concepts/sync/snapshot  触发概念行情快照采集
+ */
+export const triggerSnapshotSync = () =>
+  http.post('/concepts/sync/snapshot', {}).then(unwrap)
+
+/**
+ * POST /api/v1/concepts/sync/index-th  触发概念指数日 K 采集
+ */
+export const triggerIndexThSync = () =>
+  http.post('/concepts/sync/index-th', {}).then(unwrap)

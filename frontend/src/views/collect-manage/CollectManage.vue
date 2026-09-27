@@ -41,9 +41,36 @@
             <el-button size="small" @click="startTask('daily_basic', { days: 7 })">近7天</el-button>
           </template>
           <template v-else-if="activeTab === 'concept'">
-            <el-button type="primary" size="small" @click="startConcept()">
+            <el-button size="small" @click="startTask('concept')">
               <el-icon class="mr-1"><Refresh /></el-icon>
-              全量同步概念
+              同步清单
+            </el-button>
+            <el-button
+              size="small"
+              type="primary"
+              :loading="startingTasks.has('concept_membership')"
+              @click="startTask('concept_membership')"
+            >
+              <el-icon class="mr-1"><Connection /></el-icon>
+              同步成分股
+            </el-button>
+            <el-button
+              size="small"
+              type="success"
+              :loading="startingTasks.has('concept_snapshot')"
+              @click="startTask('concept_snapshot')"
+            >
+              <el-icon class="mr-1"><TrendCharts /></el-icon>
+              同步行情快照
+            </el-button>
+            <el-button
+              size="small"
+              type="warning"
+              :loading="startingTasks.has('concept_index_th')"
+              @click="startTask('concept_index_th')"
+            >
+              <el-icon class="mr-1"><DataLine /></el-icon>
+              同步指数 K 线
             </el-button>
             <el-button size="small" :disabled="!hasConceptHistory" @click="gotoStockInfo">
               <el-icon class="mr-1"><View /></el-icon>
@@ -266,7 +293,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Upload, ArrowDown, ArrowUp, Refresh, View } from '@element-plus/icons-vue'
+import { Upload, ArrowDown, ArrowUp, Refresh, View, Connection, TrendCharts, DataLine } from '@element-plus/icons-vue'
 
 import PageWrapper from '@/components/PageWrapper.vue'
 import {
@@ -320,8 +347,11 @@ const klineExchange = ref<string[]>([])
 const klineConcurrency = ref(3)
 
 // ── 概念同步筛选 ──
-const conceptSource = ref<'em' | 'ths'>('em')
+const conceptSource = ref<'ths'>('ths')   // 09concept: 砍掉 EM
 const conceptForceResync = ref(false)
+
+// ── 启动中任务集合（按钮 loading 反馈用） ──
+const startingTasks = reactive<Set<string>>(new Set())
 
 // ── 任务列表 ──
 const tasks = ref<CollectTask[]>([])
@@ -417,6 +447,7 @@ function onTaskPageSizeChange(s: number) {
 
 async function startTask(taskType: string, params?: Record<string, any>) {
   console.log(LOG_PREFIX, 'startTask', taskType, params)
+  startingTasks.add(taskType)
   try {
     const res = await createTask({ task_type: taskType, params })
     console.log(LOG_PREFIX, 'createTask response:', res)
@@ -440,6 +471,8 @@ async function startTask(taskType: string, params?: Record<string, any>) {
   } catch (e) {
     console.error(LOG_PREFIX, 'startTask error:', e)
     ElMessage.error('创建任务失败: ' + (e as Error).message)
+  } finally {
+    startingTasks.delete(taskType)
   }
 }
 
@@ -453,14 +486,10 @@ function startKline(base: Record<string, any>) {
   startTask('daily_kline', params)
 }
 
-/** 概念全量同步启动 */
-async function startConcept() {
-  const params: Record<string, any> = {
-    source: conceptSource.value,
-    force_resync: conceptForceResync.value,
-  }
-  console.log(LOG_PREFIX, 'startConcept', params)
-  await startTask('concept', params)
+/** 概念子任务快捷启动（09concept 拆分） */
+async function startConceptSubtask(subtask: string) {
+  // 同步清单用 concept（无 params），其余走对应 task_type
+  await startTask(subtask)
 }
 
 async function handleCancel(row: CollectTask) {

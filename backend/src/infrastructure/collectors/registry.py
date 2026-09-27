@@ -175,9 +175,10 @@ def setup_default_registry() -> FetcherRegistry:
     reg.register_factory(MinuteKlineFetcher, PytdxFetcher)
 
     # ── ConceptFetcher ─────────────────────────────────
-    # AKShare 概念板块采集器
-    # 注意：若 AKShare 未安装，import 会抛 RuntimeError；
-    # 此时 ConceptAppService 将不可用，详情抽屉「概念」Tab 会显示空。
+    # 注册策略（2026-09-26 网络诊断后更新）：
+    # - AkShareConceptFetcher：EM 优先，失败回退 THS；覆盖全量清单能力
+    # - AdataConceptFetcher：独家按股票反查（带入选理由）
+    # - 二者均通过 try/except 容错：未安装时降级为无该能力
     try:
         from infrastructure.collectors.akshare.fetcher import AkShareConceptFetcher
 
@@ -185,6 +186,18 @@ def setup_default_registry() -> FetcherRegistry:
         reg.register_instance(ConceptFetcher, akshare_concept_fetcher)
         reg.register_factory(ConceptFetcher, AkShareConceptFetcher)
     except Exception as e:
-        logger.warning("ConceptFetcher (AKShare) 未注册: %s", e)
+        logger.warning("ConceptFetcher (AkShare) 未注册: %s", e)
+
+    # adata 反查作为补充 fetcher（不替换 AkShareFetcher，而是并存；
+    # 调用方通过 fetcher.fetch_concepts_by_stock(symbol) 优先选择 adata）
+    try:
+        from infrastructure.collectors.adata.fetcher import AdataConceptFetcher
+
+        adata_concept_fetcher = AdataConceptFetcher()
+        # 仅注册工厂，调用方按需 create()（避免长期持有 adata 实例）
+        reg.register_factory(ConceptFetcher, AdataConceptFetcher)
+        logger.info("ConceptFetcher (Adata) 工厂已注册（用于 fetch_concepts_by_stock）")
+    except Exception as e:
+        logger.warning("ConceptFetcher (Adata) 未注册: %s", e)
 
     return reg

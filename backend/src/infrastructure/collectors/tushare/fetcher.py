@@ -24,7 +24,7 @@ from domain.kline.schemas import KlineBO
 from domain.stock_info.schemas import StockInfoBO
 from domain.fin_daily_basic.schemas import FinDailyBasicBO
 from infrastructure.collectors.base import BaseCollector
-from infrastructure.collectors.interfaces import CollectParams
+from infrastructure.collectors.protocols import CollectParams
 from infrastructure.collectors.tushare.parser import TushareKlineParser
 
 logger = logging.getLogger(__name__)
@@ -74,6 +74,8 @@ def parse_list_date(s) -> Optional[date]:
 class TushareFetcher(BaseCollector):
     """Tushare 数据采集器"""
 
+    SOURCE_NAME = "Tushare"
+
     def __init__(self, data_type: type = KlineBO):
         super().__init__()
         self._kline_type = data_type
@@ -96,14 +98,24 @@ class TushareFetcher(BaseCollector):
         ts.set_token(token)
         self._pro = ts.pro_api()
 
-    @property
-    def source_name(self) -> str:
-        return "Tushare"
-
     # ── K线采集 ─────────────────────────────────────────────
 
-    def _resolve_name(self, symbol: str, ts_code: str) -> str:
-        """查询股票名称（带缓存）"""
+    def _resolve_name(
+        self,
+        symbol: str,
+        ts_code: str,
+        prefetched: Optional[str] = None,
+    ) -> str:
+        """查询股票名称（按优先级：调用方注入 > 缓存 > 远端）
+
+        Args:
+            symbol: 6 位股票代码
+            ts_code: Tushare ts_code
+            prefetched: 调用方已拿到的 name（命中则直接返回，避免打 Tushare）
+        """
+        if prefetched:
+            self._name_cache[symbol] = prefetched
+            return prefetched
         if symbol in self._name_cache:
             return self._name_cache[symbol]
         try:
@@ -120,12 +132,18 @@ class TushareFetcher(BaseCollector):
         return ""
 
     def fetch(self, params: CollectParams) -> list[KlineBO]:
-        """K 线采集"""
+        """K 线采集
+
+        名称解析优先级（避免每次都打 Tushare stock_basic）：
+        1. params.name（调用方已注入，例如从本地 stock_infos 查到）
+        2. 缓存命中（_name_cache）
+        3. 兜底：Tushare stock_basic 单条查询（首次采集某 symbol 时）
+        """
         if not params.symbol:
             raise ValueError("采集 K 线需要提供 symbol")
 
         ts_code = symbol_to_ts_code(params.symbol)
-        stock_name = self._resolve_name(params.symbol, ts_code)
+        stock_name = self._resolve_name(params.symbol, ts_code, params.name)
 
         end_date = params.end_date or date.today()
         start_date = params.start_date or (end_date - timedelta(days=params.days))

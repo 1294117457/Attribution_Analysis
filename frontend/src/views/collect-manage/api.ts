@@ -10,8 +10,11 @@ import http, { unwrap } from '@/common/utils/http'
 /** 概念数据源 */
 export type ConceptSource = 'em' | 'ths'
 
+/**
+ * 09concept: 默认改为 ths（EM 链路已 RST）
+ * 后端实际只接受 ths，保留 'em' 类型仅为兼容前端旧代码。
+ */
 export const CONCEPT_SOURCE_OPTIONS: { label: string; value: ConceptSource }[] = [
-  { label: '东方财富 (em)', value: 'em' },
   { label: '同花顺 (ths)', value: 'ths' },
 ]
 
