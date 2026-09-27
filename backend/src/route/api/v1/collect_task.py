@@ -26,10 +26,69 @@ from infrastructure.adapter.scheduler.collect import (
     request_cancel,
 )
 from route.api import _response as R
+from route.dto.response.collect import CollectCatalogResponse, FacetGroupResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/collect", tags=["采集任务"])
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GET /collect/catalog — 采集任务目录树（四面分类）
+#   ⚠️ 必须放在 /collect/tasks/{task_id}/* 之前注册（fastapi 按声明顺序匹配）
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@router.get(
+    "/catalog",
+    response_model=CollectCatalogResponse,
+    summary="采集任务目录树（四面分类）",
+)
+async def get_collect_catalog():
+    """拉取采集任务目录树
+
+    返回按 facet（5 大面）→ sub_facet 二级聚合的目录结构。
+    前端 CollectManage.vue 启动时调用一次，作为左树渲染依据。
+
+    返回结构示例：
+    ```
+    {
+      "items": [
+        {
+          "facet": "tech", "label": "技术面", "icon": "TrendCharts",
+          "sort_order": 1,
+          "sub_groups": {
+            "kline": [
+              {"task_type": "daily_kline", "label": "日 K 线",
+               "description": "...", "status": "ready"}
+            ]
+          }
+        },
+        ...
+      ]
+    }
+    ```
+    """
+    registry = get_collect_task_registry()
+    groups = registry.catalog()
+    return CollectCatalogResponse(
+        items=[
+            FacetGroupResponse(
+                facet=g.facet,
+                label=g.label,
+                icon=g.icon,
+                sort_order=g.sort_order,
+                sub_groups={
+                    sub_key: [
+                        TaskDefResponse(**td.__dict__)
+                        for td in tasks
+                    ]
+                    for sub_key, tasks in g.sub_groups.items()
+                },
+            )
+            for g in groups
+        ],
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

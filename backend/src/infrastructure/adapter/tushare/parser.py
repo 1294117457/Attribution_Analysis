@@ -16,7 +16,7 @@ from typing import Optional
 
 import pandas as pd
 
-from domain.kline.schemas import KlineBO
+from route.dto.request.kline import KlineBO
 
 
 class TushareKlineParser:

@@ -31,6 +31,10 @@ class DailyBasicCollectTask(BaseCollectTask):
     """日频估值采集（按 trade_date 维度单元）"""
 
     name = "daily_basic"
+    facet = "fundamental"
+    sub_facet = "valuation"
+    label = "日频估值"
+    description = "PE / PB / PS / 股息率 + 股本市值 + 换手率 / 量比"
 
     # ── estimate_total ────────────────────────────────────────────────
 

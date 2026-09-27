@@ -116,7 +116,21 @@ class BaseCollectTask(ABC):
       - _finish_task:     更新 sys_collect_tasks 行（status / success / fail / ...）
     """
 
+    # ── 任务标识（子类必须设置，与 registry 中的 task_type 一致） ──
     name: ClassVar[str] = ""
+
+    # ── 元数据（四面分类用，前端通过 /collect/catalog 拉取） ──
+    # 取值约定：
+    #   facet:    tech / capital / fundamental / news / market  (5 选 1)
+    #   sub_facet: 子分组自由命名，如 kline / valuation / concept_list ...
+    #   label:     UI 显示名（中文）
+    #   status:    ready / planned  (planned 时 run() 直接返回'待实现')
+    #   description: 一句话说明（UI 副标题 / tooltip）
+    facet: ClassVar[str] = ""
+    sub_facet: ClassVar[str] = ""
+    label: ClassVar[str] = ""
+    status: ClassVar[str] = "ready"
+    description: ClassVar[str] = ""
 
     def __init__(self) -> None:
         # 由 execute_task() 在调用 run() 之前注入

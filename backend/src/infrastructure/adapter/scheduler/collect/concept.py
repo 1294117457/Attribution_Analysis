@@ -41,6 +41,10 @@ class ConceptCollectTask(BaseCollectTask):
     """
 
     name = "concept"
+    facet = "market"
+    sub_facet = "concept_list"
+    label = "概念清单"
+    description = "同花顺 THS 全量概念清单 ~375 个"
 
     def __init__(self) -> None:
         super().__init__()

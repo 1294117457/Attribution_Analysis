@@ -47,6 +47,10 @@ class MembershipCollectTask(BaseCollectTask):
     """
 
     name = "concept_membership"
+    facet = "market"
+    sub_facet = "concept_member"
+    label = "概念成分股"
+    description = "adata THS 同源按股票反查（带入选理由 reason）"
 
     def __init__(self) -> None:
         super().__init__()
@@ -142,6 +146,10 @@ class SnapshotCollectTask(BaseCollectTask):
     """
 
     name = "concept_snapshot"
+    facet = "market"
+    sub_facet = "concept_quote"
+    label = "概念行情快照"
+    description = "涨跌幅 / 涨跌家数 / 资金净流入 / 成交额 / 涨幅排名"
 
     def __init__(self) -> None:
         super().__init__()
@@ -229,6 +237,10 @@ class IndexTHCollectTask(BaseCollectTask):
     """
 
     name = "concept_index_th"
+    facet = "market"
+    sub_facet = "concept_index"
+    label = "概念指数 K 线"
+    description = "概念指数日 K + 成交量 / 成交额（akshare THS index）"
 
     def __init__(self) -> None:
         super().__init__()

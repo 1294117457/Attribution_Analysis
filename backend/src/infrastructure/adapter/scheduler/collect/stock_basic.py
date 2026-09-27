@@ -27,6 +27,10 @@ class StockBasicCollectTask(BaseCollectTask):
     """股票基本信息全量同步（无明确单元，total=1）"""
 
     name = "stock_basic"
+    facet = "fundamental"
+    sub_facet = "core"
+    label = "股票基本信息"
+    description = "全量代码/名称/行业/上市信息（5000+ 只）"
 
     # ── estimate_total ────────────────────────────────────────────────
 
