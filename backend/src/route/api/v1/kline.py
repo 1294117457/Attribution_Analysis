@@ -7,15 +7,15 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from application.kline_service import KlineAppService
+from application.service.kline_app_service import KlineAppService
 from application.dto.kline import (
     KlineCollectRequest,
     KlineDeleteRequest,
     KlineQueryRequest,
 )
-from infrastructure.collectors import get_registry
-from infrastructure.collectors.protocols import KlineFetcher
-from infrastructure.database.connection import get_db
+from infrastructure.adapter import get_registry
+from application.port.collector_port import KlineFetcher
+from infrastructure.persistence.connection import get_db
 from route.schemas import response as R
 
 router = APIRouter(prefix="/klines", tags=["K线"])

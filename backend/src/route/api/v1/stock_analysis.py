@@ -3,21 +3,27 @@
 GET /stocks/{symbol}/analysis?days=365
 → 返回 stock + summary + klines（含指标） + pools
 """
-
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from application.stock_analysis_service import StockAnalysisService
-from infrastructure.database.connection import get_db
+from application.service.stock_analysis_app_service import StockAnalysisAppService
+from infrastructure.persistence.connection import get_db
+from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl
+from infrastructure.persistence.repositories.pool_repository import StockPoolRepoImpl
+from infrastructure.persistence.repositories.stock_repository import StockRepoImpl
 from route.schemas import response as R
 
 router = APIRouter(prefix="/stocks", tags=["AI 归因"])
 
 
 def get_analysis_service(
-    db: AsyncSession = Depends(get_db),
-) -> StockAnalysisService:
-    return StockAnalysisService(session=db)
+    db=Depends(get_db),
+) -> StockAnalysisAppService:
+    """DDD 改造：构造改为依赖注入"""
+    return StockAnalysisAppService(
+        stock_repo=StockRepoImpl(db),
+        kline_repo=KlineRepoImpl(db),
+        pool_repo=StockPoolRepoImpl(db),
+    )
 
 
 @router.get(
@@ -27,7 +33,7 @@ def get_analysis_service(
 async def get_stock_analysis(
     symbol: str,
     days: int = Query(365, ge=30, le=1825, description="回溯天数"),
-    service: StockAnalysisService = Depends(get_analysis_service),
+    service: StockAnalysisAppService = Depends(get_analysis_service),
 ):
     """给前端图表 + 后续 AI Agent 的统一入口。
 

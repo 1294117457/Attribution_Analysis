@@ -25,19 +25,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.dto.panel import StockPanelQueryRequest
 from application.dto.stock import StockUpdateRequest
-from application.panel_service import StockPanelAppService
-from application.stock_service import StockAppService
-from infrastructure.collectors import get_registry
-from infrastructure.collectors.protocols import (
+from application.service.panel_app_service import StockPanelAppService
+from application.service.stock_app_service import StockAppService
+from application.port.collector_port import (
     DailyBasicFetcher,
     StockBasicFetcher,
 )
-from infrastructure.database.connection import get_db
+from infrastructure.adapter import get_registry
+from infrastructure.config.di import get_panel_app_service
+from infrastructure.persistence.connection import get_db
 from route.schemas import response as R
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/stocks", tags=["股票"])
+
+
+# DDD 改造：DI 工厂统一在 infrastructure/config/di.py
+# 此处委托 get_panel_app_service，注入 ConceptBriefService（domain）
 
 
 # ── 依赖注入工厂 ──────────────────────────────────────────
@@ -51,8 +56,20 @@ def get_stock_service(
 def get_panel_service(
     db: AsyncSession = Depends(get_db),
 ) -> StockPanelAppService:
-    """面板应用服务（兼容旧 /stocks/ 路由委托使用）"""
-    return StockPanelAppService(session=db)
+    """面板应用服务（兼容旧 /stocks/ 路由委托使用）
+
+    直接复用 infrastructure.config.di.get_panel_app_service，
+    保证概念、快照等概念相关数据正确注入。
+    """
+    # 由于 FastAPI Depends 限制不能直接复用，这里手动调用工厂
+    from application.service.panel_app_service import StockPanelAppService
+    from domain.concept.service import ConceptBriefService
+    from infrastructure.persistence.repositories.concept_repository import ConceptRepoImpl
+    return StockPanelAppService(
+        session=db,
+        concept_repo=ConceptRepoImpl(db),
+        brief_service=ConceptBriefService(),
+    )
 
 
 @lru_cache
@@ -206,7 +223,7 @@ async def sync_daily_basic(
 
     用于填充 fin_daily_basics 表，使股票列表能展示最新价、总市值、PE 等。
     """
-    from infrastructure.repositories.fin_daily_basic_repository import FinDailyBasicRepoImpl
+    from infrastructure.persistence.repositories.fin_daily_basic_repository import FinDailyBasicRepoImpl
 
     repo = FinDailyBasicRepoImpl(db)
 

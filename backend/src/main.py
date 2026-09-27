@@ -22,12 +22,12 @@ from application.exceptions import (
     CannotDeleteDefaultPoolError,
     PoolOperationConflictError,
 )
-from infrastructure.config import get_settings
-from infrastructure.collectors.registry import setup_default_registry
-from infrastructure.database.base import Base
-from infrastructure.database.connection import async_engine, close_db
+from infrastructure.config.settings import get_settings
+from application.port.registry import setup_default_registry
+from infrastructure.persistence.base import Base
+from infrastructure.persistence.connection import async_engine, close_db
 # ORM 模型导入（仅用于触发模型注册，Base.metadata.create_all 会扫描所有继承 Base 的类）
-from infrastructure.database.models import (                                            # noqa: F401
+from infrastructure.persistence.models import (                                            # noqa: F401
     TechKlineDailyDB,
     StockInfoDB,
     StockPoolDB,
@@ -58,7 +58,7 @@ from infrastructure.database.models import (                                    
     ConceptIndexTHDB,
     ConceptSnapshotDB,
 )
-from infrastructure.tasks.collect import (
+from infrastructure.adapter.scheduler.collect import (
     ConceptCollectTask,
     DailyBasicCollectTask,
     DailyKlineCollectTask,
@@ -436,7 +436,7 @@ async def _migrate_concepts_source_em_to_ths() -> None:
     独立事务（不嵌入 lifespan 的大事务，避免失败后 abort 整段）
     """
     from sqlalchemy import text
-    from infrastructure.database.connection import async_engine
+    from infrastructure.persistence.connection import async_engine
 
     async with async_engine.begin() as conn:
         # 1. 跳过（ths 源已存在的 em 行）

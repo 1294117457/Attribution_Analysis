@@ -14,14 +14,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from infrastructure.tasks.collect.base import (
+from infrastructure.adapter.scheduler.collect.base import (
     Cancelled,
     TaskSummary,
     UnitResult,
     clear_cancel,
     request_cancel,
 )
-from infrastructure.tasks.collect.concept import ConceptCollectTask
+from infrastructure.adapter.scheduler.collect.concept import ConceptCollectTask
 
 
 def _make_concept_bo(name: str, code: str = "BK0001"):
@@ -57,7 +57,7 @@ def mock_operation_cls():
         return counts.get(bo.name, 0)
 
     with patch(
-        "infrastructure.tasks.collect.concept.ConceptSyncOperation._sync_one",
+        "infrastructure.adapter.scheduler.collect.concept.ConceptSyncOperation._sync_one",
         new=_fake_sync_one,
     ):
         yield counts, failures
@@ -139,7 +139,7 @@ class TestRunAllSuccess:
             return 10
 
         with patch(
-            "infrastructure.tasks.collect.concept.ConceptSyncOperation._sync_one",
+            "infrastructure.adapter.scheduler.collect.concept.ConceptSyncOperation._sync_one",
             new=_all_ok,
         ):
             task = ConceptCollectTask()

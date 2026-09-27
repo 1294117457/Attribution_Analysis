@@ -12,15 +12,15 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from application.dto.panel import StockPanelListVO, StockPanelQueryRequest
-from application.panel_service import StockPanelAppService, get_panel_service
+from application.service.panel_app_service import StockPanelAppService
+from infrastructure.config.di import get_panel_app_service
 from route.schemas import response as R
 
 router = APIRouter(prefix="/stock-panel", tags=["面板"])
 
 
-# 🆕 09concept：使用 application.panel_service.get_panel_service
-# 该工厂方法会注入 ConceptAppService，使 with_concepts=true 时填充 concepts 字段。
-# 之前的本地 get_panel_service（直接 return StockPanelAppService(session=db)）未注入概念服务，导致概念永远为空。
+# DDD 改造：DI 工厂移到 infrastructure/config/di.py
+# 现在通过 get_panel_app_service 注入 ConceptBriefService（domain）
 
 
 @router.get(
@@ -48,7 +48,7 @@ async def query_panels(
     ),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=500, description="每页条数"),
-    service: StockPanelAppService = Depends(get_panel_service),
+    service: StockPanelAppService = Depends(get_panel_app_service),
 ):
     """分页 + 多维筛选 + K线统计 + 最新估值的股票列表（StockPanel.vue 主列表用）
 
