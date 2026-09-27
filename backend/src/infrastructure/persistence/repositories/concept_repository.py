@@ -15,10 +15,10 @@ from sqlalchemy import and_, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from domain.concept.entity import Concept, ConceptMember, ConceptSource
-from domain.concept.repository import ConceptRepository
-from domain.concept.schemas import ConceptIndexTHBO, ConceptSnapshotBO
-from domain.concept.value_objects import ConceptBriefVO, ConceptGroupedVO
+from domain.entitys.concept.entity import Concept, ConceptMember, ConceptSource
+from domain.entitys.concept.repository import ConceptRepository
+from route.dto.request.concept import ConceptIndexTHBO, ConceptSnapshotBO
+from domain.entitys.concept.vo import ConceptBriefVO, ConceptGroupedVO
 from infrastructure.persistence.models.concept import (
     ConceptIndexTHDB,
     ConceptMemberDB,

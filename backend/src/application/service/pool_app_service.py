@@ -7,7 +7,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from application.dto.pool import (
+from route.dto.response.pool import (
     PoolCreateRequest,
     PoolUpdateRequest,
     PoolAddMembersRequest,
@@ -21,14 +21,14 @@ from application.dto.pool import (
     PoolAddMembersResponse,
     PoolPoolsBySymbolResponse,
 )
-from application.exceptions import (
-    PoolNotFoundError,
+from domain.entitys.stock_pool.entity import (
     CannotDeleteDefaultPoolError,
-    DuplicatePoolMemberError,
-    PoolMemberNotFoundError,
+    DuplicateMemberError,
+    MemberNotFoundError,
+    PoolNotFoundError,
+    StockPool,
 )
-from domain.stock_pool.entity import StockPool, DuplicateMemberError as DomainDuplicateMemberError
-from domain.stock_pool.repository import StockPoolRepository
+from domain.entitys.stock_pool.repository import StockPoolRepository
 from infrastructure.persistence.repositories.pool_repository import StockPoolRepoImpl
 from infrastructure.persistence.repositories.stock_repository import StockRepoImpl
 
@@ -193,7 +193,7 @@ class StockPoolAppService:
             raise PoolNotFoundError(pool_id)
 
         if not pool.has_member(request.symbol):
-            raise PoolMemberNotFoundError(request.symbol)
+            raise MemberNotFoundError(request.symbol, pool_id)
 
         await self._repo.update_member_memo(
             pool_id, request.symbol, request.memo

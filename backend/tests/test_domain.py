@@ -7,10 +7,10 @@ from datetime import date
 
 import pytest
 
-from domain.kline.entity import Kline
-from domain.kline.value_objects import StockCode, TradeDate
-from domain.stock_info.entity import StockInfo
-from domain.stock_info.value_objects import Industry, Market
+from domain.entitys.kline.entity import Kline
+from domain.entitys.kline.value_objects import StockCode, TradeDate
+from domain.entitys.stock_info.entity import StockInfo
+from domain.entitys.stock_info.value_objects import Industry, Market
 
 
 # ════════════════════════════════════════════════════════════════
@@ -146,7 +146,7 @@ class TestStockInfo:
 
 class TestKlineSchemas:
     def test_klinebo_to_entity(self):
-        from domain.kline.schemas import KlineBO
+        from domain.entitys.kline.schemas import KlineBO
         bo = KlineBO(
             symbol="000001", name="平安银行", trade_date=date(2024, 1, 1),
             open=10, high=11, low=9, close=10.5,
@@ -157,7 +157,7 @@ class TestKlineSchemas:
         assert entity.name == "平安银行"
 
     def test_klinevo_from_entity(self):
-        from domain.kline.schemas import KlineVO
+        from domain.entitys.kline.schemas import KlineVO
         entity = Kline.create(
             symbol="000001", name="test", trade_date=date(2024, 1, 1),
             open=10, high=11, low=9, close=10.5,

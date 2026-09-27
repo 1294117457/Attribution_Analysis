@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from infrastructure.adapter import get_registry
 from application.port.collector_port import MinuteKlineFetcher
-from route.schemas import response as R
+from route.api import _response as R
 
 router = APIRouter(prefix="/minute-klines", tags=["分钟K线"])
 

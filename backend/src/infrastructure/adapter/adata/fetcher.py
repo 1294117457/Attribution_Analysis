@@ -26,8 +26,8 @@ import time
 
 import pandas as pd
 
-from domain.concept.entity import ConceptSource
-from domain.concept.schemas import ConceptListBO
+from domain.entitys.concept.entity import ConceptSource
+from route.dto.request.concept import ConceptListBO
 from infrastructure.adapter.base import BaseCollector
 from application.port.collector_port import ConceptFetcher
 

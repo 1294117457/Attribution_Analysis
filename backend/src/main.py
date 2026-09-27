@@ -9,18 +9,20 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from application.exceptions import (
-    ApplicationError,
+from domain.base import DomainError
+from domain.entitys.kline.entity import (
     CollectionError,
     KlineDataError,
     KlineNotFoundError,
+)
+from domain.entitys.stock_info.entity import StockNotFoundError
+from domain.entitys.stock_pool.entity import (
+    DuplicateMemberError,
+    MemberNotFoundError,
     PoolNotFoundError,
-    PoolOperationNotFoundError,
-    StockNotFoundError,
-    DuplicatePoolMemberError,
-    PoolMemberNotFoundError,
-    CannotDeleteDefaultPoolError,
     PoolOperationConflictError,
+    PoolOperationNotFoundError,
+    CannotDeleteDefaultPoolError,
 )
 from infrastructure.config.settings import get_settings
 from application.port.registry import setup_default_registry
@@ -334,8 +336,8 @@ def register_exception_handlers(app: FastAPI) -> None:
             content={"code": 502, "message": exc.message, "data": None},
         )
 
-    @app.exception_handler(ApplicationError)
-    async def application_error(request: Request, exc: ApplicationError):
+    @app.exception_handler(DomainError)
+    async def domain_error(request: Request, exc: DomainError):
         return JSONResponse(
             status_code=400,
             content={"code": 400, "message": exc.message, "data": None},

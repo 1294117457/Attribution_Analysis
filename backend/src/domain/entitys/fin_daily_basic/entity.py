@@ -1,0 +1,28 @@
+"""fin_daily_basic — 领域实体"""
+
+from dataclasses import dataclass
+from typing import Optional
+
+from domain.base import SymboledDatedEntity
+
+
+@dataclass
+class FinDailyBasic(SymboledDatedEntity):
+    """日频估值"""
+
+    close: Optional[float] = None
+    turnover_rate: Optional[float] = None
+    turnover_rate_f: Optional[float] = None
+    volume_ratio: Optional[float] = None
+    pe: Optional[float] = None
+    pe_ttm: Optional[float] = None
+    pb: Optional[float] = None
+    ps: Optional[float] = None
+    ps_ttm: Optional[float] = None
+    dv_ratio: Optional[float] = None
+    dv_ttm: Optional[float] = None
+    total_share: Optional[float] = None
+    float_share: Optional[float] = None
+    free_share: Optional[float] = None
+    total_mv: Optional[float] = None
+    circ_mv: Optional[float] = None

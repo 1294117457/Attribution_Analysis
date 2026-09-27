@@ -1,1 +1,0 @@
-"""infrastructure.adapter.port package"""

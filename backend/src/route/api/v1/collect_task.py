@@ -25,7 +25,7 @@ from infrastructure.adapter.scheduler.collect import (
     get_collect_task_registry,
     request_cancel,
 )
-from route.schemas import response as R
+from route.api import _response as R
 
 logger = logging.getLogger(__name__)
 

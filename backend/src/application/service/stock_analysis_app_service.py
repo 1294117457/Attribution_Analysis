@@ -20,17 +20,18 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from application.dto.stock_analysis import (
+from route.dto.response.stock_analysis import (
     KlineWithIndicatorVO,
     PoolMembershipVO,
     StockAnalysisResponse,
     StockInfoVO,
     TechnicalSummaryVO,
 )
-from application.exceptions import StockNotFoundError, KlineDataError
-from application.signals import SignalDetector
-from domain.kline.entity import Kline
-from domain.kline.value_objects import StockCode
+from domain.entitys.stock_info.entity import StockNotFoundError
+from domain.entitys.kline.entity import KlineDataError
+from domain.service.signal_detector import SignalDetector
+from domain.entitys.kline.entity import Kline
+from domain.entitys.kline.vo import StockCode
 from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl
 from infrastructure.persistence.repositories.pool_repository import StockPoolRepoImpl
 from infrastructure.persistence.repositories.stock_repository import StockRepoImpl

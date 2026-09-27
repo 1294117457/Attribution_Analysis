@@ -29,9 +29,9 @@ from infrastructure.persistence.models.stock_info import StockInfoDB
 from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl
 from infrastructure.persistence.repositories.stock_repository import StockRepoImpl
 
-from domain.kline.entity import Kline
-from domain.kline.value_objects import StockCode
-from domain.stock_info.entity import StockInfo
+from domain.entitys.kline.entity import Kline
+from domain.entitys.kline.value_objects import StockCode
+from domain.entitys.stock_info.entity import StockInfo
 
 
 # ════════════════════════════════════════════════════════════════
