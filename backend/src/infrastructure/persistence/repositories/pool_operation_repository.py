@@ -8,7 +8,7 @@ from typing import Optional
 from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from domain.stock_pool.repository import PoolOperationRepository
+from domain.entitys.stock_pool.repository import PoolOperationRepository
 from infrastructure.persistence.models.pool import PoolOperationDB
 
 

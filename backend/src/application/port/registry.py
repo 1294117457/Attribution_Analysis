@@ -146,7 +146,7 @@ def setup_default_registry() -> FetcherRegistry:
     # ── KlineFetcher ─────────────────────────────────────
     # 路由层单例（低并发）
     from infrastructure.adapter.tushare import TushareFetcher
-    from domain.kline.schemas import KlineBO
+    from route.dto.request.kline import KlineBO
 
     tushare_singleton = TushareFetcher(KlineBO)
     reg.register_instance(KlineFetcher, tushare_singleton)

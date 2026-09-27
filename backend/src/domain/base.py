@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any
+from datetime import date, datetime
+from typing import Any, Generic, Optional, TypeVar
 
 
 # ════════════════════════════════════════════════════════════════
@@ -98,3 +98,52 @@ class DomainEvent:
     @property
     def event_type(self) -> str:
         return type(self).__name__
+
+
+# ════════════════════════════════════════════════════════════════
+# 领域异常基类（DDD.md §2.4：业务异常归 domain 层）
+# ════════════════════════════════════════════════════════════════
+
+class DomainError(Exception):
+    """领域异常基类（统一 message + code 字段）
+
+    命名沿用 DDD 语义：业务异常属于领域知识，由 domain 层定义。
+    替换原先散布在 kline / stock_info / stock_pool 中的 ApplicationError。
+    """
+
+    def __init__(self, message: str, code: str = "DOMAIN_ERROR"):
+        self.message = message
+        self.code = code
+        super().__init__(message)
+
+
+# ════════════════════════════════════════════════════════════════
+# 采集数据实体基类
+# 覆盖 19 个 cap_* / base_* / fin_* / mkt_* 中按 symbol+date 维度的实体
+# ════════════════════════════════════════════════════════════════
+
+@dataclass
+class SymboledEntity(Entity):
+    """带 stock symbol 的实体基类
+
+    子类自动获得：
+    - id-based __eq__ / __hash__（来自 Entity）
+    - symbol / data_source 公共字段
+
+    字段顺序规则：
+    - id 在前且默认 0（未持久化标记），让子类可以自由追加任意字段
+    """
+
+    id: int = 0
+    symbol: str = ""
+    data_source: str = "tushare"
+
+
+@dataclass
+class SymboledDatedEntity(SymboledEntity):
+    """按 (symbol, trade_date) 维度采集的数据实体基类
+
+    覆盖绝大多数 cap_* / base_* / fin_* / mkt_* 实体。
+    """
+
+    trade_date: Optional[date] = None

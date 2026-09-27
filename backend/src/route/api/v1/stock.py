@@ -23,8 +23,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from application.dto.panel import StockPanelQueryRequest
-from application.dto.stock import StockUpdateRequest
+from route.dto.response.panel import StockPanelQueryRequest
+from route.dto.request.stock import StockUpdateRequest
 from application.service.panel_app_service import StockPanelAppService
 from application.service.stock_app_service import StockAppService
 from application.port.collector_port import (
@@ -34,7 +34,7 @@ from application.port.collector_port import (
 from infrastructure.adapter import get_registry
 from infrastructure.config.di import get_panel_app_service
 from infrastructure.persistence.connection import get_db
-from route.schemas import response as R
+from route.api import _response as R
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def get_panel_service(
     """
     # 由于 FastAPI Depends 限制不能直接复用，这里手动调用工厂
     from application.service.panel_app_service import StockPanelAppService
-    from domain.concept.service import ConceptBriefService
+    from domain.service import ConceptBriefService
     from infrastructure.persistence.repositories.concept_repository import ConceptRepoImpl
     return StockPanelAppService(
         session=db,

@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.service.concept_app_service import ConceptAppService
-from application.dto.concept import (
+from route.dto.response.concept import (
     ConceptDetailVO,
     ConceptIndexTHVO,
     ConceptItemVO,
@@ -25,15 +25,15 @@ from application.dto.concept import (
     ConceptSyncResultVO,
     ConceptTabContentVO,
 )
-from application.dto.page import Page
-from domain.concept.exceptions import ConceptNotFoundError
+from route.dto.page import Page
+from domain.entitys.concept.entity import ConceptNotFoundError
 from infrastructure.adapter.adata.fetcher import AdataConceptFetcher
 from infrastructure.adapter.akshare.fetcher import AkShareConceptFetcher
 from application.port.collector_port import ConceptFetcher
 from application.port.registry import get_registry
 from infrastructure.persistence.connection import get_db
 from infrastructure.persistence.repositories.concept_repository import ConceptRepoImpl
-from route.schemas import response as R
+from route.api import _response as R
 
 router = APIRouter(prefix="/concepts", tags=["概念"])
 

@@ -7,7 +7,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from application.dto.pool_operation import (
+from route.dto.request.pool_operation import (
     PoolKlineCollectRequest,
     PoolOperationListRequest,
     PoolOperationVO,
@@ -15,12 +15,12 @@ from application.dto.pool_operation import (
     PoolOperationCreateResponse,
     PoolOperationProgressVO,
 )
-from application.exceptions import (
+from domain.entitys.stock_pool.entity import (
     PoolNotFoundError,
-    PoolOperationNotFoundError,
     PoolOperationConflictError,
+    PoolOperationNotFoundError,
 )
-from domain.stock_pool.repository import StockPoolRepository, PoolOperationRepository
+from domain.entitys.stock_pool.repository import StockPoolRepository, PoolOperationRepository
 from infrastructure.persistence.repositories.pool_repository import StockPoolRepoImpl
 from infrastructure.persistence.repositories.pool_operation_repository import PoolOperationRepoImpl
 from infrastructure.adapter.scheduler.operation_dispatcher import OperationDispatcher
@@ -174,8 +174,8 @@ class PoolOperationAppService:
             raise PoolOperationNotFoundError(op_id)
 
         if op["status"] not in ("pending", "running"):
-            from application.exceptions import ApplicationError
-            raise ApplicationError("该操作无法取消", "CANNOT_CANCEL")
+            from domain.base import DomainError
+            raise DomainError("该操作无法取消", "CANNOT_CANCEL")
 
         await self._dispatcher.cancel_operation(op_id)
         await self._op_repo.update_status(

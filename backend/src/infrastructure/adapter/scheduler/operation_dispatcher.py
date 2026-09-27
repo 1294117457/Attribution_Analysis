@@ -61,7 +61,7 @@ class OperationDispatcher:
                     from application.service.kline_app_service import KlineAppService
                     from infrastructure.adapter import get_registry
                     from application.port.collector_port import KlineFetcher
-                    from application.dto.kline import KlineCollectRequest
+                    from route.dto.request.kline import KlineCollectRequest
 
                     done = 0
                     failed = 0

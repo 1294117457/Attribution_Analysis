@@ -10,10 +10,10 @@ from sqlalchemy import select, func, delete, update, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from domain.stock_pool.entity import StockPool, DuplicateMemberError
-from domain.stock_pool.repository import StockPoolRepository
-from domain.stock_pool.value_objects import PoolMember, PoolType
-from domain.stock_pool.schemas import StockPoolVO
+from domain.entitys.stock_pool.entity import StockPool, DuplicateMemberError
+from domain.entitys.stock_pool.repository import StockPoolRepository
+from domain.entitys.stock_pool.vo import PoolMember, PoolType
+from route.dto.response.stock_pool import StockPoolVO
 from infrastructure.persistence.models.pool import (
     StockPoolDB,
     StockPoolMemberDB,

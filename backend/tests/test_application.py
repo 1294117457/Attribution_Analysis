@@ -9,13 +9,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from application.service.kline_app_service import KlineAppService
-from application.exceptions import KlineNotFoundError
-from application.dto.kline import (
+from domain.entitys.kline.entity import KlineNotFoundError
+from route.dto.request.kline import (
     KlineCollectRequest,
     KlineQueryRequest,
     KlineDeleteRequest,
 )
-from domain.kline.schemas import KlineBO
+from domain.entitys.kline.schemas import KlineBO
 
 
 def make_kline_bo(symbol: str = "000001", day: int = 1) -> KlineBO:
@@ -74,7 +74,7 @@ class TestKlineAppService:
     @pytest.mark.asyncio
     async def test_get_klines(self):
         service = self._make_service()
-        from domain.kline.entity import Kline
+        from domain.entitys.kline.entity import Kline
         k = Kline.create(
             symbol="000001", name="test", trade_date=date(2024, 1, 1),
             open=10, high=11, low=9, close=10.5,
