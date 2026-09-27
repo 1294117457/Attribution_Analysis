@@ -25,3 +25,4 @@ docker-compose.override.yml
 
 # 根目录残留（前端自有 package-lock）
 package-lock.json
+backend-java/

@@ -2,12 +2,11 @@
 
 主要导出：
 - CollectParams        — 通用采集参数
-- FetcherProtocol      — 过渡态超级协议（deprecated，推荐用小协议）
 - KlineFetcher         — 日K线采集协议
 - MinuteKlineFetcher   — 分钟K线采集协议
 - StockBasicFetcher    — 股票基本信息采集协议
 - DailyBasicFetcher    — 日频估值采集协议
-- ConceptFetcher       — 概念板块采集协议（AKShare 实现）
+- ConceptFetcher       — 概念板块采集协议（AKShare / Adata 实现）
 - get_registry         — 获取全局注册中心
 - setup_default_registry — 启动时注册默认数据源
 
@@ -21,13 +20,13 @@ Service 层使用示例：
         ...
 """
 
-from infrastructure.collectors.interfaces import CollectParams, FetcherProtocol
 from infrastructure.collectors.protocols import (
+    CollectParams,
+    ConceptFetcher,
+    DailyBasicFetcher,
     KlineFetcher,
     MinuteKlineFetcher,
     StockBasicFetcher,
-    DailyBasicFetcher,
-    ConceptFetcher,
 )
 from infrastructure.collectors.registry import (
     get_registry,
@@ -36,7 +35,6 @@ from infrastructure.collectors.registry import (
 
 __all__ = [
     "CollectParams",
-    "FetcherProtocol",
     "KlineFetcher",
     "MinuteKlineFetcher",
     "StockBasicFetcher",

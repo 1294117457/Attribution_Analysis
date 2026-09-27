@@ -34,8 +34,7 @@ from domain.kline.repository import KlineRepository
 from domain.kline.value_objects import StockCode
 from domain.stock_info.repository import StockInfoRepository
 from domain.stock_info.entity import StockInfo
-from infrastructure.collectors.interfaces import CollectParams
-from infrastructure.collectors.protocols import KlineFetcher
+from infrastructure.collectors.protocols import CollectParams, KlineFetcher
 from infrastructure.indicators import IndicatorCalculator
 from infrastructure.repositories.kline_repository import KlineRepoImpl
 from infrastructure.repositories.stock_repository import StockRepoImpl
@@ -73,8 +72,12 @@ class KlineAppService:
     ) -> KlineCollectResponse:
         """采集 K 线 + 自动算指标"""
         try:
+            # 先查本地 stock_infos：已同步过的股票名可直接传给 fetcher，
+            # 避免 TushareFetcher 二次请求 stock_basic
+            prefetched_name = await self._lookup_name(request.symbol)
             params = CollectParams(
                 symbol=request.symbol,
+                name=prefetched_name,
                 days=request.days,
                 start_date=request.start_date,
                 end_date=request.end_date,
@@ -140,6 +143,17 @@ class KlineAppService:
                     message=str(e),
                 )
         return results
+
+    async def _lookup_name(self, symbol: str) -> str:
+        """从 stock_infos 查股票名，缺失返回空串
+
+        命中后传给 fetcher，可避免 TushareFetcher 二次请求 stock_basic。
+        """
+        try:
+            existing = await self._stock_repo.find_by_symbol(symbol)
+            return existing.name if existing and existing.name else ""
+        except Exception:
+            return ""
 
     async def _upsert_stock_info(self, symbol: str, name: str) -> None:
         """新增或更新股票基本信息"""

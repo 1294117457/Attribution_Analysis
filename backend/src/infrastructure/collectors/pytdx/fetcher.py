@@ -40,14 +40,12 @@ _TDX_HOSTS = [
 class PytdxFetcher(BaseCollector):
     """通达信分钟 K 线采集器"""
 
+    SOURCE_NAME = "Pytdx"
+
     def __init__(self):
         super().__init__()
         self._api = None
         self._connected = False
-
-    @property
-    def source_name(self) -> str:
-        return "Pytdx"
 
     def _get_api(self):
         if self._api is None:
