@@ -68,6 +68,7 @@ from infrastructure.adapter.scheduler.collect import (
     MembershipCollectTask,
     SnapshotCollectTask,
     StockBasicCollectTask,
+    all_planned_tasks,
     setup_collect_task_registry,
 )
 from route.api.router import api_router
@@ -112,6 +113,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         MembershipCollectTask(),
         SnapshotCollectTask(),
         IndexTHCollectTask(),
+        # 🆕 四面重构：15 个 planned 占位任务（资金面/基础层/基本面深度/新闻面）
+        *all_planned_tasks(),
     ])
 
     yield

@@ -46,8 +46,14 @@ from infrastructure.adapter.scheduler.collect.concept_v2 import (
 )
 from infrastructure.adapter.scheduler.collect.daily_basic import DailyBasicCollectTask
 from infrastructure.adapter.scheduler.collect.daily_kline import DailyKlineCollectTask
+from infrastructure.adapter.scheduler.collect.planned import (
+    PlannedCollectTask,
+    all_planned_tasks,
+)
 from infrastructure.adapter.scheduler.collect.registry import (
     CollectTaskRegistry,
+    FacetGroup,
+    TaskDef,
     get_collect_task_registry,
     setup_collect_task_registry,
 )
@@ -72,10 +78,15 @@ __all__ = [
     "execute_task",
     # 注册表
     "CollectTaskRegistry",
+    "FacetGroup",
+    "TaskDef",
     "setup_collect_task_registry",
     "get_collect_task_registry",
     # 取消标志
     "request_cancel",
     "is_cancelled",
     "clear_cancel",
+    # 占位任务（planned）
+    "PlannedCollectTask",
+    "all_planned_tasks",
 ]

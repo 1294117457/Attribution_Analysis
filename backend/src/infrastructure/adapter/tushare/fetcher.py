@@ -20,9 +20,9 @@ from typing import Optional
 
 import pandas as pd
 
-from domain.kline.schemas import KlineBO
-from domain.stock_info.schemas import StockInfoBO
-from domain.fin_daily_basic.schemas import FinDailyBasicBO
+from route.dto.request.kline import KlineBO
+from route.dto.request.stock_info import StockInfoBO
+from route.dto.request.fin_daily_basic import FinDailyBasicBO
 from infrastructure.adapter.base import BaseCollector
 from application.port.collector_port import CollectParams
 from infrastructure.adapter.tushare.parser import TushareKlineParser
