@@ -10,20 +10,17 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.dto.panel import StockPanelListVO, StockPanelQueryRequest
-from application.panel_service import StockPanelAppService
-from infrastructure.database.connection import get_db
+from application.panel_service import StockPanelAppService, get_panel_service
 from route.schemas import response as R
 
 router = APIRouter(prefix="/stock-panel", tags=["面板"])
 
 
-def get_panel_service(
-    db: AsyncSession = Depends(get_db),
-) -> StockPanelAppService:
-    return StockPanelAppService(session=db)
+# 🆕 09concept：使用 application.panel_service.get_panel_service
+# 该工厂方法会注入 ConceptAppService，使 with_concepts=true 时填充 concepts 字段。
+# 之前的本地 get_panel_service（直接 return StockPanelAppService(session=db)）未注入概念服务，导致概念永远为空。
 
 
 @router.get(

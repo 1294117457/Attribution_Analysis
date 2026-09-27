@@ -29,8 +29,7 @@ from application.dto.stock import (
 from application.exceptions import StockNotFoundError
 from domain.stock_info.entity import StockInfo
 from domain.stock_info.repository import StockInfoRepository
-from infrastructure.collectors.interfaces import CollectParams
-from infrastructure.collectors.protocols import StockBasicFetcher
+from infrastructure.collectors.protocols import CollectParams, StockBasicFetcher
 from infrastructure.repositories.stock_repository import StockRepoImpl
 
 logger = logging.getLogger(__name__)

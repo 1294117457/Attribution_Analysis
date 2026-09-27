@@ -9,6 +9,12 @@
  *   ConceptTag 点击 → emit('conceptClick', c) → 由 StockDetailDrawer 上抛
  *
  * 配套设计文档：docs/dev/06gainian/04-frontend-detail-design.md §2.4.2
+ *               docs/dev/08concept/04-frontend-stockinfo.md §三
+ *
+ * 08concept 增量：
+ * - 顶部加 "🔄 实时刷新" 按钮，调 getConceptTabForSymbolMerged
+ * - 合并状态显示："数据库数据" / "实时数据（已合并 adata）"
+ * - 实时数据点击 ConceptTag 时弹入选理由（reason）
  -->
 <template>
   <div v-loading="loading" class="concept-tab">
@@ -19,6 +25,32 @@
 
     <!-- 正常渲染 -->
     <template v-else-if="data">
+      <!-- 顶部工具栏：数据来源标识 + 实时刷新按钮 -->
+      <div class="concept-toolbar">
+        <div class="toolbar-left">
+          <el-icon class="text-gray-400" :size="14"><DataLine /></el-icon>
+          <span class="text-sm text-gray-700">
+            {{ merged ? '实时数据（已合并 adata）' : '数据库数据' }}
+          </span>
+          <el-tag v-if="merged" size="small" type="success" effect="plain">
+            ✓ 已合并
+          </el-tag>
+          <span v-if="merged && data.last_merged_at" class="text-xs text-gray-400">
+            {{ formatRelativeTime(data.last_merged_at) }}
+          </span>
+        </div>
+        <el-button
+          size="small"
+          type="primary"
+          link
+          :loading="loading && merged"
+          @click="onLiveRefresh"
+        >
+          <el-icon class="mr-1"><Refresh /></el-icon>
+          🔄 实时刷新
+        </el-button>
+      </div>
+
       <!-- 空状态 -->
       <el-empty
         v-if="data.sections.length === 0"
@@ -41,8 +73,8 @@
           </div>
           <div class="concept-list">
             <ConceptTag
-              v-for="c in section.concepts"
-              :key="c.concept_id"
+              v-for="(c, idx) in section.concepts"
+              :key="(c.concept_id ?? '') + '-' + c.name + '-' + idx"
               :concept="c"
               @click="onTagClick"
             />
@@ -65,10 +97,11 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, DataLine } from '@element-plus/icons-vue'
 import {
   getConceptTabForSymbol,
+  getConceptTabForSymbolMerged,
   type ConceptTabContentVO,
   type ConceptGroupedVO,
 } from '@/views/stock-info/api'
@@ -85,6 +118,8 @@ const emit = defineEmits<{
 
 const loading = ref(false)
 const data = ref<ConceptTabContentVO | null>(null)
+// 🆕 跟踪当前数据是否经过实时合并
+const merged = ref(false)
 
 async function load() {
   if (!props.symbol) return
@@ -93,6 +128,7 @@ async function load() {
     data.value = await getConceptTabForSymbol(props.symbol, {
       stock_name: props.stock_name,
     })
+    merged.value = false
   } catch (e) {
     ElMessage.error('加载概念失败: ' + (e as Error).message)
     data.value = null
@@ -105,13 +141,76 @@ async function reload() {
   await load()
 }
 
-function onTagClick(c: ConceptGroupedVO) {
-  emit('conceptClick', c)
-  // 占位反馈：未来跳到概念详情页
-  ElMessage.info(`点击了概念：${c.name}（${c.source}）`)
+/**
+ * 🆕 实时刷新：合并 adata 实时数据
+ *
+ * 数据源优先级：
+ * - DB（list_concepts_by_symbol_grouped）
+ * - adata（fetch_concepts_by_stock，按股票反查 + 入选理由）
+ *
+ * 失败容忍：
+ * - adata 网络断开 → 仅返回 DB 数据（is_merged=true 但仅 DB 部分）
+ * - adata 超时 → ElMessage.error，不重置 merged
+ */
+async function onLiveRefresh() {
+  if (loading.value) return  // 防抖
+  loading.value = true
+  try {
+    data.value = await getConceptTabForSymbolMerged(props.symbol, {
+      stock_name: props.stock_name,
+    })
+    merged.value = true
+    ElMessage.success(
+      `已合并 ${data.value?.total_count ?? 0} 个概念${data.value?.is_merged ? '（含 adata 入选理由）' : ''}`,
+    )
+  } catch (e) {
+    ElMessage.error('实时刷新失败: ' + (e as Error).message)
+  } finally {
+    loading.value = false
+  }
 }
 
-watch(() => props.symbol, load, { immediate: true })
+/**
+ * 🆕 Tag 点击：实时数据有 reason 时弹入选理由
+ *
+ * 处理流程：
+ * - is_realtime=true && reason 有值 → 弹入选理由 MessageBox
+ * - 其他 → 走原有逻辑（emit + toast 占位）
+ */
+async function onTagClick(c: ConceptGroupedVO & {
+  concept_code?: string | null
+  is_realtime?: boolean
+  reason?: string | null
+}) {
+  if (c.is_realtime && c.reason) {
+    await ElMessageBox.alert(c.reason, `${c.name} · 入选理由（adata 实时）`, {
+      confirmButtonText: '关闭',
+      type: 'info',
+    })
+  } else {
+    emit('conceptClick', c as ConceptGroupedVO)
+    ElMessage.info(`点击了概念：${c.name}（${c.source}）`)
+  }
+}
+
+/**
+ * 🆕 相对时间格式化（"3 分钟前"）
+ */
+function formatRelativeTime(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const t = new Date(iso).getTime()
+  const diff = Date.now() - t
+  if (diff < 60_000) return '刚刚'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`
+  return new Date(iso).toLocaleString('zh-CN')
+}
+
+watch(() => props.symbol, () => {
+  // 🆕 切换股票时重置合并状态
+  merged.value = false
+  load()
+}, { immediate: true })
 </script>
 
 <style scoped>
@@ -121,6 +220,21 @@ watch(() => props.symbol, load, { immediate: true })
 
 .concept-skeleton {
   padding: 8px 0;
+}
+
+/* 🆕 顶部工具栏 */
+.concept-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0 12px 0;
+  margin-bottom: 8px;
+  border-bottom: 1px dashed #e5e7eb;
+}
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .concept-section {

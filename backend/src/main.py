@@ -54,11 +54,17 @@ from infrastructure.database.models import (                                    
     MktIndexMemberDB,
     ConceptsDB,
     ConceptMemberDB,
+    # 🆕 09concept
+    ConceptIndexTHDB,
+    ConceptSnapshotDB,
 )
 from infrastructure.tasks.collect import (
     ConceptCollectTask,
     DailyBasicCollectTask,
     DailyKlineCollectTask,
+    IndexTHCollectTask,
+    MembershipCollectTask,
+    SnapshotCollectTask,
     StockBasicCollectTask,
     setup_collect_task_registry,
 )
@@ -83,8 +89,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await _migrate_stock_infos(conn)
         # 兼容旧 daily_klines：补齐 17 个技术指标列（针对旧表）
         await _migrate_daily_klines_indicators(conn)
+        # 兼容旧 concepts：补齐 (name, source) UNIQUE 约束（必需，否则 upsert 失败）
+        await _migrate_concepts_unique_constraint(conn)
         # 初始化操作池：创建默认池
         await _ensure_default_pool(conn)
+
+    # 🆕 09concept：em→ths 源迁移独立事务（避免上一段事务 abort 影响）
+    await _migrate_concepts_source_em_to_ths()
 
     # 注册数据源到采集器注册中心
     setup_default_registry()
@@ -94,7 +105,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         DailyKlineCollectTask(),
         DailyBasicCollectTask(),
         StockBasicCollectTask(),
-        ConceptCollectTask(),       # 🆕 概念接入
+        ConceptCollectTask(),       # 概念清单
+        # 🆕 09concept 三子任务
+        MembershipCollectTask(),
+        SnapshotCollectTask(),
+        IndexTHCollectTask(),
     ])
 
     yield
@@ -185,6 +200,57 @@ async def _migrate_stock_infos(conn) -> None:
             await conn.execute(text(stmt))
         except Exception as e:
             logging.warning("迁移跳过（已存在或不支持）: %s | %s", stmt, e)
+
+
+async def _migrate_concepts_unique_constraint(conn) -> None:
+    """兼容旧 schema：为 concepts 表补齐 (name, source) UNIQUE 约束
+
+    背景：
+    - 早期 ORM 模型只声明了单列 Index，未声明 UNIQUE 约束
+    - 但 ConceptRepoImpl.upsert_concept 使用 `ON CONFLICT (name, source) DO UPDATE`
+    - 缺少 UNIQUE 时 PG 抛 InvalidColumnReferenceError，导致概念同步 0 成功
+
+    修复策略：
+    - 先尝试 ADD CONSTRAINT（IF NOT EXISTS 在 PG 11+ 不可用，需手动 try）
+    - 失败时记录警告（已经存在同名约束的情况）
+    - 同步清理可能存在的重复行（保留 first_seen_at 最早的）
+    """
+    from sqlalchemy import text
+
+    # 1. 清理可能存在的重复行（同 name+source 只保留 first_seen_at 最早 + id 最小）
+    dedup_stmt = text(
+        """
+        DELETE FROM concepts c1
+        USING concepts c2
+        WHERE c1.name = c2.name
+          AND c1.source = c2.source
+          AND c1.id > c2.id
+        """
+    )
+    try:
+        result = await conn.execute(dedup_stmt)
+        deleted = result.rowcount
+        if deleted:
+            logging.info("concepts 去重：删除 %d 行重复", deleted)
+    except Exception as e:
+        logging.warning("concepts 去重跳过: %s", e)
+
+    # 2. 补齐 UNIQUE 约束
+    #    PG 没有 ADD CONSTRAINT IF NOT EXISTS，需手动捕获 DuplicateObject 异常
+    add_uq_stmt = text(
+        "ALTER TABLE concepts "
+        "ADD CONSTRAINT uq_concepts_name_source UNIQUE (name, source)"
+    )
+    try:
+        await conn.execute(add_uq_stmt)
+        logging.info("concepts UNIQUE 约束已添加：uq_concepts_name_source")
+    except Exception as e:
+        # DuplicateObject 表示约束已存在，这是幂等情况
+        msg = str(e)
+        if "already exists" in msg or "DuplicateObject" in msg or "duplicate" in msg.lower():
+            logging.info("concepts UNIQUE 约束已存在，跳过")
+        else:
+            logging.warning("concepts UNIQUE 约束添加失败: %s | %s", add_uq_stmt, e)
 
 
 async def _ensure_default_pool(conn) -> None:
@@ -357,3 +423,68 @@ if __name__ == "__main__":
         port=8000,
         reload=True,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  🆕 09concept 数据迁移：em 源概念统一改 ths 源
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+async def _migrate_concepts_source_em_to_ths() -> None:
+    """09concept 重构：把现有 em 源概念统一改 ths 源
+
+    独立事务（不嵌入 lifespan 的大事务，避免失败后 abort 整段）
+    """
+    from sqlalchemy import text
+    from infrastructure.database.connection import async_engine
+
+    async with async_engine.begin() as conn:
+        # 1. 跳过（ths 源已存在的 em 行）
+        migrate_concepts_stmt = text(
+            """
+            UPDATE concepts
+            SET source = 'ths'
+            WHERE source = 'em'
+              AND name NOT IN (
+                  SELECT name FROM concepts WHERE source = 'ths'
+              )
+            """
+        )
+        try:
+            result = await conn.execute(migrate_concepts_stmt)
+            migrated = result.rowcount
+            if migrated:
+                logging.info("09concept 迁移: %d 个 em 源概念改为 ths 源", migrated)
+        except Exception as e:
+            logging.warning("09concept 迁移（concepts em→ths）跳过: %s", e)
+            # PG 事务 abort，回滚后重连继续后续语句
+            await conn.rollback()
+
+        # 2. 清理残留 em 源概念（同 name 已有 ths 版本）
+        delete_residual_stmt = text(
+            "DELETE FROM concepts WHERE source = 'em'"
+        )
+        try:
+            result = await conn.execute(delete_residual_stmt)
+            deleted = result.rowcount
+            if deleted:
+                logging.info("09concept 清理: 删除 %d 个残留 em 源概念", deleted)
+        except Exception as e:
+            logging.warning("09concept 清理（em 残留）跳过: %s", e)
+            await conn.rollback()
+
+    # 单独事务：stock_concept_members（保证上面 commit 后再开新事务）
+    async with async_engine.begin() as conn:
+        migrate_members_stmt = text(
+            "UPDATE stock_concept_members SET source = 'ths' WHERE source = 'em'"
+        )
+        try:
+            result = await conn.execute(migrate_members_stmt)
+            migrated_m = result.rowcount
+            if migrated_m:
+                logging.info(
+                    "09concept 迁移: %d 条 stock_concept_members 改 ths 源",
+                    migrated_m,
+                )
+        except Exception as e:
+            logging.warning("09concept 迁移（members em→ths）跳过: %s", e)
