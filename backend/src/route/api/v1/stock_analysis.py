@@ -10,7 +10,7 @@ from infrastructure.persistence.connection import get_db
 from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl
 from infrastructure.persistence.repositories.pool_repository import StockPoolRepoImpl
 from infrastructure.persistence.repositories.stock_repository import StockRepoImpl
-from route.schemas import response as R
+from route.api import _response as R
 
 router = APIRouter(prefix="/stocks", tags=["AI 归因"])
 

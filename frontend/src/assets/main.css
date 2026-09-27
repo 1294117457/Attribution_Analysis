@@ -2,6 +2,9 @@
 
 /* ── 自定义 CSS 变量 ──────────────────────────── */
 :root {
+  /* 全站基准根字号：1rem 派生量的唯一锚点。Win 系统缩放跟随 / 屏幕档位 */
+  font-size: 14px;
+
   --color-primary:       #2563eb;
   --color-primary-light: #dbeafe;
   --color-success:       #22c55e;
@@ -25,8 +28,37 @@
   --color-sidebar-active-bg:  rgba(37, 99, 235, 0.15);
   --color-sidebar-active-text: #2563eb;
 
-  --page-padding:       16px;
+  --page-padding:       1rem;   /* 14px（原 16px），MainContainer.vue 已用 var 引用 */
   --page-max-width:     1440px;
+
+  /* ── MainContainer 布局桥接（适配性 01 + layout 微调） ── */
+  --page-gap:           0.5rem;   /* 7px，主内容区分区间距（多 PageWrapper 堆叠时） */
+                                   /* 注：原计划增加 TopBar 底部分隔线 --shell-divider，
+                                      因 TopBar 组件本身已有 box-shadow 满足视觉层次，
+                                      决定不引入重复装饰。该变量暂不定义。 */
+
+  /* ── Element Plus 通用组件紧凑化（适配性 01 方案） ── */
+  --el-font-size:           1rem;       /* 14px */
+  --el-button-size:         2.143rem;   /* 30px */
+  --el-input-height:        2.286rem;   /* 32px */
+  --el-component-size:      2.286rem;   /* 32px */
+  --el-padding-base:        0.571rem;   /* 8px */
+  --el-margin-base:         0.571rem;
+
+  /* ── Element Plus 表格紧凑化（适配性 01 方案） ── */
+  --el-table-row-height:           2.857rem;   /* 40px（原 ~50px） */
+  --el-table-cell-padding-block:   0.5rem;     /* 7px */
+  --el-table-cell-padding-inline:  0.5rem;     /* 7px */
+
+  /* ── Element Plus 分页器紧凑化（适配性 01 方案） ── */
+  /* 注释：EP 分页器主题变量名带前缀 --el-pagination-*。
+     字号/尺寸全走 rem 派生，跟随 :root font-size。
+     数值参考 Element Plus 默认 ~32px / 14px，按比例缩 ~25%。 */
+  --el-pagination-font-size:        0.857rem;   /* 12px（原 14px） */
+  --el-pagination-button-width:     1.857rem;   /* 26px（原 32px） */
+  --el-pagination-button-height:    1.857rem;
+  --el-pagination-item-gap:         0.214rem;   /* 3px，页码之间间距 */
+  --el-pagination-padding:          0 0.5rem;  /* 分页器上下 0，左右 7px */
 }
 
 /* ── Tailwind 主题扩展 ────────────────────────── */
@@ -40,7 +72,7 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  font-size: 14px;
+  font-size: 1rem;
   color: var(--color-admin-text);
   background: var(--color-admin-bg);
   -webkit-font-smoothing: antialiased;
@@ -75,6 +107,10 @@ body {
   --el-table-header-bg-color: #f8fafc;
   --el-table-header-text-color: #334155;
   --el-table-row-hover-bg-color: #f8fafc;
+  font-size: 0.929rem;   /* 13px，适配表格紧凑密度 */
+}
+.el-table th.el-table__cell {
+  font-size: 0.929rem;
 }
 
 .el-pagination {
@@ -82,6 +118,18 @@ body {
 }
 
 /* ── 页面级全局变量（配合 PageWrapper 使用） ─── */
+
+/* ── 密度设计 token（页面级 rem 样板复用入口） ── */
+/* 这三个变量是 StockInfoList 样板总结出的"最小复用集"，未来其他页面套用同一个口
+   径即可保证密度一致；值随 :root font-size 在 clamp() 区间内自动跟随屏幕缩放。 */
+:root {
+  --density-card-padding: 1.125rem;  /* PageWrapper 内边距（原 20px，密度收紧） */
+  --density-gap-xl:      1rem;       /* 主区域 / 表格之间（原 16px） */
+  --density-gap-lg:      0.75rem;    /* top-area 与 toolbar 之间（原 12px） */
+  --density-gap-md:      0.5rem;     /* toolbar-actions 之间（原 8px） */
+  --density-gap-sm:      0.375rem;   /* selection-bar 内 icon / text 之间（原 6px） */
+  --density-title-min:   2rem;       /* top-area__header 最小高度（原 32px，避免文字截断） */
+}
 
 /* ── 按钮组/搜索组竖线装饰 ───────────────────── */
 .btn-group,

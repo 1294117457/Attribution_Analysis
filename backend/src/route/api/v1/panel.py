@@ -11,10 +11,10 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
-from application.dto.panel import StockPanelListVO, StockPanelQueryRequest
+from route.dto.response.panel import StockPanelListVO, StockPanelQueryRequest
 from application.service.panel_app_service import StockPanelAppService
 from infrastructure.config.di import get_panel_app_service
-from route.schemas import response as R
+from route.api import _response as R
 
 router = APIRouter(prefix="/stock-panel", tags=["面板"])
 

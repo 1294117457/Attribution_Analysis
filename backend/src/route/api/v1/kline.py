@@ -1,38 +1,26 @@
 """K线 API 路由"""
 
 from datetime import date
-from functools import lru_cache
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.service.kline_app_service import KlineAppService
-from application.dto.kline import (
+from route.dto.request.kline import (
     KlineCollectRequest,
     KlineDeleteRequest,
     KlineQueryRequest,
 )
-from infrastructure.adapter import get_registry
 from application.port.collector_port import KlineFetcher
-from infrastructure.persistence.connection import get_db
-from route.schemas import response as R
+from infrastructure.config.di import get_kline_app_service, get_kline_fetcher
+from route.api import _response as R
 
 router = APIRouter(prefix="/klines", tags=["K线"])
 
 
 # ── 依赖注入工厂 ──────────────────────────────────────────
 
-def get_kline_service(
-    db: AsyncSession = Depends(get_db),
-) -> KlineAppService:
-    return KlineAppService(session=db)
-
-
-@lru_cache
-def get_kline_fetcher() -> KlineFetcher:
-    """K 线采集器依赖（单例）"""
-    return get_registry().get(KlineFetcher)
+get_kline_service = get_kline_app_service
 
 
 # ── 查询路由 ──────────────────────────────────────────────

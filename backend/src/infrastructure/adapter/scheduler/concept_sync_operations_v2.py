@@ -15,8 +15,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
-from domain.concept.entity import ConceptSource
-from domain.concept.schemas import (
+from domain.entitys.concept.entity import ConceptSource
+from route.dto.request.concept import (
     ConceptIndexTHBO,
     ConceptSnapshotBO,
 )
@@ -158,7 +158,7 @@ class ConceptMembershipSyncOperation:
         added_count = 0
         for bo in bos:
             # 2. 概念入库（upsert_concept 自带去重）
-            from domain.concept.entity import Concept
+            from domain.entitys.concept.entity import Concept
             concept = Concept.create(
                 name=bo.name,
                 source=bo.source,  # THS（adata.get_concept_ths 标记）

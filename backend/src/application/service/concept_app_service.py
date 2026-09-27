@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from application.dto.concept import (
+from route.dto.response.concept import (
     ConceptDetailVO,
     ConceptItemVO,
     ConceptLiveVO,
@@ -22,10 +22,10 @@ from application.dto.concept import (
     CONCEPT_TYPE_LABELS,
     CONCEPT_TYPE_ORDER,
 )
-from application.dto.page import Page
-from domain.concept.exceptions import ConceptNotFoundError
-from domain.concept.repository import ConceptRepository
-from domain.concept.value_objects import CONCEPT_TYPE_PRIORITY, ConceptBriefVO
+from route.dto.page import Page
+from domain.entitys.concept.entity import ConceptNotFoundError
+from domain.entitys.concept.repository import ConceptRepository
+from domain.entitys.concept.vo import CONCEPT_TYPE_PRIORITY, ConceptBriefVO
 from infrastructure.adapter.adata.fetcher import AdataConceptFetcher
 from application.port.collector_port import ConceptFetcher
 from application.port.registry import get_registry

@@ -19,6 +19,7 @@
   display: flex;
   flex-direction: column;
   padding: var(--page-padding, 16px);
+  gap: var(--page-gap, 0);   /* 多 PageWrapper 堆叠时启用，主区域与 TopBar 之间不直接生效 */
 }
 
 .page-slot {

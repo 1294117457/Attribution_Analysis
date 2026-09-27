@@ -25,8 +25,8 @@ from application.port.registry import get_registry
 from application.port.collector_port import KlineFetcher
 from application.service.kline_app_service import KlineAppService
 from application.service.panel_app_service import StockPanelAppService
-from domain.concept.service import ConceptBriefService
-from domain.kline.service import IndicatorCalculator
+from domain.service import ConceptBriefService
+from domain.service import IndicatorCalculator
 from infrastructure.persistence.connection import get_db
 from infrastructure.persistence.repositories.concept_repository import ConceptRepoImpl
 from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl

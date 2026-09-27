@@ -39,15 +39,15 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  padding: 20px;
-  gap: 16px;
+  padding: var(--density-card-padding);
+  gap: var(--density-gap-xl);
   overflow: hidden;
 }
 
 .top-area {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--density-gap-lg);
   flex-shrink: 0;
 }
 
@@ -55,7 +55,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 32px;
+  min-height: var(--density-title-min);
 }
 
 .top-area__title {
@@ -64,20 +64,20 @@
   color: #1e293b;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--density-gap-md);
 }
 
 .top-area__actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--density-gap-md);
   flex-shrink: 0;
 }
 
 .top-area__toolbar {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--density-gap-md);
 }
 
 .middle-area {
@@ -90,7 +90,7 @@
 
 .bottom-area {
   flex-shrink: 0;
-  padding-top: 12px;
+  padding-top: var(--density-gap-lg);
   border-top: 1px solid var(--color-admin-border);
 }
 </style>

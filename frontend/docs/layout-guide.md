@@ -1,6 +1,11 @@
 # 前端页面布局开发规范
 
-> 本文档定义了项目的整体布局结构与页面开发规范，所有新页面必须遵循此规范。
+> 本文档定义了项目的整体布局结构与骨架级规范，所有新页面必须遵循此规范。
+>
+> **文档地图**：
+> - **`01-rem全局密度方案.md`**：全站 rem 根字号改造 + EP 紧凑化原理
+> - **`layout-guide.md`（本文）**：Shell / TopBar / LeftBar / MainContainer / PageWrapper / 路由结构
+> - **`page-development-guide.md`**：**页面内部**开发规范——模板结构、rem 锚点架构、四区实现、EP 集成、density-inline 横向滚动模式
 
 ## 一、技术栈
 
@@ -113,7 +118,7 @@
 
 | 插槽名 | 必需 | 说明 |
 |--------|------|------|
-| `#title` | 是 | 页面标题，显示在 top-area 第一行左侧 |
+| `#title` | 是 | 页面标题，显示在 top-area 第一行左侧；可在末尾追加 density-toggle 按钮 + density-inline 面板（详见 §3.6 + `page-development-guide.md §十`）|
 | `#actions` | 否 | 标题行右侧的操作按钮（与 title 同行） |
 | `#toolbar` | 否 | top-area 第二行，完整宽度，放置搜索和操作按钮 |
 | 默认插槽 | 是 | middle-area 内容（表格、卡片等主体内容） |
@@ -344,6 +349,107 @@ middle-area 同理，根据 `activeTab` 渲染对应的表格/卡片。
 - toolbar 联动：`CollectManage.vue:33-44`
 - 样式：`CollectManage.vue:567-620`
 
+### 3.6 页面级 rem 锚点机制（基于 StockInfoList 样板）
+
+> 详细规范见 `docs/page-development-guide.md`。本节是骨架级摘要。
+
+每个希望支持"用户调节页面密度"的页面，必须实现**两层 CSS 变量**——第一层是"页面锚点"（整页基准），第二层是"区域锚点"（top / middle / bottom 默认跟随，可独立覆盖）。
+
+**骨架（必做）**：
+
+1. 在 PageWrapper 上同时绑 `:style="densityStyle"` 与 `class="my-page"`：
+   ```vue
+   <PageWrapper :style="densityStyle" class="my-page">…</PageWrapper>
+   ```
+2. JS 维护 4 个 ref（`pageDensity` / `topDensity` / `middleDensity` / `bottomDensity`，后三者可为 null = 跟随页面），用 computed 注入 4 个 CSS 变量。
+3. style scoped 在 `.my-page` 类下声明四层变量与派生 token：
+   ```css
+   .my-page {
+     --my-page-density: 1;          /* 页面锚点 */
+     --my-top-density:    calc(var(--my-page-density));   /* 区域锚点，默认跟随 */
+     --my-middle-density: calc(var(--my-page-density));
+     --my-bottom-density: calc(var(--my-page-density));
+     /* 派生 token：calc(rem × density) */
+   }
+   ```
+4. 所有尺寸都用 `calc(rem × var(--my-xxx-density))`，**禁止写死 px**。
+
+**完整 JS 模块（含 localStorage 持久化 + 跟随逻辑 + Proxy 滑块）+ CSS 模板**见 `page-development-guide.md §四 / §五 / §十三`。
+
+#### 3.6.1 页面锚点 vs 区域锚点
+
+| 锚点 | 范围 | 默认值 | 注入时机 |
+|------|------|--------|---------|
+| `--my-page-density` | 整页 | 1 | 总是注入 |
+| `--my-top-density` | 顶部 | `calc(var(--my-page-density))` | 用户主动设置才注入 |
+| `--my-middle-density` | 中部 | `calc(var(--my-page-density))` | 用户主动设置才注入 |
+| `--my-bottom-density` | 底部 | `calc(var(--my-page-density))` | 用户主动设置才注入 |
+
+> **核心技巧**：区域锚点不注入时，**CSS 的 `calc(var(--my-page-density))` 自动接管**，零 JS 开销。
+> "区域跟随页面"按钮只需把 ref 设为 null，CSS 重新计算即可。
+
+#### 3.6.2 表格容器的 5 条不变式（防止 EP 表格撑爆父容器）
+
+```css
+/* (1) 表格外层容器必须 min-width:0 */
+.my-table { min-width: 0; width: 100%; max-width: 100%; }
+
+/* (2) outer <el-table> 宽度严格 = 父宽，不让 inner 撑出去 */
+.my-table :deep(.el-table) {
+  display: block; width: 100% !important; max-width: 100% !important;
+  min-width: 0 !important; overflow: hidden;
+}
+
+/* (3) inner-wrapper 维持外层滚动控制 */
+.my-table :deep(.el-table__inner-wrapper) {
+  width: 100%; max-width: 100%; overflow: visible;
+}
+
+/* (4) body / header table 强制列宽总和 ≤ outer */
+.my-table :deep(.el-table__header),
+.my-table :deep(.el-table__body) {
+  table-layout: fixed; width: 100%; max-width: 100%;
+}
+
+/* (5) header-wrapper 也跟着 100% */
+.my-table :deep(.el-table__header-wrapper) {
+  width: 100%; max-width: 100%; overflow: hidden;
+}
+```
+
+#### 3.6.3 density-inline 横向滚动规范（页面级才有的特殊模式）
+
+`density-inline` 是密度设置面板（4 slider + 2 button + label），与标题同行的内联区块。**当面板内容超出 main-container 时必须横向滚动而不是撑爆容器**。完整 CSS 在 `page-development-guide.md §十.2`，本节是骨架要点：
+
+| 元素 | 关键 CSS | 作用 |
+|------|---------|------|
+| `.density-inline` | `flex: 1 1 0; min-width: 0; overflow-x: auto;` | 受父级宽度约束，超出时滚动 |
+| `.density-inline__group` | `flex-shrink: 0;` | slider / button 保持原尺寸 |
+| `.top-area__title`（页面级覆盖） | `min-width: 0;` | 让 flex 容器可收缩 |
+| `.top-area__header`（页面级覆盖） | `min-height: var(--density-title-min); height: auto;` | 高度自适应内容，不被 32px 硬锁定裁切 |
+
+> **反面教材**：用 `flex-shrink: 0` 在 `.density-inline` 上 → 撑爆；用 `max-width: calc(100vw - X)` → viewport 估算不准；用 `overflow: hidden` → 内容硬切断看不到。
+
+#### 3.6.4 EP 集成两不原则
+
+- **不重声明 `--el-font-size-base`**：这是 EP 全局字号源，会反向影响其他页面
+- **不在 scoped 顶层 `:deep(.el-button)`**：必须限定在自己的 `.my-page :deep(.el-*)` 或 `.my-table :deep(.el-table *)` 作用域内
+
+完整 EP "写死 px" 覆盖清单见 `page-development-guide.md §十一`。
+
+#### 3.6.5 参考实现
+
+完整样板：`src/views/stock-info/StockInfoList.vue`
+
+| 子模块 | 真实位置 |
+|--------|---------|
+| 锚点 JS（4 ref + Proxy + localStorage） | 行 385–504 |
+| 顶层变量声明 | 行 805–853 |
+| `.density-toggle` + `.density-inline` | 行 858–1033 |
+| toolbar-row / advanced-wrapper | 行 1043–1189 |
+| 表格 `.sil-table` + 5 条不变式 | 行 1232–1272 |
+| 分页器 `.sil-pagination` | 行 1373–1435 |
+
 ## 四、页面文件结构规范
 
 以 `stock-info` 模块为例：
@@ -506,3 +612,6 @@ function onSearchInput() {
 | `src/assets/main.css` | 全局样式 + CSS 变量定义 |
 | `src/router/home.ts` | 业务路由定义 |
 | `src/views/stock-info/StockInfoList.vue` | **标准参考页面**（完整示范） |
+| `docs/适配性/01-rem全局密度方案.md` | 全站 rem 根字号改造 + EP 紧凑化原理 |
+| `docs/layout-guide.md`（本文） | Shell / PageWrapper / 路由骨架规范 |
+| `docs/page-development-guide.md` | **页面内部**开发规范（rem 锚点 / 四区 / EP 集成 / density-inline） |

@@ -24,8 +24,8 @@ from typing import Optional
 
 import pandas as pd
 
-from domain.concept.entity import ConceptSource
-from domain.concept.schemas import (
+from domain.entitys.concept.entity import ConceptSource
+from route.dto.request.concept import (
     ConceptIndexTHBO,
     ConceptListBO,
     ConceptSnapshotBO,

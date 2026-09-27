@@ -14,7 +14,7 @@ from datetime import date
 
 from sqlalchemy import func, select
 
-from application.dto.kline import KlineCollectRequest
+from route.dto.request.kline import KlineCollectRequest
 from application.service.kline_app_service import KlineAppService
 from infrastructure.adapter import get_registry
 from application.port.collector_port import KlineFetcher

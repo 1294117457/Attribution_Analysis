@@ -9,8 +9,8 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from domain.fin_daily_basic.entity import FinDailyBasic
-from domain.fin_daily_basic.repository import FinDailyBasicRepository
+from domain.entitys.fin_daily_basic.entity import FinDailyBasic
+from domain.entitys.fin_daily_basic.repository import FinDailyBasicRepository
 from infrastructure.persistence.models.fin_daily_basic import FinDailyBasicDB
 
 

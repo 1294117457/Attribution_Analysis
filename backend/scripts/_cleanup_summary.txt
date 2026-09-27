@@ -1,0 +1,49 @@
+# 删除汇总 (2026-09-27)
+
+由孤儿检测 + 实际引用验证 + 误删恢复 得出。
+
+## ✅ 真实删除
+
+### 1. 空壳目录 infrastructure/adapter/port/
+- 仅含 `__init__.py` 注释，0 内容、0 引用
+- `git rm` 删除
+
+### 2. dependencies.py
+- 重导出 `get_db`，但所有 route 都直接 `from infrastructure.persistence.connection import get_db`
+- `git rm` 删除
+
+### 3. route/dto/request/ 下 18 个未引用 DTO（约 18 KB）
+- base_adj_factor / base_dividend / base_name_change / base_suspend
+- cap_block_trade / cap_holder_num / cap_margin / cap_margin_detail / cap_moneyflow / cap_top_inst / cap_top_list
+- fin_report / fin_top10_float / fin_top10_holders
+- mkt_calendar / mkt_index_member / mkt_market_daily / mkt_sector_daily
+- stock_pool
+- 保留 6 个被引用的：concept / fin_daily_basic / kline / pool_operation / stock / stock_info
+
+### 4. route/dto/response/ 下 19 个未引用 DTO（约 13 KB）
+- base_adj_factor / base_dividend / base_name_change / base_suspend
+- cap_block_trade / cap_holder_num / cap_margin / cap_margin_detail / cap_moneyflow / cap_top_inst / cap_top_list
+- fin_daily_basic / fin_report / fin_top10_float / fin_top10_holders
+- mkt_calendar / mkt_index_member / mkt_market_daily / mkt_sector_daily
+- stock_info
+- 保留 6 个被引用的：concept / kline / panel / pool / stock_analysis / stock_pool
+
+## ⚠️ 误判已恢复（脚本漏洞：漏检 `from X.Y.Z import`）
+
+| 文件 | 原因 |
+|---|---|
+| `infrastructure/adapter/tushare/` | 实际被 `application/port/registry.py` 引用注册为 KlineFetcher |
+| `infrastructure/adapter/pytdx/` | 同上，注册为 MinuteKlineFetcher |
+| `infrastructure/adapter/scheduler/registry.py` | 被 `scheduler/operation_dispatcher.py` 引用 |
+| `infrastructure/adapter/scheduler/collect/concept.py` | 被 `collect/__init__.py` 重导出为 ConceptCollectTask |
+| `infrastructure/adapter/scheduler/collect/registry.py` | 被 `collect/__init__.py` 重导出为 CollectTaskRegistry |
+| `domain/service/*`（3 个文件）| 被 `application/service/panel_app_service.py` 间接 import |
+
+## 💡 脚本改进建议
+
+`_orphan_check.py` 的引用检测逻辑需要扩展：
+1. 检测 `from X.Y.Z import` 多级子模块
+2. 检测 `from package import X` 这种触发 `package/__init__.py` 的形式
+3. 区分"无主 __init__.py"vs"无主内容"
+
+修复后可以重跑检测验证剩余孤儿。

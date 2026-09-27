@@ -63,7 +63,7 @@ def insert_kline():
     """辅助函数：插入 K 线（带显式 commit）"""
     from infrastructure.persistence.connection import AsyncSessionLocal
     from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl
-    from domain.kline.entity import Kline
+    from domain.entitys.kline.entity import Kline
 
     def _do(symbol="000001", day=1, **overrides):
         kwargs = dict(

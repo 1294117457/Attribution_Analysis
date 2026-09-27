@@ -17,7 +17,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from application.dto.stock import (
+from route.dto.request.stock import (
     StockDeleteResponse,
     StockItemResponse,
     StockListItemResponse,
@@ -26,9 +26,9 @@ from application.dto.stock import (
     StockUpdateRequest,
     SyncStockResponse,
 )
-from application.exceptions import StockNotFoundError
-from domain.stock_info.entity import StockInfo
-from domain.stock_info.repository import StockInfoRepository
+from domain.entitys.stock_info.entity import StockNotFoundError
+from domain.entitys.stock_info.entity import StockInfo
+from domain.entitys.stock_info.repository import StockInfoRepository
 from application.port.collector_port import CollectParams, StockBasicFetcher
 from infrastructure.persistence.repositories.stock_repository import StockRepoImpl
 

@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-from domain.concept.schemas import ConceptListBO, ConceptStockBO
-from domain.concept.repository import ConceptRepository
+from route.dto.request.concept import ConceptListBO, ConceptStockBO
+from domain.entitys.concept.repository import ConceptRepository
 from infrastructure.adapter.akshare.fetcher import AkShareConceptFetcher
 
 logger = logging.getLogger(__name__)
