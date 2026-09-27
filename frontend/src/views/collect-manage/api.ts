@@ -1,11 +1,12 @@
 import http, { unwrap } from '@/common/utils/http'
 
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
 //  概念采集配套 — 配套后端 infrastructure/tasks/collect/concept.py
 //  配套设计文档：
 //    docs/dev/07collect-class/02-concept-collect-integration.md
 //    docs/dev/06gainian/01-domain-design.md
-// ═══════════════════════════════════════════════════════════════
+//    docs/dev/step2/02datamanage/01-采集管理四维重构方案.md
+// ═══════════════════════════════════════════════════════════════════════════
 
 /** 概念数据源 */
 export type ConceptSource = 'em' | 'ths'
@@ -53,6 +54,35 @@ export interface ConceptSyncParams {
   /** 是否强制重传（业务上当前对所有概念都 upsert，此参数作为日志/审计保留） */
   force_resync?: boolean
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// 四面分类目录树（PR2-PR3 新增）
+// ───────────────────────────────────────────────────────────────────────────
+
+export type FacetKey = 'tech' | 'capital' | 'fundamental' | 'news' | 'market'
+
+export interface TaskDef {
+  task_type: string
+  label: string
+  description: string
+  status: 'ready' | 'planned'
+}
+
+export interface FacetGroup {
+  facet: FacetKey
+  label: string
+  icon: string
+  sort_order: number
+  sub_groups: Record<string, TaskDef[]>
+}
+
+/** 拉取采集任务目录树 */
+export const getCatalog = () =>
+  http.get<{ items: FacetGroup[] }>('/collect/catalog').then(unwrap)
+
+// ───────────────────────────────────────────────────────────────────────────
+// 任务 CRUD（既有 — 保持不变）
+// ───────────────────────────────────────────────────────────────────────────
 
 export const createTask = (body: { task_type: string; params?: Record<string, any> }) =>
   http.post('/collect/tasks', body).then(unwrap)

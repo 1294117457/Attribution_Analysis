@@ -34,6 +34,10 @@ class DailyKlineCollectTask(BaseCollectTask):
     """日 K 线全量采集（按 symbol 维度单元）"""
 
     name = "daily_kline"
+    facet = "tech"
+    sub_facet = "kline"
+    label = "日 K 线"
+    description = "5000+只股 OHLCV + 17 个技术指标（MA/EMA/MACD/RSI/KDJ/BOLL）"
 
     def __init__(self) -> None:
         super().__init__()
