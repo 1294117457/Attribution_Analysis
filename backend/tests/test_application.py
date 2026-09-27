@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from application.kline_service import KlineAppService
+from application.service.kline_app_service import KlineAppService
 from application.exceptions import KlineNotFoundError
 from application.dto.kline import (
     KlineCollectRequest,

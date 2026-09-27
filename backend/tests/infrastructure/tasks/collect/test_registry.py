@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from infrastructure.tasks.collect.base import BaseCollectTask
-from infrastructure.tasks.collect.registry import CollectTaskRegistry
+from infrastructure.adapter.scheduler.collect.base import BaseCollectTask
+from infrastructure.adapter.scheduler.collect.registry import CollectTaskRegistry
 
 
 class _Handler(BaseCollectTask):
     name = "x"
     async def estimate_total(self, params): return 0
     async def run(self, params, on_unit_done):
-        from infrastructure.tasks.collect.base import TaskSummary
+        from infrastructure.adapter.scheduler.collect.base import TaskSummary
         return TaskSummary(success=0, fail=0)
 
 

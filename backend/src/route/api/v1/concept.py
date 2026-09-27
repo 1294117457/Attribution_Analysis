@@ -13,7 +13,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from application.concept_service import ConceptAppService
+from application.service.concept_app_service import ConceptAppService
 from application.dto.concept import (
     ConceptDetailVO,
     ConceptIndexTHVO,
@@ -27,12 +27,12 @@ from application.dto.concept import (
 )
 from application.dto.page import Page
 from domain.concept.exceptions import ConceptNotFoundError
-from infrastructure.collectors.adata.fetcher import AdataConceptFetcher
-from infrastructure.collectors.akshare.fetcher import AkShareConceptFetcher
-from infrastructure.collectors.protocols import ConceptFetcher
-from infrastructure.collectors.registry import get_registry
-from infrastructure.database.connection import get_db
-from infrastructure.repositories.concept_repository import ConceptRepoImpl
+from infrastructure.adapter.adata.fetcher import AdataConceptFetcher
+from infrastructure.adapter.akshare.fetcher import AkShareConceptFetcher
+from application.port.collector_port import ConceptFetcher
+from application.port.registry import get_registry
+from infrastructure.persistence.connection import get_db
+from infrastructure.persistence.repositories.concept_repository import ConceptRepoImpl
 from route.schemas import response as R
 
 router = APIRouter(prefix="/concepts", tags=["概念"])

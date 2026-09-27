@@ -1,0 +1,1 @@
+"""infrastructure.adapter.scheduler.collect"""
