@@ -26,7 +26,11 @@ from infrastructure.adapter.scheduler.collect import (
     request_cancel,
 )
 from route.api import _response as R
-from route.dto.response.collect import CollectCatalogResponse, FacetGroupResponse
+from route.dto.response.collect import (
+    CollectCatalogResponse,
+    FacetGroupResponse,
+    TaskDefResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +43,7 @@ router = APIRouter(prefix="/collect", tags=["采集任务"])
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-@router.get(
-    "/catalog",
-    response_model=CollectCatalogResponse,
-    summary="采集任务目录树（四面分类）",
-)
+@router.get("/catalog", summary="采集任务目录树（四面分类）")
 async def get_collect_catalog():
     """拉取采集任务目录树
 
@@ -71,7 +71,7 @@ async def get_collect_catalog():
     """
     registry = get_collect_task_registry()
     groups = registry.catalog()
-    return CollectCatalogResponse(
+    catalog = CollectCatalogResponse(
         items=[
             FacetGroupResponse(
                 facet=g.facet,
@@ -89,6 +89,7 @@ async def get_collect_catalog():
             for g in groups
         ],
     )
+    return R.ok(catalog.model_dump())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

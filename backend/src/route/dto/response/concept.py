@@ -2,11 +2,12 @@
 
 配套设计文档：
   docs/dev/06gainian/03-application-and-route-design.md §1
+  docs/dev/step2/02datamanage/04-概念数据adata同源改造方案.md §5.5
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -19,20 +20,10 @@ from pydantic import BaseModel, Field
 
 class ConceptQueryRequest(BaseModel):
     """概念列表查询请求"""
-    q: Optional[str] = Field(None, description="模糊搜索概念名称")
-    source: Optional[str] = Field(None, description="数据源：em / ths")
+    q: Optional[str] = Field(None, description="模糊搜索概念名称，或精确匹配 index_code")
     is_active: Optional[bool] = Field(None, description="是否有效")
     page: int = Field(1, ge=1, description="页码")
     page_size: int = Field(20, ge=1, le=100, description="每页数量")
-
-
-class ConceptSyncRequest(BaseModel):
-    """概念同步请求"""
-    source: str = Field("ths", description="09concept: 默认改为 ths")
-    concept_names: Optional[list[str]] = Field(
-        None, description="指定概念名称列表，为空则全量同步"
-    )
-    force_resync: bool = Field(False, description="是否强制重同步已有概念")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -41,8 +32,9 @@ class ConceptSyncRequest(BaseModel):
 
 
 class ConceptItemVO(BaseModel):
-    """概念详情 VO"""
+    """概念列表项 VO"""
     concept_id: int
+    index_code: str
     name: str
     source: str
     concept_type: str
@@ -59,26 +51,22 @@ class ConceptMemberVO(BaseModel):
     """概念成员 VO（成分股）"""
     symbol: str
     name: str
-    rank: Optional[int] = None
-    latest_price: Optional[float] = None
+    reason: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
 
 class ConceptLiveVO(BaseModel):
-    """概念实时反查 VO（adata 独家，不入 DB）
+    """概念实时反查 VO（同花顺 F10，不入库）
 
-    用于按股票代码实时拉取所属概念 + 入选理由。
     与 ConceptItemVO 的区别：
-    - ConceptItemVO：DB 中的概念（concept_id / stock_count / is_active）
-    - ConceptLiveVO：adata 实时数据（concept_code / reason，无 concept_id）
-
-    应用场景：详情抽屉「概念」Tab 的"实时补充"按钮 / 概念搜索联想。
+    - ConceptItemVO：库中的概念（concept_id / stock_count / is_active）
+    - ConceptLiveVO：实时数据（concept_code / reason，无 concept_id）
     """
-    concept_code: str            # 如 "BK0683"
-    name: str                    # 如 "央国企改革"
-    source: str                  # "adata"（固定值）
-    reason: Optional[str] = None # 入选理由，如 "公司有深圳国资背景。"
+    concept_code: str            # 同花顺指数编码，如 "885525"
+    name: str                    # 如 "白酒概念"
+    source: str                  # "ths"
+    reason: Optional[str] = None # 入选理由
 
     model_config = {"from_attributes": True}
 
@@ -86,15 +74,6 @@ class ConceptLiveVO(BaseModel):
 class ConceptDetailVO(ConceptItemVO):
     """概念详情（含成分股）"""
     members: list[ConceptMemberVO] = Field(default_factory=list)
-
-
-class ConceptSyncResultVO(BaseModel):
-    """同步结果 VO"""
-    total_concepts: int
-    total_members: int
-    failed_concepts: list[str]
-    elapsed_ms: int
-    synced_at: datetime
 
 
 class ConceptTabSectionVO(BaseModel):
@@ -113,7 +92,6 @@ class ConceptTabContentVO(BaseModel):
 
     前端 ConceptTab.vue 直接消费，无需再做分组。
 
-    08concept 增量字段：
     - is_merged: 是否经过实时合并（merge_live=true 时为 true）
     - last_merged_at: 合并时间（仅 is_merged=true 时有值）
     """
@@ -145,26 +123,24 @@ CONCEPT_TYPE_ORDER: list[str] = [
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  09concept 新增 VO
+#  行情 VO
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
 class ConceptSnapshotVO(BaseModel):
-    """概念行情快照 VO（前端涨跌染色 + 概念详情卡片用，09concept 新增）
+    """概念行情快照 VO（前端涨跌染色 + 概念详情卡片用）
 
-    与 ConceptLiveVO 的区别：
-    - LiveVO：按股票反查的实时数据（adata）
-    - SnapshotVO：按概念拉取的板块行情（akshare THS）+ 持久化
+    涨跌幅由快照任务用现价 / 昨收（概念指数日 K）计算，缺昨收时为 None。
     """
 
     concept_name: str
-    pct_change: float = 0.0               # -1.32 / +1.32 / 0.0（已解析）
+    pct_change: Optional[float] = None
     rank_current: Optional[int] = None
     rank_total: Optional[int] = None
     rank_label: str = ""                   # "191/390"
     up_count: Optional[int] = None
     down_count: Optional[int] = None
-    up_down_label: str = ""                # "90/372"
+    up_down_label: str = ""
     net_inflow_yi: Optional[float] = None
     turnover_yi: Optional[float] = None
     color: str = "flat"                    # up / down / flat
@@ -178,7 +154,7 @@ class ConceptSnapshotVO(BaseModel):
 
 
 class ConceptIndexTHVO(BaseModel):
-    """概念指数日 K VO（09concept 新增）"""
+    """概念指数日 K VO"""
 
     concept_name: str
     trade_date: date
@@ -188,5 +164,7 @@ class ConceptIndexTHVO(BaseModel):
     close: float
     volume: int
     amount: float
+    change: Optional[float] = None
+    change_pct: Optional[float] = None
 
     model_config = {"from_attributes": True}

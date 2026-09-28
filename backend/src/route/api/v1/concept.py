@@ -1,34 +1,21 @@
-"""概念路由
+"""概念路由（只读查询；采集走 /collect/tasks 的 concept* 任务）
 
 配套设计文档：
   docs/dev/06gainian/03-application-and-route-design.md §3.1
-  docs/dev/09concept/02-class-design.md §8
+  docs/dev/step2/02datamanage/04-概念数据adata同源改造方案.md §5.5
 """
 
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.service.concept_app_service import ConceptAppService
-from route.dto.response.concept import (
-    ConceptDetailVO,
-    ConceptIndexTHVO,
-    ConceptItemVO,
-    ConceptLiveVO,
-    ConceptQueryRequest,
-    ConceptSnapshotVO,
-    ConceptSyncRequest,
-    ConceptSyncResultVO,
-    ConceptTabContentVO,
-)
-from route.dto.page import Page
+from route.dto.response.concept import ConceptQueryRequest
 from domain.entitys.concept.entity import ConceptNotFoundError
-from infrastructure.adapter.adata.fetcher import AdataConceptFetcher
-from infrastructure.adapter.akshare.fetcher import AkShareConceptFetcher
 from application.port.collector_port import ConceptFetcher
 from application.port.registry import get_registry
 from infrastructure.persistence.connection import get_db
@@ -62,17 +49,15 @@ def get_concept_app_service(
     summary="分页列出所有概念",
 )
 async def list_concepts(
-    q: Optional[str] = Query(None, description="模糊搜索概念名称"),
-    source: Optional[str] = Query(None, description="数据源：ths / em（默认 ths，09concept 改）"),
+    q: Optional[str] = Query(None, description="模糊搜索概念名称，或精确匹配 index_code"),
     is_active: Optional[bool] = Query(None, description="是否有效"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     app: ConceptAppService = Depends(get_concept_app_service),
 ):
-    """分页列出所有概念（支持 q / source / is_active 筛选）"""
+    """分页列出所有概念（支持 q / is_active 筛选，按成分股数量降序）"""
     req = ConceptQueryRequest(
         q=q,
-        source=source,
         is_active=is_active,
         page=page,
         page_size=page_size,
@@ -103,18 +88,17 @@ async def get_concepts_by_symbol(
 @router.get(
     "/live-by-symbol/{symbol}",
     response_model=None,
-    summary="单股票所属概念（adata 实时反查，带入选理由）",
+    summary="单股票所属概念（同花顺实时反查，带入选理由）",
 )
 async def get_live_concepts_by_symbol(
     symbol: str,
     app: ConceptAppService = Depends(get_concept_app_service),
 ):
-    """单股票所属概念列表（adata 实时拉取，**带入选理由 reason**）
+    """单股票所属概念列表（adata 实时拉取同花顺 F10，**带入选理由 reason**）
 
     与 /by-symbol/{symbol} 的区别：
-    - /by-symbol：从 DB 读，需要先 sync_concepts 落库
-    - /live-by-symbol：从 adata 实时拉取（datacenter.eastmoney.com），
-      无需先同步，每次返回最新；包含 `reason` 字段（如「公司有深圳国资背景。」）
+    - /by-symbol：从库读，由概念成分股 / 入选理由采集任务维护
+    - /live-by-symbol：实时拉取，每次返回最新；包含 `reason` 字段
 
     适用场景：
     - 详情抽屉「概念」Tab 用户点"实时刷新"按钮
@@ -139,9 +123,8 @@ async def get_concept_tab_for_symbol(
     merge_live: bool = Query(
         False,
         description=(
-            "🆕 08concept: 是否合并 adata 实时数据（带入选理由 reason）。"
-            "默认 false（仅 DB）；true 时返回 is_merged=true 且 sections.concepts"
-            " 携带 is_realtime / reason 字段"
+            "是否合并同花顺实时反查数据。默认 false（仅库中数据，已含入选理由 reason）；"
+            "true 时返回 is_merged=true 且 sections.concepts 携带 is_realtime 字段"
         ),
     ),
     app: ConceptAppService = Depends(get_concept_app_service),
@@ -149,7 +132,7 @@ async def get_concept_tab_for_symbol(
     """单股票所属概念 Tab 内容
 
     merge_live=false（默认）：
-        返回 ConceptTabContentVO，仅含 DB 数据（06gainian 行为）。
+        返回 ConceptTabContentVO，仅含库中数据。
 
     merge_live=true：
         调 ConceptAppService.get_tab_content_with_live，
@@ -170,30 +153,14 @@ async def get_concept_tab_for_symbol(
 )
 async def get_concept_detail(
     name: str,
-    source: str = Query("ths", description="09concept: 默认改为 ths"),
     app: ConceptAppService = Depends(get_concept_app_service),
 ):
-    """单概念详情（含成分股）"""
+    """单概念详情（含成分股与入选理由，读库）"""
     try:
-        result = await app.get_concept_detail(name=name, source=source)
+        result = await app.get_concept_detail(name=name)
         return R.ok(result.model_dump())
     except ConceptNotFoundError as e:
         raise HTTPException(404, e.message)
-
-
-@router.post(
-    "/sync",
-    response_model=None,
-    summary="触发概念全量/增量同步",
-)
-async def sync_concepts(
-    source: str = Query("ths", description="09concept: 默认改为 ths"),
-    app: ConceptAppService = Depends(get_concept_app_service),
-):
-    """触发概念全量/增量同步（后台任务）"""
-    req = ConceptSyncRequest(source=source)
-    result = await app.sync_concepts(req)
-    return R.ok(result.model_dump())
 
 
 @router.get(
@@ -203,10 +170,10 @@ async def sync_concepts(
 async def get_sync_status(
     db: AsyncSession = Depends(get_db),
 ):
-    """查询最近同步状态（取 last_synced_at 最大值）"""
+    """查询最近同步状态（成分股最近同步时间 + 活跃概念数）"""
     repo = ConceptRepoImpl(db)
-    last_synced_at = await repo.get_last_synced_at(source="ths")  # 09concept: 默认 ths
-    total = await repo.count_concepts(source="ths", is_active=True)
+    last_synced_at = await repo.get_last_synced_at()
+    total = await repo.count_concepts(is_active=True)
     return R.ok({
         "last_synced_at": (
             last_synced_at.isoformat() if last_synced_at else None
@@ -216,7 +183,7 @@ async def get_sync_status(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  09concept 新增端点
+#  行情端点
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -285,52 +252,3 @@ async def get_concept_index_th(
         limit=limit,
     )
     return R.ok(rows)
-
-
-@router.post(
-    "/sync/membership",
-    response_model=None,
-    summary="触发 M:N 成分股反查同步任务（采集管理 UI 用）",
-)
-async def sync_membership(body: Optional[dict] = None):
-    """触发 stock→concept 反查累加任务（09concept 新增）
-
-    转发到通用 /collect/tasks 端点，避免重复 task_id 写入逻辑。
-    Body: { "limit": int 可选 }
-    """
-    params = body or {}
-    return R.ok({
-        "task_type": "concept_membership",
-        "params": params,
-        "message": "请用 POST /collect/tasks 调用",
-    })
-
-
-@router.post(
-    "/sync/snapshot",
-    response_model=None,
-    summary="触发概念行情快照采集任务（采集管理 UI 用）",
-)
-async def sync_snapshot_task(body: Optional[dict] = None):
-    """触发 375 个概念行情采集任务（09concept 新增）"""
-    params = body or {}
-    return R.ok({
-        "task_type": "concept_snapshot",
-        "params": params,
-        "message": "请用 POST /collect/tasks 调用",
-    })
-
-
-@router.post(
-    "/sync/index-th",
-    response_model=None,
-    summary="触发概念指数日 K 采集任务（采集管理 UI 用）",
-)
-async def sync_index_th_task(body: Optional[dict] = None):
-    """触发概念指数日 K 采集任务（09concept 新增，P1 功能）"""
-    params = body or {}
-    return R.ok({
-        "task_type": "concept_index_th",
-        "params": params,
-        "message": "请用 POST /collect/tasks 调用",
-    })

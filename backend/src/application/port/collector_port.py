@@ -119,31 +119,32 @@ class DailyBasicFetcher(Protocol):
 
 @runtime_checkable
 class ConceptFetcher(Protocol):
-    """概念板块采集协议
+    """概念板块采集协议（实现方：AdataConceptFetcher，同花顺数据源）
 
-    实现方：
-    - AkShareConceptFetcher  (THS 源，全量清单/行情/指数 K 线)
-    - AdataConceptFetcher    (THS 同源，按股票反查 + 入选理由)
+    所有方法以同花顺指数编码 index_code（885xxx）定位概念。
+    失败时抛异常；接口正常但无数据时返回空 list / None。
     """
 
     def fetch_concept_list(self) -> list[Any]:
-        """获取概念板块列表"""
+        """全部概念：[ConceptListBO(index_code, concept_code, name)]"""
         ...
 
-    def fetch_concept_stocks(self, concept_name: str) -> list[Any]:
-        """获取概念板块成分股
-
-        实现注意：akshare THS 接口未提供成分股查询；返回空 list 表示该数据源
-        不支持此能力，调用方需做好降级处理。
-        """
+    def fetch_constituents(self, index_code: str, delay: Optional[float] = None) -> list[str]:
+        """概念 → 成分股 symbol 列表"""
         ...
 
-    def fetch_concepts_by_stock(self, symbol: str) -> list[Any]:
-        """按股票代码反查所属概念列表（带入选理由）
+    def fetch_concepts_by_stock(self, symbol: str, delay: Optional[float] = None) -> list[Any]:
+        """股票 → 所属概念：[ConceptOfStockBO(index_code, name, reason)]"""
+        ...
 
-        实现注意：仅 AdataConceptFetcher 提供此能力；其他数据源返回空 list。
-        返回的 BO 应包含 `reason` 字段（adata 独有的入选理由）。
-        """
+    def fetch_index_daily(
+        self, index_code: str, concept_name: str = "", delay: Optional[float] = None,
+    ) -> list[Any]:
+        """概念指数日 K 全部历史：[ConceptIndexTHBO]"""
+        ...
+
+    def fetch_current(self, index_code: str, delay: Optional[float] = None) -> Any:
+        """概念实时行情：ConceptCurrentBO | None"""
         ...
 
     @property

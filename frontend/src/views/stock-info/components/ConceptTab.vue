@@ -171,19 +171,14 @@ async function onLiveRefresh() {
 }
 
 /**
- * 🆕 Tag 点击：实时数据有 reason 时弹入选理由
- *
- * 处理流程：
- * - is_realtime=true && reason 有值 → 弹入选理由 MessageBox
- * - 其他 → 走原有逻辑（emit + toast 占位）
+ * Tag 点击：有 reason（库中或实时）时弹入选理由，否则走原有逻辑（emit + toast 占位）
  */
 async function onTagClick(c: ConceptGroupedVO & {
   concept_code?: string | null
   is_realtime?: boolean
-  reason?: string | null
 }) {
-  if (c.is_realtime && c.reason) {
-    await ElMessageBox.alert(c.reason, `${c.name} · 入选理由（adata 实时）`, {
+  if (c.reason) {
+    await ElMessageBox.alert(c.reason, `${c.name} · 入选理由${c.is_realtime ? '（实时）' : ''}`, {
       confirmButtonText: '关闭',
       type: 'info',
     })

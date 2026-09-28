@@ -6,6 +6,5 @@ greenlet>=3.0.3
 psycopg2-binary==2.9.10
 tushare==1.4.3
 tdxpy>=0.2.5
-akshare==1.16.91
-adata>=2.9.0     # 概念按股票反查（datacenter.eastmoney.com 唯一可用源）
+adata==2.9.5     # 概念数据（同花顺）
 

@@ -1,147 +1,271 @@
-"""adata 概念板块采集器（THS 同源反查，2026-09-27 09concept 重构）
+"""adata 概念采集器（同花顺数据源）
 
-历史背景：
-- 原 adata 走 EM (datacenter.eastmoney.com) 链路；
-  `get_concept_east(stock_code)` 可用，但与 akshare THS 清单「白酒 vs 白酒概念」类名错位。
-- 2026-09-27 09concept 重构：改用 adata.stock.info.get_concept_ths(stock_code=...)
-  走 THS 同源（q.10jqka.com.cn 后端），返回的概念名与 akshare THS 清单 100% 匹配。
+概念相关数据全部由本采集器提供（清单 / 成分股 / 股票所属概念 / 指数日 K / 实时行情）。
+全链路以同花顺指数编码 index_code（885xxx）为业务键。
 
-当前能力矩阵（仅保留本期有用端点）：
-- fetch_concepts_by_stock    ✅ THS 同源按股票反查 + 入选理由（独家）
-- fetch_concept_list          ❌ 已废弃（akshare THS 清单更权威）
-- fetch_concept_stocks        ❌ 已废弃（akshare THS 无 cons 端点）
+adata 的两个行为需要在这里兜住：
+- 被同花顺限流时部分接口 `return Exception(...)` 而不是 raise
+- 接口正常但确实无数据时返回空 DataFrame —— 与"失败"必须区分，
+  成分股任务据此决定是否删除旧关系
 
-网络诊断（2026-09-27）：
-- q.10jqka.com.cn         ✅ 200（同花顺源）
-- datacenter.eastmoney.com ✅ 200（仅保留兼容路径，已不用）
-- push2.eastmoney.com      ❌ RST（akshare EM 全挂，本采集器不依赖）
-
-配套设计文档：docs/dev/09concept/02-class-design.md §1
+配套设计文档：docs/dev/step2/02datamanage/04-概念数据adata同源改造方案.md §5.1
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import time
+from datetime import date, datetime
+from typing import Any, Callable, Optional
 
 import pandas as pd
 
-from domain.entitys.concept.entity import ConceptSource
-from route.dto.request.concept import ConceptListBO
-from infrastructure.adapter.base import BaseCollector
 from application.port.collector_port import ConceptFetcher
+from infrastructure.adapter.base import BaseCollector
+from route.dto.request.concept import (
+    ConceptCurrentBO,
+    ConceptIndexTHBO,
+    ConceptListBO,
+    ConceptOfStockBO,
+)
 
 logger = logging.getLogger(__name__)
 
 
+class AdataThrottledError(RuntimeError):
+    """adata 返回了 Exception 对象（通常是同花顺 IP 限流）"""
+
+
 class AdataConceptFetcher(BaseCollector):
-    """adata THS 同源概念采集器（实现 ConceptFetcher 协议）"""
+    """adata · 同花顺概念采集器（实现 ConceptFetcher 协议）"""
 
     SOURCE_NAME = "Adata-THS"
-    RETRY_TIMES = 2
-    RETRY_DELAY = 1.0
-    REQUEST_DELAY = 0.3
+    REQUEST_DELAY = 0.5
+    RETRY_BACKOFF = (1.0, 3.0)
 
     def __init__(self):
         super().__init__()
         self._adata = self._ensure_adata()
 
-    def _ensure_adata(self):
+    @staticmethod
+    def _ensure_adata():
         try:
             import adata
             return adata
         except ImportError:
-            raise RuntimeError("adata 未安装：pip install adata>=2.9.0")
+            raise RuntimeError("adata 未安装：pip install adata==2.9.5")
 
-    # ── 采集：核心能力（THS 同源反查）──────────────────────
-
-    def fetch_concepts_by_stock(self, symbol: str) -> list[ConceptListBO]:
-        """按股票代码反查所属概念（adata THS 同源，独家）
-
-        实现：adata.stock.info.get_concept_ths(stock_code=symbol)
-        返回字段：stock_code / concept_code / name / source / reason
-
-        数据源与 akshare THS 清单同源（q.10jqka.com.cn），
-        概念名 100% 匹配 THS 清单。
-        """
-        if not symbol or len(symbol) != 6 or not symbol.isdigit():
-            logger.warning("Adata-THS: 无效 symbol: %s", symbol)
-            return []
-
-        logger.debug("Adata-THS: 反查股票 %s 的概念", symbol)
-
-        try:
-            df = self._fetch_with_retry(
-                lambda: self._adata.stock.info.get_concept_ths(stock_code=symbol)
-            )
-        except Exception as e:
-            logger.warning("Adata-THS 反查 %s 失败: %s", symbol, str(e)[:200])
-            return []
-
-        if df is None or df.empty:
-            return []
-
-        return self._parse_concepts_by_stock(df)
-
-    # ── 协议兜底（不实现）────────────────────────────────
+    # ── 清单 ─────────────────────────────────────────
 
     def fetch_concept_list(self) -> list[ConceptListBO]:
-        """已废弃：本能力由 AkShareConceptFetcher.fetch_concept_list（THS）覆盖"""
-        logger.debug("Adata-THS: fetch_concept_list 已废弃，请用 AkShareFetcher")
-        return []
-
-    def fetch_concept_stocks(self, concept_name: str) -> list:
-        """已废弃：akshare THS 无 cons 端点，adata constituent_ths 暂未实测"""
-        logger.debug("Adata-THS: fetch_concept_stocks 已废弃")
-        return []
-
-    # ── 解析 ─────────────────────────────────────────
-
-    @staticmethod
-    def _parse_concepts_by_stock(df: pd.DataFrame) -> list[ConceptListBO]:
-        """解析 adata.get_concept_ths 结果
-
-        字段：stock_code / concept_code / name / source / reason
-        """
-        items = []
-        for _, row in df.iterrows():
-            try:
-                name = str(row.get("name", "")).strip()
-                if not name:
-                    continue
-                code = str(row.get("concept_code", "")).strip()
-                reason = row.get("reason")
-                reason_str = (
-                    str(reason).strip()
-                    if reason is not None and pd.notna(reason) and str(reason).strip()
-                    else None
-                )
-                items.append(ConceptListBO(
-                    name=name,
-                    code=code,
-                    source=ConceptSource.THS,  # ⭐ 09concept 关键变更：来源标记为 THS
-                    stock_count=0,
-                    reason=reason_str,
-                ))
-            except Exception as e:
-                logger.debug("跳过无效行: %s", e)
+        """全部同花顺概念；丢弃 index_code 为空的行（问财接口偶发缺失）"""
+        df = self._call(lambda: self._adata.stock.info.all_concept_code_ths())
+        items: list[ConceptListBO] = []
+        seen: set[str] = set()
+        for row in _rows(df):
+            index_code = _code(row.get("index_code"))
+            name = _str(row.get("name"))
+            if not index_code or not name or index_code in seen:
                 continue
+            seen.add(index_code)
+            items.append(ConceptListBO(
+                index_code=index_code,
+                concept_code=_code(row.get("concept_code")),
+                name=name,
+            ))
         return items
 
-    # ── 辅助 ─────────────────────────────────────────
+    # ── 成分股 / 所属概念 ────────────────────────────
 
-    def _fetch_with_retry(self, fn, retries: int = RETRY_TIMES):
-        for i in range(retries + 1):
+    def fetch_constituents(self, index_code: str, delay: Optional[float] = None) -> list[str]:
+        """概念 → 股票（6 位 symbol，去重保序）；接口正常但无数据返回 []"""
+        df = self._call(
+            lambda: self._adata.stock.info.concept_constituent_ths(index_code=index_code),
+            delay=delay,
+        )
+        symbols: list[str] = []
+        seen: set[str] = set()
+        for row in _rows(df):
+            symbol = _symbol(row.get("stock_code"))
+            if symbol and symbol not in seen:
+                seen.add(symbol)
+                symbols.append(symbol)
+        return symbols
+
+    def fetch_concepts_by_stock(self, symbol: str, delay: Optional[float] = None) -> list[ConceptOfStockBO]:
+        """股票 → 概念（带入选理由）"""
+        symbol = _symbol(symbol)
+        if not symbol:
+            return []
+        try:
+            df = self._call(
+                lambda: self._adata.stock.info.get_concept_ths(stock_code=symbol),
+                delay=delay,
+            )
+        except AttributeError:
+            # F10 页面没有概念表格（无概念 / 新股）时 adata 内部 None.tbody
+            return []
+        items: list[ConceptOfStockBO] = []
+        for row in _rows(df):
+            index_code = _code(row.get("concept_code"))
+            name = _str(row.get("name"))
+            if not index_code or not name:
+                continue
+            items.append(ConceptOfStockBO(
+                symbol=symbol,
+                index_code=index_code,
+                name=name,
+                reason=_str(row.get("reason")),
+            ))
+        return items
+
+    # ── 行情 ─────────────────────────────────────────
+
+    def fetch_index_daily(
+        self, index_code: str, concept_name: str = "", delay: Optional[float] = None,
+    ) -> list[ConceptIndexTHBO]:
+        """概念指数日 K（接口无日期参数，总是返回全部历史）"""
+        df = self._call(
+            lambda: self._adata.stock.market.get_market_concept_ths(index_code=index_code, k_type=1),
+            delay=delay,
+        )
+        items: list[ConceptIndexTHBO] = []
+        for row in _rows(df):
+            trade_date = _date(row.get("trade_date"))
+            close = _float(row.get("close"))
+            if trade_date is None or close is None:
+                continue
+            items.append(ConceptIndexTHBO(
+                index_code=index_code,
+                concept_name=concept_name,
+                trade_date=trade_date,
+                open=_float(row.get("open")) or 0.0,
+                high=_float(row.get("high")) or 0.0,
+                low=_float(row.get("low")) or 0.0,
+                close=close,
+                volume=int(_float(row.get("volume")) or 0),
+                amount=_float(row.get("amount")) or 0.0,
+                change=_float(row.get("change")),
+                change_pct=_float(row.get("change_pct")),
+            ))
+        return items
+
+    def fetch_current(self, index_code: str, delay: Optional[float] = None) -> Optional[ConceptCurrentBO]:
+        """概念实时行情（不含涨跌幅，由调用方用昨收计算）"""
+        df = self._call(
+            lambda: self._adata.stock.market.get_market_concept_current_ths(index_code=index_code),
+            delay=delay,
+        )
+        rows = _rows(df)
+        if not rows:
+            return None
+        row = rows[0]
+        price = _float(row.get("price"))
+        if price is None:
+            return None
+        volume = _float(row.get("volume"))
+        return ConceptCurrentBO(
+            index_code=index_code,
+            trade_time=_datetime(row.get("trade_time")),
+            open=_float(row.get("open")),
+            high=_float(row.get("high")),
+            low=_float(row.get("low")),
+            price=price,
+            volume=int(volume) if volume is not None else None,
+            amount=_float(row.get("amount")),
+        )
+
+    # ── 调用封装 ─────────────────────────────────────
+
+    def _call(self, fn: Callable[[], Any], delay: Optional[float] = None) -> Any:
+        """限速 + 重试；adata 返回 Exception 对象视为限流"""
+        attempts = len(self.RETRY_BACKOFF) + 1
+        for i in range(attempts):
+            time.sleep(self.REQUEST_DELAY if delay is None else delay)
             try:
-                time.sleep(self.REQUEST_DELAY)
-                return fn()
+                result = fn()
+                if isinstance(result, Exception):
+                    raise AdataThrottledError(str(result))
+                return result
+            except AttributeError:
+                raise
             except Exception as e:
-                if i < retries:
-                    logger.debug("请求失败，重试 %d/%d: %s", i + 1, retries, e)
-                    time.sleep(self.RETRY_DELAY)
-                else:
+                if i == attempts - 1:
                     raise
+                backoff = self.RETRY_BACKOFF[i]
+                logger.debug("adata 请求失败，%.0fs 后重试 %d/%d: %s", backoff, i + 1, attempts - 1, e)
+                time.sleep(backoff)
 
 
-# ── Protocol 实现标注 ─────────────────────────────────
 AdataConceptFetcher.__implements_protocol__ = ConceptFetcher
+
+
+# ── 解析辅助 ───────────────────────────────────────────
+
+
+def _rows(df) -> list[dict]:
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return []
+    return df.to_dict("records")
+
+
+def _is_missing(v) -> bool:
+    return v is None or (isinstance(v, float) and math.isnan(v)) or (isinstance(v, str) and not v.strip())
+
+
+def _str(v) -> Optional[str]:
+    if _is_missing(v):
+        return None
+    return str(v).strip() or None
+
+
+def _code(v) -> Optional[str]:
+    s = _str(v)
+    if s is None:
+        return None
+    if s.endswith(".0"):
+        s = s[:-2]
+    return s
+
+
+def _symbol(v) -> Optional[str]:
+    s = _code(v)
+    if s is None:
+        return None
+    s = s.zfill(6)
+    return s if len(s) == 6 and s.isdigit() else None
+
+
+def _float(v) -> Optional[float]:
+    if _is_missing(v):
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if math.isnan(f) else f
+
+
+def _date(v) -> Optional[date]:
+    if _is_missing(v):
+        return None
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    try:
+        return datetime.strptime(str(v)[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _datetime(v) -> Optional[datetime]:
+    if _is_missing(v):
+        return None
+    if isinstance(v, datetime):
+        return v
+    try:
+        return datetime.strptime(str(v)[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None

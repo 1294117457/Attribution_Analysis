@@ -38,7 +38,7 @@
     >
       <el-icon v-if="iconForType" class="mr-1"><component :is="iconForType" /></el-icon>
       {{ concept.name }}
-      <span v-if="snapshot && snapshot.pct_change !== undefined" class="pct-suffix">
+      <span v-if="snapshot && snapshot.pct_change != null" class="pct-suffix">
         {{ formattedPctChange }}
       </span>
       <el-icon v-if="isRealtime" class="ml-1 is-realtime-icon" :size="11">
@@ -100,9 +100,8 @@ const snapshotColor = computed<'up' | 'down' | 'flat' | ''>(() => {
 })
 
 const formattedPctChange = computed(() => {
-  const s = snapshot.value
-  if (!s) return ''
-  const v = s.pct_change
+  const v = snapshot.value?.pct_change
+  if (v == null) return ''
   const sign = v > 0 ? '+' : ''
   return `${sign}${v.toFixed(2)}%`
 })
@@ -133,13 +132,14 @@ const iconForType = computed(() => {
 
 const tooltipContent = computed(() => {
   const c = props.concept as any
-  if (snapshot.value) {
+  const s = snapshot.value
+  if (s && s.pct_change != null) {
     return `板块涨幅 ${formattedPctChange.value}\n` +
-      (snapshot.value.rank_label ? `排名 ${snapshot.value.rank_label}\n` : '') +
-      (snapshot.value.up_down_label ? `涨跌家数 ${snapshot.value.up_down_label}` : '')
+      (s.rank_label ? `排名 ${s.rank_label}\n` : '') +
+      (s.up_down_label ? `涨跌家数 ${s.up_down_label}` : '')
   }
-  if (c.reason) return c.reason         // 实时入选理由（最高优先级）
-  if (c.description) return c.description  // DB 落库的入选理由
+  if (c.reason) return c.reason
+  if (c.description) return c.description
   return '点击查看概念详情'
 })
 </script>

@@ -2,6 +2,7 @@
 
 配套设计文档：
   docs/dev/06gainian/01-domain-design.md §2
+  docs/dev/step2/02datamanage/04-概念数据adata同源改造方案.md §4
 """
 
 from __future__ import annotations
@@ -13,10 +14,8 @@ from typing import Optional
 
 
 class ConceptSource(str, Enum):
-    """概念数据来源"""
-    EM = "em"      # 东方财富（默认）
-    THS = "ths"    # 同花顺（fallback：push2.eastmoney.com 被 RST 时使用 q.10jqka.com.cn）
-    ADATA = "adata"  # adata 库（独家：按股票反查概念，带入选理由 reason）
+    """概念数据来源（adata 采集，同花顺数据）"""
+    THS = "ths"
 
 
 class ConceptType(str, Enum):
@@ -34,14 +33,15 @@ class Concept:
     """概念实体（聚合根）
 
     不变式：
-    - name 与 source 联合唯一
+    - index_code（同花顺指数编码 885xxx）全局唯一，是业务键；name 可能变更
     - is_active = False 时仍保留历史（软删除）
-    - last_synced_at 必填（标记采集状态）
     """
 
     id: Optional[int] = field(default=None)
+    index_code: str = field(default="")
+    concept_code: Optional[str] = field(default=None)
     name: str = field(default="")
-    source: ConceptSource = field(default=ConceptSource.EM)
+    source: ConceptSource = field(default=ConceptSource.THS)
     concept_type: ConceptType = field(default=ConceptType.OTHER)
     description: Optional[str] = field(default=None)
     stock_count: int = field(default=0)
@@ -51,82 +51,21 @@ class Concept:
     )
     last_synced_at: Optional[datetime] = field(default=None)
 
-    @classmethod
-    def create(
-        cls,
-        name: str,
-        source: ConceptSource = ConceptSource.EM,
-        concept_type: ConceptType = ConceptType.OTHER,
-        description: Optional[str] = None,
-    ) -> "Concept":
-        """工厂方法：从 BO 创建"""
-        if not name or not name.strip():
-            raise ValueError(f"Concept name 不能为空: {name!r}")
-        return cls(
-            name=name.strip(),
-            source=source,
-            concept_type=concept_type,
-            description=description,
-        )
-
-    def mark_synced(
-        self,
-        member_count: int,
-        at: Optional[datetime] = None,
-    ) -> None:
-        """同步完成后调用：更新 last_synced_at 和 stock_count"""
-        self.last_synced_at = at or datetime.now(timezone.utc)
-        self.stock_count = member_count
-        if not self.is_active:
-            # 重新激活（曾下线又出现）
-            self.is_active = True
-
-    def deactivate(self) -> None:
-        """软删除：标记为不活跃，保留历史"""
-        self.is_active = False
-
 
 @dataclass(frozen=True)
 class ConceptMember:
     """概念成员（子实体）
 
-    不变式：
-    - (symbol, concept_id) 联合唯一
-    - source 必须与所属 Concept.source 一致
+    不变式：(symbol, concept_id) 联合唯一；reason 是"该股票为什么属于该概念"
     """
 
     symbol: str
     concept_id: int
-    source: ConceptSource
+    source: ConceptSource = ConceptSource.THS
+    reason: Optional[str] = None
     joined_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc)
     )
-
-    @classmethod
-    def create(
-        cls,
-        symbol: str,
-        concept_id: int,
-        source: ConceptSource,
-        joined_at: Optional[datetime] = None,
-    ) -> "ConceptMember":
-        if not symbol or len(symbol) != 6 or not symbol.isdigit():
-            raise ValueError(f"无效的 symbol: {symbol!r}")
-        return cls(
-            symbol=symbol,
-            concept_id=concept_id,
-            source=source,
-            joined_at=joined_at or datetime.now(timezone.utc),
-        )
-
-
-# ── 领域异常 ──
-
-"""概念领域异常
-
-配套设计文档：
-  docs/dev/06gainian/01-domain-design.md §6
-"""
 
 
 class ConceptNotFoundError(Exception):

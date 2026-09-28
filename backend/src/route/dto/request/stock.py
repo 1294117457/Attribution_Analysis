@@ -51,7 +51,7 @@ class StockListItemResponse(BaseModel):
     """股票列表项（含 K 线统计，简洁版）
 
     用于 /stocks/ 简单列表（DataCollect/StockManage 等不需要富字段的场景）。
-    面板主列表请使用 application.dto.panel.StockPanelItemVO。
+    面板主列表请使用 route.dto.response.panel.StockPanelItemVO。
     """
     symbol: str
     name: Optional[str] = None
