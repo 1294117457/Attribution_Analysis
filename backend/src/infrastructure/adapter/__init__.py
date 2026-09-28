@@ -6,7 +6,7 @@
 - MinuteKlineFetcher   — 分钟K线采集协议
 - StockBasicFetcher    — 股票基本信息采集协议
 - DailyBasicFetcher    — 日频估值采集协议
-- ConceptFetcher       — 概念板块采集协议（AKShare / Adata 实现）
+- ConceptFetcher       — 概念板块采集协议（Adata · 同花顺实现）
 - get_registry         — 获取全局注册中心
 - setup_default_registry — 启动时注册默认数据源
 

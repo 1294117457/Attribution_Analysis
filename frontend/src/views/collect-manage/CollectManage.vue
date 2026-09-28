@@ -30,12 +30,17 @@
           :key="facet.facet"
           class="facet-block"
         >
-          <div class="facet-header">
+          <div
+            class="facet-header"
+            role="button"
+            :aria-expanded="!isCollapsed(facet.facet)"
+            @click="toggleCollapsed(facet.facet)"
+          >
+            <el-icon class="collapse-arrow" :class="{ collapsed: isCollapsed(facet.facet) }"><ArrowDown /></el-icon>
             <el-icon class="mr-1"><TrendCharts v-if="facet.facet === 'tech'"
               /><Money v-else-if="facet.facet === 'capital'"
               /><PieChart v-else-if="facet.facet === 'fundamental'"
-              /><Document v-else-if="facet.facet === 'news'"
-              /><Connection v-else /></el-icon>
+              /><Document v-else /></el-icon>
             <b>{{ facet.label }}</b>
             <el-badge
               v-if="countReady(facet) > 0"
@@ -50,14 +55,24 @@
               class="ml-1"
             />
           </div>
-          <div class="sub-facet-list">
+          <div v-show="!isCollapsed(facet.facet)" class="sub-facet-list">
             <div
               v-for="(tasks, subKey) in facet.sub_groups"
               :key="subKey"
               class="sub-facet-block"
             >
-              <div class="sub-facet-label">{{ SUB_FACET_LABELS[subKey] || subKey }}</div>
+              <div
+                class="sub-facet-label"
+                role="button"
+                :aria-expanded="!isCollapsed(`${facet.facet}/${subKey}`)"
+                @click="toggleCollapsed(`${facet.facet}/${subKey}`)"
+              >
+                <el-icon class="collapse-arrow" :class="{ collapsed: isCollapsed(`${facet.facet}/${subKey}`) }"><ArrowDown /></el-icon>
+                {{ SUB_FACET_LABELS[subKey] || subKey }}
+                <span class="sub-facet-count">{{ tasks.length }}</span>
+              </div>
               <button
+                v-show="!isCollapsed(`${facet.facet}/${subKey}`)"
                 v-for="t in tasks"
                 :key="t.task_type"
                 class="task-btn"
@@ -255,7 +270,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import {
   Upload, ArrowDown, ArrowUp,
-  TrendCharts, Money, PieChart, Document, Connection,
+  TrendCharts, Money, PieChart, Document,
 } from '@element-plus/icons-vue'
 
 import PageWrapper from '@/components/PageWrapper.vue'
@@ -278,6 +293,30 @@ const {
   countPlanned,
   SUB_FACET_LABELS,
 } = useCatalog()
+
+// ── 左树折叠状态（key = facet 或 facet/subKey，持久化到 localStorage） ──
+const COLLAPSE_STORAGE_KEY = 'collect-manage:collapsed'
+
+function loadCollapsed(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(COLLAPSE_STORAGE_KEY) || '[]'))
+  } catch {
+    return new Set()
+  }
+}
+
+const collapsed = ref<Set<string>>(loadCollapsed())
+
+function isCollapsed(key: string): boolean {
+  return collapsed.value.has(key)
+}
+
+function toggleCollapsed(key: string) {
+  const next = new Set(collapsed.value)
+  if (!next.delete(key)) next.add(key)
+  collapsed.value = next
+  localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...next]))
+}
 
 // ── 当前选中 task_type ────────────────────────────────────────
 const activeTaskType = ref<string>('daily_kline')
@@ -311,8 +350,6 @@ const filterState = reactive<Record<string, any>>({
   exchange: [] as string[],
   daterange: null as [string, string] | null,
   concurrency: 3,
-  source: 'ths',
-  force_resync: false,
 })
 
 const activeFilterCount = computed(() =>
@@ -329,14 +366,6 @@ function onQuickStart(taskType: string, params: Record<string, any>) {
     }
     merged.concurrency = filterState.concurrency
     startTask(taskType, merged)
-    return
-  }
-  // concept 需要 source / force_resync
-  if (taskType === 'concept') {
-    startTask(taskType, {
-      source: filterState.source,
-      force_resync: filterState.force_resync,
-    })
     return
   }
   startTask(taskType, params)
@@ -376,12 +405,6 @@ function formatParams(task: CollectTask): string {
   if (!task.params) return '-'
   const p = task.params
   const parts: string[] = []
-  if (task.task_type === 'concept') {
-    const source = p.source === 'ths' ? '同花顺' : '东方财富'
-    parts.push(source)
-    if (p.force_resync) parts.push('强制重传')
-    return parts.join(' · ') || '-'
-  }
   if (Array.isArray(p.exchange) && p.exchange.length > 0) {
     parts.push(p.exchange.join('/'))
   }
@@ -398,6 +421,8 @@ function formatParams(task: CollectTask): string {
   if (p.limit != null) {
     parts.push(`前${p.limit}`)
   }
+  if (p.full) parts.push('全量重写')
+  if (p.only_missing) parts.push('仅缺失理由')
   if (p.list_status) parts.push(`状态: ${p.list_status}`)
   return parts.length > 0 ? parts.join(' · ') : '-'
 }
@@ -466,6 +491,23 @@ function _unused_router_push() {
   border-left: 3px solid #3b82f6;
   background: #fff;
   border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.facet-header:hover {
+  background: #eff6ff;
+}
+
+.collapse-arrow {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #94a3b8;
+  transition: transform 0.15s;
+}
+
+.collapse-arrow.collapsed {
+  transform: rotate(-90deg);
 }
 
 .sub-facet-list {
@@ -478,11 +520,28 @@ function _unused_router_push() {
 }
 
 .sub-facet-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
   color: #94a3b8;
   padding: 2px 6px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+}
+
+.sub-facet-label:hover {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.sub-facet-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: #cbd5e1;
 }
 
 .task-btn {

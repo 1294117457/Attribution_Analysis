@@ -7,7 +7,6 @@
 
 继承规则：
 - 所有 fetcher 应当继承本类，无需再自行持有 logger / source_name
-- AkShareConceptFetcher / AdataConceptFetcher 历史上未继承，本期迁移统一化
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ logger = logging.getLogger(__name__)
 class BaseCollector(ABC):
     """采集器基类"""
 
-    # 子类必须声明的数据源标识（如 'Tushare' / 'Pytdx' / 'AkShare-THS' / 'Adata-THS'）
+    # 子类必须声明的数据源标识（如 'Tushare' / 'Pytdx' / 'Adata-THS'）
     SOURCE_NAME: str = "Unknown"
 
     def __init__(self):
