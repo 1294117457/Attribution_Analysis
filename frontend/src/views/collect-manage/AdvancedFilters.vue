@@ -3,7 +3,6 @@
 
   按 task_type 查 FILTER_SCHEMAS 渲染对应控件。
   - daily_kline: 交易所多选 / 日期范围 / 并发度
-  - concept: 数据源(ths) / 强制重传开关
   - 其他 task_type: 显示"暂无筛选条件"
 
   state 用 v-model 双向绑定，组件内部不保存状态，所有值由父组件掌控。
@@ -68,18 +67,6 @@
             </el-radio-group>
           </template>
 
-          <template v-else-if="f.kind === 'concept-source-radio'">
-            <span class="filter-label">数据源</span>
-            <el-select :model-value="state.source" size="small" style="width: 160px" @update:model-value="update('source', $event)">
-              <el-option
-                v-for="opt in CONCEPT_SOURCE_OPTIONS"
-                :key="opt.value"
-                :label="opt.label"
-                :value="opt.value"
-              />
-            </el-select>
-          </template>
-
           <template v-else-if="f.kind === 'switch'">
             <span class="filter-divider" />
             <span class="filter-label">{{ f.label }}</span>
@@ -101,15 +88,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
-import { CONCEPT_SOURCE_OPTIONS } from './api'
+import { computed } from 'vue'
 
 // ── 类型定义 ────────────────────────────────────────────
 type FieldKind =
   | 'exchange-multiselect'
   | 'kline-daterange'
   | 'concurrency-radio'
-  | 'concept-source-radio'
   | 'switch'
 
 interface FieldDef {
@@ -145,13 +130,6 @@ const SCHEMAS: FilterSchema[] = [
       { key: 'concurrency', kind: 'concurrency-radio' },
     ],
   },
-  {
-    task_type: 'concept',
-    fields: [
-      { key: 'source', kind: 'concept-source-radio' },
-      { key: 'force_resync', kind: 'switch', label: '强制重传' },
-    ],
-  },
 ]
 
 const fields = computed<FieldDef[]>(
@@ -162,7 +140,9 @@ const fields = computed<FieldDef[]>(
 function update(key: string, value: any) {
   emit('update:state', { ...props.state, [key]: value })
 }
+</script>
 
+<script lang="ts">
 /** badge 计数：父组件用 */
 export function countActiveFilters(taskType: string, state: Record<string, any>): number {
   if (taskType === 'daily_kline') {
@@ -171,9 +151,6 @@ export function countActiveFilters(taskType: string, state: Record<string, any>)
     if (state.daterange && state.daterange.length === 2) n++
     if (state.concurrency !== 3) n++
     return n
-  }
-  if (taskType === 'concept') {
-    return state.force_resync ? 1 : 0
   }
   return 0
 }

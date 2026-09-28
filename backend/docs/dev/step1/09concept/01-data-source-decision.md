@@ -1,5 +1,8 @@
 # 概念板块三期 — 数据源治理：去掉 adata、引入 THS 行情
 
+> **已被 [`step2/02datamanage/04-概念数据adata同源改造方案.md`](../../step2/02datamanage/04-概念数据adata同源改造方案.md) 取代。**
+> 本文"akshare 无成分股、只能按股票反查"的结论已不成立：现统一由 adata 采集同花顺数据，akshare 已移除。
+
 > 编写日期：2026-09-27
 > 所属阶段：`09concept`（`06gainian` 概念一期 → `08concept` 二期 → `09concept` 三期）
 > 前置依赖：`06gainian`（基础 CRUD）、`08concept`（列表主概念 + 实时刷新）

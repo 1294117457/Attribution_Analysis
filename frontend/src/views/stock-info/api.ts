@@ -31,13 +31,8 @@ export interface PoolMembership {
 //  配套设计文档：docs/dev/06gainian/03-application-and-route-design.md §1.1
 // ═══════════════════════════════════════════════════════════════════════
 
-/** 概念数据源 */
-export type ConceptSource = 'em' | 'ths'
-
-/**
- * 09concept: 默认改为 ths（EM 链路已 RST）
- * 前端保留 'em' 类型仅为兼容历史代码，新数据全部是 ths 源。
- */
+/** 概念数据源（adata 采集的同花顺数据） */
+export type ConceptSource = 'ths'
 
 /** 概念类型 */
 export type ConceptType =
@@ -91,7 +86,8 @@ export interface ConceptMainVO {
 /** 09concept 新增：概念板块行情快照（涨跌染色用） */
 export interface ConceptSnapshot {
   concept_name: string
-  pct_change: number          // -1.32 / +1.32 / 0.0
+  /** 现价 / 昨收计算；缺昨收（未跑概念指数日 K）时为 null */
+  pct_change: number | null
   rank_current: number | null
   rank_total: number | null
   rank_label: string          // "191/390"
@@ -111,17 +107,18 @@ export interface ConceptGroupedVO {
   source: ConceptSource
   concept_type: ConceptType
   description: string | null
+  /** 入选理由（概念入选理由采集任务写入） */
+  reason?: string | null
 }
 
 /** 概念 Tab 单个分组区块 */
 export interface ConceptTabSectionVO {
   type: ConceptType
   type_label: string
-  /** 08concept：合并后 dict 可能携带 is_realtime / reason / concept_code 字段 */
+  /** merge_live=true 时 dict 额外携带 is_realtime / concept_code 字段 */
   concepts: (ConceptGroupedVO & {
     concept_code?: string | null
     is_realtime?: boolean
-    reason?: string | null
     /** 09concept 新增：板块行情快照（涨跌染色用） */
     snapshot?: ConceptSnapshot | null
   })[]
@@ -725,12 +722,12 @@ export const getConceptTabForSymbol = (
 ): Promise<ConceptTabContentVO> =>
   http.get<ConceptTabContentVO>(`/concepts/tab-by-symbol/${symbol}`, { params }).then(unwrap)
 
-/** 🆕 08concept：合并实时数据（adata 入选理由）
+/** 合并同花顺实时反查数据
  * GET /api/v1/concepts/tab-by-symbol/{symbol}?merge_live=true
  *
  * 与 getConceptTabForSymbol 的区别：
- * - 默认：仅 DB 数据
- * - 本接口：DB + adata 实时合并，含 is_realtime / reason / concept_code 字段
+ * - 默认：仅库中数据（已含入选理由 reason）
+ * - 本接口：库中 + 实时合并，含 is_realtime / concept_code 字段
  *
  * 适用场景：详情抽屉「概念」Tab 的"实时刷新"按钮 */
 export const getConceptTabForSymbolMerged = (
@@ -745,9 +742,9 @@ export const getConceptTabForSymbolMerged = (
 /** GET /api/v1/concepts/{name}  单概念详情（含成分股） */
 export const getConceptDetail = (
   name: string,
-  params: { source?: ConceptSource } = {},
 ): Promise<{
   concept_id: number
+  index_code: string
   name: string
   source: ConceptSource
   concept_type: ConceptType
@@ -756,9 +753,9 @@ export const getConceptDetail = (
   is_active: boolean
   last_synced_at: string | null
   first_seen_at: string | null
-  members: { symbol: string; name: string; rank: number | null; latest_price: number | null }[]
+  members: { symbol: string; name: string; reason: string | null }[]
 }> =>
-  http.get(`/concepts/${encodeURIComponent(name)}`, { params }).then(unwrap)
+  http.get(`/concepts/${encodeURIComponent(name)}`).then(unwrap)
 
 /** GET /api/v1/concepts/sync/status  查询同步状态 */
 export const getConceptSyncStatus = (): Promise<{
@@ -792,21 +789,3 @@ export const getConceptSnapshotsBatch = (
       params: { names: names.join(',') },
     })
     .then(unwrap)
-
-/**
- * POST /api/v1/concepts/sync/membership  触发成分股反查同步
- */
-export const triggerMembershipSync = (params?: { limit?: number }) =>
-  http.post('/concepts/sync/membership', params || {}).then(unwrap)
-
-/**
- * POST /api/v1/concepts/sync/snapshot  触发概念行情快照采集
- */
-export const triggerSnapshotSync = () =>
-  http.post('/concepts/sync/snapshot', {}).then(unwrap)
-
-/**
- * POST /api/v1/concepts/sync/index-th  触发概念指数日 K 采集
- */
-export const triggerIndexThSync = () =>
-  http.post('/concepts/sync/index-th', {}).then(unwrap)

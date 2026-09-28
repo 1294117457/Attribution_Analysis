@@ -32,7 +32,7 @@ class ConceptBriefVO:
 
     concept_id: int
     name: str
-    source: str  # ConceptSource 的 value（"em" / "ths"），方便序列化
+    source: str  # ConceptSource 的 value（"ths"），方便序列化
     concept_type: str = "other"  # 08concept 新增：industry/theme/style/region/event/other
 
 
@@ -42,14 +42,15 @@ class ConceptGroupedVO:
 
     与 ConceptBriefVO 的区别：
     - ConceptBriefVO：4 字段，用于列表预热 + 主概念排序
-    - ConceptGroupedVO：5 字段（多了 description），用于抽屉 Tab 分组展示
+    - ConceptGroupedVO：多了 description / reason，用于抽屉 Tab 分组展示
     """
 
     concept_id: int
     name: str
-    source: str  # "em" / "ths"
+    source: str  # "ths"
     concept_type: str  # industry / theme / style / region / event / other
     description: Optional[str] = None
+    reason: Optional[str] = None  # 该股票的入选理由（stock_concept_members.reason）
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

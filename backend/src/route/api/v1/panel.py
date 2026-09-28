@@ -43,7 +43,7 @@ async def query_panels(
         False,
         description=(
             "是否附带所属概念板块（简略版 ConceptBriefVO，详情抽屉预热用）"
-            "；需后端 ConceptFetcher 已注册（AKShare）"
+            "；数据来自概念成分股采集任务"
         ),
     ),
     page: int = Query(1, ge=1, description="页码"),
@@ -55,7 +55,7 @@ async def query_panels(
     若 with_pools=true，响应 items[].pools 字段会附带每只股票所属的操作池，
     无需前端逐条调用 /pools/by-symbol/{symbol}，避免 N+1 问题。
 
-    若 with_concepts=true 且后端 ConceptFetcher 已注册，
+    若 with_concepts=true，
     响应 items[].concepts 字段会附带每只股票所属的概念板块简略列表，
     供详情抽屉预热使用。
 
