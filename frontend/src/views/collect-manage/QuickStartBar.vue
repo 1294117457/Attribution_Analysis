@@ -60,31 +60,21 @@ const BUTTONS_BY_TASK: Record<string, QuickButton[]> = {
   stock_basic: [
     { label: '全量同步', params: {} },
   ],
-  fin_report: [
-    { label: '最近 1 年', params: { years: 1 } },
-    { label: '回填 3 年', params: { years: 3 } },
-    { label: '只补缺失（3 年）', params: { years: 3, only_missing: true } },
-    { label: '测试前 20 只', params: { years: 1, limit: 20 } },
-  ],
+  // 市场全局
   concept: [
     { label: '同步清单', params: {} },
   ],
   concept_membership: [
-    { label: '同步全部概念', params: {} },
-    { label: '测试前 20 个', params: { limit: 20 } },
-  ],
-  concept_reason: [
-    { label: '补全缺失理由', params: { only_missing: true } },
-    { label: '全量', params: {} },
-  ],
-  concept_index_th: [
-    { label: '增量同步', params: {} },
-    { label: '全量重写', params: { full: true } },
-    { label: '测试前 20 个', params: { limit: 20 } },
+    { label: '同步全部股票', params: {} },
+    { label: '测试前 50 只', params: { limit: 50 } },
   ],
   concept_snapshot: [
     { label: '同步全部概念', params: {} },
     { label: '测试前 30 个', params: { limit: 30 } },
+  ],
+  concept_index_th: [
+    { label: '同步全部指数 K', params: {} },
+    { label: '测试前 20 个', params: { limit: 20 } },
   ],
 }
 

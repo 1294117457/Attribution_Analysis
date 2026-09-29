@@ -26,11 +26,7 @@ from infrastructure.adapter.scheduler.collect import (
     request_cancel,
 )
 from route.api import _response as R
-from route.dto.response.collect import (
-    CollectCatalogResponse,
-    FacetGroupResponse,
-    TaskDefResponse,
-)
+from route.dto.response.collect import CollectCatalogResponse, FacetGroupResponse
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +39,11 @@ router = APIRouter(prefix="/collect", tags=["采集任务"])
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-@router.get("/catalog", summary="采集任务目录树（四面分类）")
+@router.get(
+    "/catalog",
+    response_model=CollectCatalogResponse,
+    summary="采集任务目录树（四面分类）",
+)
 async def get_collect_catalog():
     """拉取采集任务目录树
 
@@ -71,7 +71,7 @@ async def get_collect_catalog():
     """
     registry = get_collect_task_registry()
     groups = registry.catalog()
-    catalog = CollectCatalogResponse(
+    return CollectCatalogResponse(
         items=[
             FacetGroupResponse(
                 facet=g.facet,
@@ -79,14 +79,16 @@ async def get_collect_catalog():
                 icon=g.icon,
                 sort_order=g.sort_order,
                 sub_groups={
-                    sub_key: [TaskDefResponse(**td.__dict__) for td in tasks]
+                    sub_key: [
+                        TaskDefResponse(**td.__dict__)
+                        for td in tasks
+                    ]
                     for sub_key, tasks in g.sub_groups.items()
                 },
             )
             for g in groups
         ],
     )
-    return R.ok(catalog.model_dump())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -107,14 +109,12 @@ async def create_task(
     registry = get_collect_task_registry()
     handler = registry.get(task_type)
     if handler is None:
-        return R.ok(
-            {
-                "message": (
-                    f"不支持的任务类型: {task_type}，"
-                    f"已支持: {registry.supported_types()}"
-                )
-            }
-        )
+        return R.ok({
+            "message": (
+                f"不支持的任务类型: {task_type}，"
+                f"已支持: {registry.supported_types()}"
+            )
+        })
 
     # 防重：同 task_type 已有 running 任务则拒绝
     running = await db.execute(
@@ -124,11 +124,9 @@ async def create_task(
         )
     )
     if running.scalars().first():
-        return R.ok(
-            {
-                "message": f"{task_type} 已有运行中的任务，请等待完成",
-            }
-        )
+        return R.ok({
+            "message": f"{task_type} 已有运行中的任务，请等待完成",
+        })
 
     # 估单元数（子类实现，可能走 DB / AKShare 等）
     total = await handler.estimate_total(params)
@@ -166,14 +164,12 @@ async def create_task(
     background_tasks.add_task(execute_task, task_id, handler, params)
 
     logger.info("创建采集任务: id=%d, type=%s, total=%d", task_id, task_type, total)
-    return R.ok(
-        {
-            "task_id": task_id,
-            "task_type": task_type,
-            "total_count": total,
-            "message": f"已启动 {task_type} 采集任务，共 {total} 个单元",
-        }
-    )
+    return R.ok({
+        "task_id": task_id,
+        "task_type": task_type,
+        "total_count": total,
+        "message": f"已启动 {task_type} 采集任务，共 {total} 个单元",
+    })
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -201,25 +197,19 @@ async def list_tasks(
 
     total = (await db.execute(count_stmt)).scalar_one()
     rows = (
-        (
-            await db.execute(
-                stmt.order_by(desc(SysCollectTaskDB.id))
-                .limit(page_size)
-                .offset((page - 1) * page_size)
-            )
+        await db.execute(
+            stmt.order_by(desc(SysCollectTaskDB.id))
+            .limit(page_size)
+            .offset((page - 1) * page_size)
         )
-        .scalars()
-        .all()
-    )
+    ).scalars().all()
 
-    return R.ok(
-        {
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "items": [_task_to_dict(t) for t in rows],
-        }
-    )
+    return R.ok({
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [_task_to_dict(t) for t in rows],
+    })
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -248,26 +238,22 @@ async def get_task_progress(task_id: int):
     redis = await get_redis()
     data = await redis.hgetall(f"collect:progress:{task_id}")
     if not data:
-        return R.ok(
-            {
-                "status": "unknown",
-                "message": "无进度信息（任务可能已过期）",
-            }
-        )
+        return R.ok({
+            "status": "unknown",
+            "message": "无进度信息（任务可能已过期）",
+        })
     total = int(data.get("total", 0))
     done = int(data.get("done", 0))
-    return R.ok(
-        {
-            "total": total,
-            "done": done,
-            "success": int(data.get("success", 0)),
-            "fail": int(data.get("fail", 0)),
-            "skip": int(data.get("skip", 0)),
-            "status": data.get("status", "unknown"),
-            "current": data.get("current", ""),
-            "percent": round(done / total * 100, 1) if total > 0 else 0,
-        }
-    )
+    return R.ok({
+        "total": total,
+        "done": done,
+        "success": int(data.get("success", 0)),
+        "fail": int(data.get("fail", 0)),
+        "skip": int(data.get("skip", 0)),
+        "status": data.get("status", "unknown"),
+        "current": data.get("current", ""),
+        "percent": round(done / total * 100, 1) if total > 0 else 0,
+    })
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -298,7 +284,9 @@ async def cancel_task(
             task.duration_ms = int(
                 (task.finished_at - task.started_at).total_seconds() * 1000
             )
-        task.message = f"强制取消 (成功{task.success_count} 失败{task.fail_count})"
+        task.message = (
+            f"强制取消 (成功{task.success_count} 失败{task.fail_count})"
+        )
         await db.commit()
 
         redis = await get_redis()
@@ -306,11 +294,9 @@ async def cancel_task(
         logger.info("任务 %d 被强制取消", task_id)
         return R.ok({"message": "任务已强制取消", "forced": True})
 
-    return R.ok(
-        {
-            "message": "已发送取消信号（如任务已挂起，请使用强制取消）",
-        }
-    )
+    return R.ok({
+        "message": "已发送取消信号（如任务已挂起，请使用强制取消）",
+    })
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
