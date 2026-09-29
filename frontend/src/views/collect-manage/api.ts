@@ -1,11 +1,23 @@
 import http, { unwrap } from '@/common/utils/http'
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  采集管理 API — 配套后端 infrastructure/adapter/scheduler/collect/
+//  概念采集配套 — 配套后端 infrastructure/tasks/collect/concept.py
 //  配套设计文档：
+//    docs/dev/07collect-class/02-concept-collect-integration.md
+//    docs/dev/06gainian/01-domain-design.md
 //    docs/dev/step2/02datamanage/01-采集管理四维重构方案.md
-//    docs/dev/step2/02datamanage/04-概念数据adata同源改造方案.md
 // ═══════════════════════════════════════════════════════════════════════════
+
+/** 概念数据源 */
+export type ConceptSource = 'em' | 'ths'
+
+/**
+ * 09concept: 默认改为 ths（EM 链路已 RST）
+ * 后端实际只接受 ths，保留 'em' 类型仅为兼容前端旧代码。
+ */
+export const CONCEPT_SOURCE_OPTIONS: { label: string; value: ConceptSource }[] = [
+  { label: '同花顺 (ths)', value: 'ths' },
+]
 
 export interface CollectTask {
   id: number
@@ -35,11 +47,19 @@ export interface TaskProgress {
   percent: number
 }
 
+/** 概念同步参数（POST /collect/tasks {task_type:'concept', params:...}） */
+export interface ConceptSyncParams {
+  /** 数据源：em 默认 / ths 预留 */
+  source?: ConceptSource
+  /** 是否强制重传（业务上当前对所有概念都 upsert，此参数作为日志/审计保留） */
+  force_resync?: boolean
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // 四面分类目录树（PR2-PR3 新增）
 // ───────────────────────────────────────────────────────────────────────────
 
-export type FacetKey = 'tech' | 'capital' | 'fundamental' | 'news'
+export type FacetKey = 'tech' | 'capital' | 'fundamental' | 'news' | 'market'
 
 export interface TaskDef {
   task_type: string

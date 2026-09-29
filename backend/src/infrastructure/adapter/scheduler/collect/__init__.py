@@ -5,10 +5,11 @@
 子类：
   - DailyKlineCollectTask
   - DailyBasicCollectTask
-  - FinReportCollectTask（tushare income · 利润表）
   - StockBasicCollectTask
-  - ConceptListCollectTask / ConceptMembershipCollectTask / ConceptReasonCollectTask
-  - ConceptIndexTHCollectTask / ConceptSnapshotCollectTask（adata · 同花顺）
+  - ConceptCollectTask
+  - MembershipCollectTask   🆕 09concept
+  - SnapshotCollectTask     🆕 09concept
+  - IndexTHCollectTask      🆕 09concept
 
 抽象：
   - BaseCollectTask
@@ -37,16 +38,14 @@ from infrastructure.adapter.scheduler.collect.base import (
     is_cancelled,
     request_cancel,
 )
-from infrastructure.adapter.scheduler.collect.concept import (
-    ConceptIndexTHCollectTask,
-    ConceptListCollectTask,
-    ConceptMembershipCollectTask,
-    ConceptReasonCollectTask,
-    ConceptSnapshotCollectTask,
+from infrastructure.adapter.scheduler.collect.concept import ConceptCollectTask
+from infrastructure.adapter.scheduler.collect.concept_v2 import (
+    IndexTHCollectTask,
+    MembershipCollectTask,
+    SnapshotCollectTask,
 )
 from infrastructure.adapter.scheduler.collect.daily_basic import DailyBasicCollectTask
 from infrastructure.adapter.scheduler.collect.daily_kline import DailyKlineCollectTask
-from infrastructure.adapter.scheduler.collect.fin_report import FinReportCollectTask
 from infrastructure.adapter.scheduler.collect.planned import (
     PlannedCollectTask,
     all_planned_tasks,
@@ -62,15 +61,14 @@ from infrastructure.adapter.scheduler.collect.stock_basic import StockBasicColle
 
 __all__ = [
     # 子类
+    "ConceptCollectTask",
     "DailyBasicCollectTask",
     "DailyKlineCollectTask",
-    "FinReportCollectTask",
     "StockBasicCollectTask",
-    "ConceptListCollectTask",
-    "ConceptMembershipCollectTask",
-    "ConceptReasonCollectTask",
-    "ConceptIndexTHCollectTask",
-    "ConceptSnapshotCollectTask",
+    # 🆕 09concept 新增 3 子任务
+    "MembershipCollectTask",
+    "SnapshotCollectTask",
+    "IndexTHCollectTask",
     # 抽象
     "BaseCollectTask",
     "UnitResult",
