@@ -19,6 +19,7 @@ from application.port.collector_port import (
     MinuteKlineFetcher,
     StockBasicFetcher,
     DailyBasicFetcher,
+    FinReportFetcher,
     ConceptFetcher,
     validate_protocol_implementation,
 )
@@ -164,6 +165,9 @@ def setup_default_registry() -> FetcherRegistry:
     # ── DailyBasicFetcher ─────────────────────────────────
     reg.register_instance(DailyBasicFetcher, tushare_singleton)
     reg.register_factory(DailyBasicFetcher, lambda: TushareFetcher(KlineBO))
+
+    # ── FinReportFetcher（利润表 income）──────────────────
+    reg.register_instance(FinReportFetcher, tushare_singleton)
 
     # ── MinuteKlineFetcher ────────────────────────────────
     # PytdxFetcher 有状态（维护 TCP 连接），单例复用连接

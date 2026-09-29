@@ -1,12 +1,13 @@
 """Tushare Pro 数据采集器（ACL 实现）
 
-实现 KlineFetcher / StockBasicFetcher / DailyBasicFetcher 三个小协议
+实现 KlineFetcher / StockBasicFetcher / DailyBasicFetcher / FinReportFetcher 四个小协议
 （通过结构化类型自动满足，无需显式继承）。
 
 使用 tushare.pro_api() 拉取数据：
 - 日线行情（daily）
 - 股票基本信息（stock_basic）
 - 日频估值指标（daily_basic）
+- 利润表（income，按单只股票；income_vip 需 5000 积分，当前账号无权限）
 
 环境变量:
 - TUSHARE_TOKEN  (在 .env 中配置，Pydantic-Settings 读取)
@@ -23,11 +24,43 @@ import pandas as pd
 from route.dto.request.kline import KlineBO
 from route.dto.request.stock_info import StockInfoBO
 from route.dto.request.fin_daily_basic import FinDailyBasicBO
+from route.dto.request.fin_report import FinReportBO
 from infrastructure.adapter.base import BaseCollector
-from application.port.collector_port import CollectParams
+from application.port.collector_port import CollectParams, RateLimitError
 from infrastructure.adapter.tushare.parser import TushareKlineParser
 
 logger = logging.getLogger(__name__)
+
+_INCOME_VALUE_FIELDS = (
+    "basic_eps", "diluted_eps", "total_revenue", "revenue",
+    "operate_profit", "total_profit", "n_income", "n_income_attr_p",
+)
+_INCOME_FIELDS = ",".join((
+    "ts_code", "ann_date", "f_ann_date", "end_date", "report_type", "comp_type",
+    *_INCOME_VALUE_FIELDS, "update_flag",
+))
+_INCOME_KEY = ["ts_code", "end_date", "report_type"]
+
+
+def _is_rate_limit(e: Exception) -> bool:
+    msg = str(e)
+    return "每分钟" in msg or "最多访问" in msg or "频率" in msg
+
+
+def dedupe_income(df: pd.DataFrame) -> pd.DataFrame:
+    """同一报告期 Tushare 会返回更正前后多行：优先 update_flag=1，其次实际公告日、公告日最新"""
+    if df.empty:
+        return df
+    ordered = df.assign(
+        _flag=df["update_flag"].fillna("0").astype(str),
+        _f_ann=df["f_ann_date"].fillna("").astype(str),
+        _ann=df["ann_date"].fillna("").astype(str),
+    ).sort_values(["_flag", "_f_ann", "_ann"], ascending=False)
+    return (
+        ordered.drop_duplicates(subset=_INCOME_KEY, keep="first")
+        .drop(columns=["_flag", "_f_ann", "_ann"])
+        .sort_values("end_date", ascending=False)
+    )
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -42,7 +75,8 @@ def symbol_to_ts_code(symbol: str) -> str:
     prefix2 = symbol[:2]
     prefix3 = symbol[:3]
 
-    if prefix2 in ("83", "87", "43", "82"):
+    # 北交所：老代码 83/87/43/82，2024 年起新代码段 920xxx
+    if prefix2 in ("83", "87", "43", "82", "92"):
         return f"{symbol}.BJ"
 
     if prefix3 in ("600", "601", "603", "605", "688", "689"):
@@ -300,6 +334,68 @@ class TushareFetcher(BaseCollector):
             free_share=_float("free_share"),
             total_mv=_float("total_mv"),
             circ_mv=_float("circ_mv"),
+        )
+
+    # ── 利润表采集 ──────────────────────────────────────────
+
+    def fetch_income(
+        self,
+        ts_code: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> list[FinReportBO]:
+        """单只股票合并报表（report_type=1）利润表，按报告期去重
+
+        异常上抛（限频转为 RateLimitError），由任务层记失败 / 重试。
+        """
+        kwargs = {"ts_code": ts_code, "report_type": "1", "fields": _INCOME_FIELDS}
+        if start_date:
+            kwargs["start_date"] = start_date
+        if end_date:
+            kwargs["end_date"] = end_date
+        try:
+            df = self._pro.income(**kwargs)
+        except Exception as e:
+            if _is_rate_limit(e):
+                raise RateLimitError(str(e)) from e
+            raise self._wrap_error(f"income {ts_code} 失败: {e}", e)
+
+        if df is None or df.empty:
+            return []
+        items: list[FinReportBO] = []
+        for _, row in dedupe_income(df).iterrows():
+            bo = self._row_to_fin_report_bo(row)
+            if bo:
+                items.append(bo)
+        return items
+
+    @staticmethod
+    def _row_to_fin_report_bo(row: pd.Series) -> Optional[FinReportBO]:
+        """DataFrame 行 → FinReportBO"""
+        ts_code = row.get("ts_code")
+        end_date = parse_list_date(row.get("end_date"))
+        if not ts_code or pd.isna(ts_code) or end_date is None:
+            return None
+
+        def _float(key: str) -> Optional[float]:
+            v = row.get(key)
+            if v is None or pd.isna(v):
+                return None
+            return float(v)
+
+        def _str(key: str) -> Optional[str]:
+            v = row.get(key)
+            if v is None or pd.isna(v):
+                return None
+            return str(v)
+
+        return FinReportBO(
+            symbol=str(ts_code).split(".")[0],
+            end_date=end_date,
+            ann_date=parse_list_date(row.get("ann_date")),
+            report_type=_str("report_type"),
+            comp_type=_str("comp_type"),
+            **{f: _float(f) for f in _INCOME_VALUE_FIELDS},
         )
 
     @staticmethod

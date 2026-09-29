@@ -22,8 +22,8 @@ class FinReportDB(Base, TimestampMixin):
     symbol: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     ann_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
-    report_type: Mapped[str | None] = mapped_column(String(16), nullable=True, comment="报表类型: 1=合并报表/2=母公司报表")
-    comp_type: Mapped[str | None] = mapped_column(String(16), nullable=True, comment="公司类型: 1=工商业/2=金融/3=保险")
+    report_type: Mapped[str | None] = mapped_column(String(16), nullable=True, comment="报表类型(Tushare): 1=合并报表 2=单季合并 6=母公司报表…，本项目只采 1")
+    comp_type: Mapped[str | None] = mapped_column(String(16), nullable=True, comment="公司类型: 1=一般工商业 2=银行 3=保险 4=证券 7=多元金融")
 
     # 利润表核心字段
     basic_eps: Mapped[float | None] = mapped_column(Float, nullable=True, comment="基本每股收益")

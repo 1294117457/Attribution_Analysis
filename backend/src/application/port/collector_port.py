@@ -10,6 +10,7 @@
 - MinuteKlineFetcher   — 分钟K线采集
 - StockBasicFetcher     — 股票基本信息采集
 - DailyBasicFetcher    — 日频估值采集
+- FinReportFetcher     — 财报（利润表）采集
 - ConceptFetcher       — 概念板块采集
 """
 
@@ -115,6 +116,37 @@ class DailyBasicFetcher(Protocol):
     def source_name(self) -> str:
         """数据源名称"""
         ...
+
+
+@runtime_checkable
+class FinReportFetcher(Protocol):
+    """财报（利润表）采集协议
+
+    失败时抛异常（限频抛 RateLimitError）；股票确实无财报时返回空 list。
+    """
+
+    def fetch_income(
+        self,
+        ts_code: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> list[Any]:
+        """单只股票合并报表利润表，返回 FinReportBO 列表（每个报告期一行）
+
+        Args:
+            ts_code: Tushare 代码，如 600519.SH
+            start_date / end_date: 公告日范围，YYYYMMDD
+        """
+        ...
+
+    @property
+    def source_name(self) -> str:
+        """数据源名称"""
+        ...
+
+
+class RateLimitError(RuntimeError):
+    """数据源限频（调用方应等待后重试）"""
 
 
 @runtime_checkable
