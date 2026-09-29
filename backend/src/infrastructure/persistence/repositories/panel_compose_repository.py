@@ -1,11 +1,11 @@
 """StockPanel 组合查询 — SQLAlchemy 实现
 
 迁移自原 StockRepoImpl.list_with_kline_stats_paginated：
-- 主表 stock_infos
-- LEFT JOIN tech_kline_dailys 拿 K 线聚合
-- 通过子查询拿 fin_daily_basics 每只股票最新一行
-- 通过子查询拿 fin_reports 每只股票最新一期（report_type=1）净利润率
-- min_total_mv 走 HAVING 过滤
+- 主表 stock_infos 先筛选 + 分页，再只对当前页关联：
+  - tech_kline_dailys K 线聚合
+  - fin_daily_basics 每只股票最新一行
+  - fin_reports 每只股票最新一期（report_type=1）净利润率
+- min_total_mv 在分页前关联最新估值过滤
 
 同时承接 PoolRepoImpl.list_membership_by_symbols，
 让"列表所需的所有数据"由一个组合仓储一次性提供，
@@ -43,12 +43,7 @@ def _fmt_yyyymmdd(d) -> Optional[str]:
 class StockPanelComposeRepoImpl:
     """列表面板组合仓储实现
 
-    关键点：
-    - 主表 stock_infos
-    - LEFT JOIN tech_kline_dailys 拿 K 线聚合
-    - 通过子查询拿 fin_daily_basics 每只股票最新一行
-    - 通过子查询拿 fin_reports 每只股票最新一期（report_type=1）净利润率
-    - min_total_mv 走 HAVING 过滤
+    关键点：先分页再关联，每页成本与页码无关
     """
 
     def __init__(
@@ -138,55 +133,6 @@ class StockPanelComposeRepoImpl:
             .subquery("latest_report")
         )
 
-        # 主查询：4 表 LEFT JOIN + 聚合
-        stmt = (
-            select(
-                StockInfoDB.symbol,
-                StockInfoDB.ts_code,
-                StockInfoDB.name,
-                StockInfoDB.area,
-                StockInfoDB.industry,
-                StockInfoDB.market,
-                StockInfoDB.exchange,
-                StockInfoDB.list_date,
-                StockInfoDB.list_status,
-                StockInfoDB.is_hs,
-                StockInfoDB.act_name,
-                StockInfoDB.act_ent_type,
-                StockInfoDB.total_shares,
-                func.count(TechKlineDailyDB.id).label("record_count"),
-                func.min(TechKlineDailyDB.date).label("kline_start"),
-                func.max(TechKlineDailyDB.date).label("kline_end"),
-                latest_basic_sq.c.latest_close,
-                latest_basic_sq.c.total_mv,
-                latest_basic_sq.c.pe_ttm,
-                latest_report_sq.c.profit_margin,
-            )
-            .outerjoin(TechKlineDailyDB, StockInfoDB.symbol == TechKlineDailyDB.symbol)
-            .outerjoin(latest_basic_sq, StockInfoDB.symbol == latest_basic_sq.c.symbol)
-            .outerjoin(latest_report_sq, StockInfoDB.symbol == latest_report_sq.c.symbol)
-            .group_by(
-                StockInfoDB.symbol,
-                StockInfoDB.ts_code,
-                StockInfoDB.name,
-                StockInfoDB.area,
-                StockInfoDB.industry,
-                StockInfoDB.market,
-                StockInfoDB.exchange,
-                StockInfoDB.list_date,
-                StockInfoDB.list_status,
-                StockInfoDB.is_hs,
-                StockInfoDB.act_name,
-                StockInfoDB.act_ent_type,
-                StockInfoDB.total_shares,
-                latest_basic_sq.c.latest_close,
-                latest_basic_sq.c.total_mv,
-                latest_basic_sq.c.pe_ttm,
-                latest_report_sq.c.profit_margin,
-            )
-        )
-        count_stmt = select(func.count()).select_from(StockInfoDB)
-
         # ── 条件构造 ─────────────────────────────────────
         conditions = []
         if q:
@@ -213,24 +159,70 @@ class StockPanelComposeRepoImpl:
         elif exclude_st is False:
             conditions.append(StockInfoDB.name.ilike("%ST%"))
 
+        # ── 先分页：只取当前页的 symbol ─────────────────────
+        # K 线聚合 / 估值 / 财报只关联这一页；若先 JOIN 全量日 K 再 GROUP BY + OFFSET，
+        # 越往后翻页要聚合的行越多（末页需扫完全部日 K）
+        page_stmt = select(StockInfoDB.symbol)
+        count_stmt = select(func.count()).select_from(StockInfoDB)
         if conditions:
-            stmt = stmt.where(and_(*conditions))
+            page_stmt = page_stmt.where(and_(*conditions))
             count_stmt = count_stmt.where(and_(*conditions))
-
-        # min_total_mv：来自子查询列，需要 HAVING（聚合后）+ count_stmt 额外关联
         if min_total_mv is not None:
-            stmt = stmt.having(latest_basic_sq.c.total_mv >= min_total_mv)
-            count_stmt = (
-                count_stmt
-                .outerjoin(latest_basic_sq, StockInfoDB.symbol == latest_basic_sq.c.symbol)
-                .where(latest_basic_sq.c.total_mv >= min_total_mv)
-            )
-
-        # ── 排序 + 分页 ───────────────────────────────────
-        stmt = (
-            stmt.order_by(StockInfoDB.symbol)
+            mv_cond = latest_basic_sq.c.total_mv >= min_total_mv
+            page_stmt = page_stmt.join(
+                latest_basic_sq, StockInfoDB.symbol == latest_basic_sq.c.symbol,
+            ).where(mv_cond)
+            count_stmt = count_stmt.join(
+                latest_basic_sq, StockInfoDB.symbol == latest_basic_sq.c.symbol,
+            ).where(mv_cond)
+        page_sq = (
+            page_stmt.order_by(StockInfoDB.symbol)
             .limit(page_size)
             .offset((page - 1) * page_size)
+            .subquery("page")
+        )
+
+        # 子查询 3：当前页股票的 K 线聚合
+        kline_sq = (
+            select(
+                TechKlineDailyDB.symbol,
+                func.count(TechKlineDailyDB.id).label("record_count"),
+                func.min(TechKlineDailyDB.date).label("kline_start"),
+                func.max(TechKlineDailyDB.date).label("kline_end"),
+            )
+            .where(TechKlineDailyDB.symbol.in_(select(page_sq.c.symbol)))
+            .group_by(TechKlineDailyDB.symbol)
+            .subquery("kline_stats")
+        )
+
+        stmt = (
+            select(
+                StockInfoDB.symbol,
+                StockInfoDB.ts_code,
+                StockInfoDB.name,
+                StockInfoDB.area,
+                StockInfoDB.industry,
+                StockInfoDB.market,
+                StockInfoDB.exchange,
+                StockInfoDB.list_date,
+                StockInfoDB.list_status,
+                StockInfoDB.is_hs,
+                StockInfoDB.act_name,
+                StockInfoDB.act_ent_type,
+                StockInfoDB.total_shares,
+                kline_sq.c.record_count,
+                kline_sq.c.kline_start,
+                kline_sq.c.kline_end,
+                latest_basic_sq.c.latest_close,
+                latest_basic_sq.c.total_mv,
+                latest_basic_sq.c.pe_ttm,
+                latest_report_sq.c.profit_margin,
+            )
+            .join(page_sq, StockInfoDB.symbol == page_sq.c.symbol)
+            .outerjoin(kline_sq, StockInfoDB.symbol == kline_sq.c.symbol)
+            .outerjoin(latest_basic_sq, StockInfoDB.symbol == latest_basic_sq.c.symbol)
+            .outerjoin(latest_report_sq, StockInfoDB.symbol == latest_report_sq.c.symbol)
+            .order_by(StockInfoDB.symbol)
         )
 
         rows = (await self._session.execute(stmt)).all()
