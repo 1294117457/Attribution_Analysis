@@ -126,13 +126,11 @@ class BaseCollectTask(ABC):
     #   label:     UI 显示名（中文）
     #   status:    ready / planned  (planned 时 run() 直接返回'待实现')
     #   description: 一句话说明（UI 副标题 / tooltip）
-    #   sort_order: 同一 sub_facet 内的显示顺序（升序，相同时按 label）
     facet: ClassVar[str] = ""
     sub_facet: ClassVar[str] = ""
     label: ClassVar[str] = ""
     status: ClassVar[str] = "ready"
     description: ClassVar[str] = ""
-    sort_order: ClassVar[int] = 0
 
     def __init__(self) -> None:
         # 由 execute_task() 在调用 run() 之前注入
