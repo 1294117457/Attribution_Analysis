@@ -67,6 +67,7 @@ from infrastructure.adapter.scheduler.collect import (
     ConceptSnapshotCollectTask,
     DailyBasicCollectTask,
     DailyKlineCollectTask,
+    FinReportCollectTask,
     StockBasicCollectTask,
     all_planned_tasks,
     setup_collect_task_registry,
@@ -104,13 +105,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         DailyKlineCollectTask(),
         DailyBasicCollectTask(),
         StockBasicCollectTask(),
+        FinReportCollectTask(),
         # 概念（adata · 同花顺），依赖顺序：清单 → 成分股 → 入选理由；清单 → 日 K → 快照
         ConceptListCollectTask(),
         ConceptMembershipCollectTask(),
         ConceptReasonCollectTask(),
         ConceptIndexTHCollectTask(),
         ConceptSnapshotCollectTask(),
-        # 🆕 四面重构：15 个 planned 占位任务（资金面/基础层/基本面深度/新闻面）
+        # 🆕 四面重构：14 个 planned 占位任务（资金面/基础层/基本面深度/新闻面）
         *all_planned_tasks(),
     ])
 

@@ -5,6 +5,7 @@
 子类：
   - DailyKlineCollectTask
   - DailyBasicCollectTask
+  - FinReportCollectTask（tushare income · 利润表）
   - StockBasicCollectTask
   - ConceptListCollectTask / ConceptMembershipCollectTask / ConceptReasonCollectTask
   - ConceptIndexTHCollectTask / ConceptSnapshotCollectTask（adata · 同花顺）
@@ -45,6 +46,7 @@ from infrastructure.adapter.scheduler.collect.concept import (
 )
 from infrastructure.adapter.scheduler.collect.daily_basic import DailyBasicCollectTask
 from infrastructure.adapter.scheduler.collect.daily_kline import DailyKlineCollectTask
+from infrastructure.adapter.scheduler.collect.fin_report import FinReportCollectTask
 from infrastructure.adapter.scheduler.collect.planned import (
     PlannedCollectTask,
     all_planned_tasks,
@@ -62,6 +64,7 @@ __all__ = [
     # 子类
     "DailyBasicCollectTask",
     "DailyKlineCollectTask",
+    "FinReportCollectTask",
     "StockBasicCollectTask",
     "ConceptListCollectTask",
     "ConceptMembershipCollectTask",
