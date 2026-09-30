@@ -1,9 +1,15 @@
-"""日 K 线全量采集任务
+"""日 K 线采集任务
 
-迁移自 route/api/v1/collect_task.py::_collect_daily_kline
-保留原行为：按 symbol 维度单元，并发池 + chunk 调度。
+单元 = 1 只股票。collect_one 采单只并落库（含技术指标），业务入口
+POST /klines/collect、/klines/collect/batch 与池操作经它复用。
+批量 run() 保留 fetcher 池 + chunk 限频调度。
 
-配套设计文档：docs/dev/07collect-class/01-collect-task-class-design.md §5.1
+参数：
+  days                  回溯天数，默认 7
+  start_date/end_date   YYYYMMDD / YYYY-MM-DD / date，同时给出时优先于 days
+  exchange              交易所过滤（列表），仅批量
+  symbols               指定股票列表，仅批量（不给则全部上市股票）
+  concurrency           并发数，上限 COLLECT_MAX_CONCURRENCY
 """
 
 from __future__ import annotations
@@ -11,8 +17,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import date
+from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from route.dto.request.kline import KlineCollectRequest
 from application.service.kline_app_service import KlineAppService
@@ -21,6 +28,8 @@ from application.port.collector_port import KlineFetcher
 from infrastructure.config.settings import get_settings
 from infrastructure.persistence.connection import AsyncSessionLocal
 from infrastructure.persistence.models.stock_info import StockInfoDB
+from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl
+from infrastructure.persistence.repositories.stock_repository import StockRepoImpl
 from infrastructure.adapter.scheduler.collect.base import (
     BaseCollectTask,
     TaskSummary,
@@ -29,15 +38,35 @@ from infrastructure.adapter.scheduler.collect.base import (
 
 logger = logging.getLogger(__name__)
 
+UNIT_TIMEOUT = 120
+
+
+def _parse_date(value: Any) -> Optional[date]:
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    s = str(value).replace("-", "")
+    return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+
+
+def build_request(symbol: str, params: dict) -> KlineCollectRequest:
+    start = _parse_date(params.get("start_date"))
+    end = _parse_date(params.get("end_date"))
+    if start and end:
+        return KlineCollectRequest(symbol=symbol, start_date=start, end_date=end)
+    return KlineCollectRequest(symbol=symbol, days=int(params.get("days", 7)))
+
 
 class DailyKlineCollectTask(BaseCollectTask):
-    """日 K 线全量采集（按 symbol 维度单元）"""
+    """日 K 线采集（按 symbol 维度单元）"""
 
     name = "daily_kline"
     facet = "tech"
     sub_facet = "kline"
     label = "日 K 线"
     description = "5000+只股 OHLCV + 17 个技术指标（MA/EMA/MACD/RSI/KDJ/BOLL）"
+    default_params = {"days": 7}
 
     def __init__(self) -> None:
         super().__init__()
@@ -46,30 +75,48 @@ class DailyKlineCollectTask(BaseCollectTask):
         self._api_interval: float = 0.3
         self._fetcher_pool: asyncio.Queue | None = None
 
-    # ── estimate_total ────────────────────────────────────────────────
+    # ── 单元接口 ──────────────────────────────────────────────────────
 
-    async def estimate_total(self, params: dict) -> int:
-        """查 DB 拿 symbol 数（exchange 可选）"""
+    async def list_units(self, params: dict) -> list[str]:
+        if params.get("symbols"):
+            return [str(s).zfill(6) for s in params["symbols"]]
         async with AsyncSessionLocal() as session:
-            stmt = (
-                select(func.count())
-                .select_from(StockInfoDB)
-                .where(StockInfoDB.list_status == "L")
-            )
-            exchange_filter = params.get("exchange") if params else None
+            stmt = select(StockInfoDB.symbol).where(StockInfoDB.list_status == "L")
+            exchange_filter = params.get("exchange")
             if exchange_filter:
                 stmt = stmt.where(StockInfoDB.exchange.in_(exchange_filter))
-            result = await session.execute(stmt)
-            return int(result.scalar_one())
+            result = await session.execute(stmt.order_by(StockInfoDB.symbol))
+            return [r[0] for r in result.all()]
 
-    # ── pre_execute：预热 fetcher 池 ──────────────────────────────────
+    async def collect_one(self, unit: str, params: dict) -> UnitResult:
+        return await self._collect_symbol(unit, params, get_registry().get(KlineFetcher))
+
+    async def _collect_symbol(
+        self, symbol: str, params: dict, fetcher: KlineFetcher,
+    ) -> UnitResult:
+        async with AsyncSessionLocal() as session:
+            svc = KlineAppService(KlineRepoImpl(session), StockRepoImpl(session))
+            resp = await asyncio.wait_for(
+                svc.collect(build_request(symbol, params), fetcher),
+                timeout=UNIT_TIMEOUT,
+            )
+            await session.commit()
+        return UnitResult(
+            success=True,
+            detail=resp.message,
+            skipped=resp.total_count == 0,
+            saved_count=resp.saved_count,
+            data=resp.model_dump(),
+        )
+
+    # ── 批量：fetcher 池 + chunk 限频 ─────────────────────────────────
 
     async def pre_execute(self, params: dict) -> None:
         settings = self._settings
         max_conc = settings.COLLECT_MAX_CONCURRENCY
         user_conc = params.get("concurrency", settings.COLLECT_CONCURRENCY)
         self._concurrency = max(1, min(int(user_conc), max_conc))
-        # 与既有实现一致：interval 随并发成比例（避免触发 Tushare 限频）
+        # interval 随并发成比例（避免触发 Tushare 限频）
         self._api_interval = max(0.1, self._concurrency * 0.15)
 
         self._fetcher_pool = asyncio.Queue()
@@ -81,106 +128,57 @@ class DailyKlineCollectTask(BaseCollectTask):
             self._concurrency, self._api_interval,
         )
 
-    # ── run：业务主循环 ───────────────────────────────────────────────
-
-    async def run(
-        self,
-        params: dict,
-        on_unit_done,
-    ) -> TaskSummary:
+    async def run(self, params: dict, on_unit_done) -> TaskSummary:
         assert self._fetcher_pool is not None, "pre_execute 未执行"
+        pool = self._fetcher_pool
+        chunk_size = self._settings.COLLECT_CHUNK_SIZE
 
-        settings = self._settings
-        chunk_size = settings.COLLECT_CHUNK_SIZE
-
-        days = params.get("days", 7)
-        start_date = params.get("start_date")
-        end_date = params.get("end_date")
-        exchange_filter = params.get("exchange")
-
-        # 拉取需要采集的 symbol 列表
-        async with AsyncSessionLocal() as session:
-            stmt = (
-                select(StockInfoDB.symbol)
-                .where(StockInfoDB.list_status == "L")
-            )
-            if exchange_filter:
-                stmt = stmt.where(StockInfoDB.exchange.in_(exchange_filter))
-            stmt = stmt.order_by(StockInfoDB.symbol)
-            result = await session.execute(stmt)
-            symbols = [r[0] for r in result.all()]
-
+        symbols = await self.list_units(params)
         total = len(symbols)
-        exchange_desc = (
-            ",".join(exchange_filter) if exchange_filter else "全部"
-        )
+        exchange_filter = params.get("exchange")
+        exchange_desc = ",".join(exchange_filter) if exchange_filter else "全部"
         logger.info(
             "日K采集 %d: 共 %d 只股票 (%s), 并发=%d",
             self._task_id, total, exchange_desc, self._concurrency,
         )
 
-        # 构造采集参数
-        collect_kwargs: dict = {}
-        if start_date and end_date:
-            collect_kwargs["start_date"] = date(
-                int(start_date[:4]), int(start_date[4:6]), int(start_date[6:8])
-            )
-            collect_kwargs["end_date"] = date(
-                int(end_date[:4]), int(end_date[4:6]), int(end_date[6:8])
-            )
-        else:
-            collect_kwargs["days"] = days
-
         sem = asyncio.Semaphore(self._concurrency)
-        success = fail = 0
+        success = fail = skip = saved = 0
 
-        async def _collect_one(symbol: str) -> UnitResult:
-            """单只股票采集：成功 / 超时 / 异常三类结果"""
+        async def one(symbol: str) -> UnitResult:
             async with sem:
-                fetcher = await self._fetcher_pool.get()  # type: ignore[union-attr]
+                fetcher = await pool.get()
                 try:
-                    async with AsyncSessionLocal() as session:
-                        svc = KlineAppService(session=session)
-                        await asyncio.wait_for(
-                            svc.collect(
-                                KlineCollectRequest(symbol=symbol, **collect_kwargs),
-                                fetcher,
-                            ),
-                            timeout=120,
-                        )
-                        await session.commit()
-                    return UnitResult(success=True, detail=symbol)
+                    return await self._collect_symbol(symbol, params, fetcher)
                 except asyncio.TimeoutError:
-                    return UnitResult(
-                        success=False, detail=symbol, error="timeout 120s"
-                    )
+                    return UnitResult(success=False, detail=symbol, error=f"timeout {UNIT_TIMEOUT}s")
                 except Exception as e:
-                    return UnitResult(
-                        success=False, detail=symbol, error=str(e)
-                    )
+                    return UnitResult(success=False, detail=symbol, error=str(e)[:500])
                 finally:
-                    await self._fetcher_pool.put(fetcher)  # type: ignore[union-attr]
+                    await pool.put(fetcher)
 
         for i in range(0, total, chunk_size):
             chunk = symbols[i:i + chunk_size]
-            results = await asyncio.gather(*[_collect_one(s) for s in chunk])
+            results = await asyncio.gather(*[one(s) for s in chunk])
 
             for r, label in zip(results, chunk):
                 await on_unit_done(r, label)
                 if r.success:
                     success += 1
+                    saved += r.saved_count
+                    skip += 1 if r.skipped else 0
                 else:
                     fail += 1
 
-            # 块间限频（沿用既有实现）
             await asyncio.sleep(self._api_interval * len(chunk))
 
         return TaskSummary(
             success=success,
             fail=fail,
+            skip=skip,
             total_count=total,
             message=(
                 f"完成 ({exchange_desc}, 并发{self._concurrency}): "
-                f"成功 {success}, 失败 {fail}"
+                f"成功 {success}（无数据 {skip}），失败 {fail}；写入 {saved} 条"
             ),
         )

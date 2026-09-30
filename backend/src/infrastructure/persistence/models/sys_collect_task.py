@@ -24,6 +24,8 @@ class SysCollectTaskDB(Base, TimestampMixin):
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # 同一次任务组执行的各项共享（= 该次第一项的 task_id）
+    group_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
 
     __table_args__ = (
         Index("ix_sys_collect_tasks_type_time", "task_type", "started_at"),

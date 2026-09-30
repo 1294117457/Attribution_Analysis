@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
@@ -59,33 +59,29 @@ class ConceptIndexTHBO(BaseModel):
     change_pct: Optional[float] = None
 
 
-class ConceptCurrentBO(BaseModel):
-    """概念实时行情（adata.get_market_concept_current_ths）；接口不提供涨跌幅"""
+class ConceptMinutePoint(BaseModel):
+    """概念当日分时的一个点"""
 
-    index_code: str
-    trade_time: Optional[datetime] = None
-    open: Optional[float] = None
-    high: Optional[float] = None
-    low: Optional[float] = None
+    trade_time: str
     price: float
+    avg_price: Optional[float] = None
     volume: Optional[int] = None
     amount: Optional[float] = None
+    change_pct: Optional[float] = None
 
 
-class ConceptSnapshotBO(BaseModel):
-    """概念行情快照（由快照任务用实时行情 + 昨收组装）"""
+class ConceptMinuteBO(BaseModel):
+    """概念当日分时（adata.get_market_concept_min_ths）
+
+    接口无昨收列，pre_close 用首个有效点 price - change 反推；
+    price / change / change_pct 取最后一个点。
+    """
 
     index_code: str
-    concept_name: str
-    trade_time: Optional[datetime] = None
-    open_price: Optional[float] = None
-    high: Optional[float] = None
-    low: Optional[float] = None
+    trade_date: Optional[str] = None
+    pre_close: Optional[float] = None
     price: Optional[float] = None
-    prev_close: Optional[float] = None
-    pct_change: Optional[float] = None
-    rank_current: Optional[int] = None
-    rank_total: Optional[int] = None
-    volume_wan: Optional[float] = None
-    turnover_yi: Optional[float] = None
-    captured_at: datetime = Field(default_factory=datetime.now)
+    change: Optional[float] = None
+    change_pct: Optional[float] = None
+    trade_time: Optional[str] = None
+    points: list[ConceptMinutePoint] = Field(default_factory=list)

@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.service.concept_app_service import ConceptAppService
+from application.service.realtime_app_service import RealtimeQueryError, get_realtime_app_service
 from route.dto.response.concept import ConceptQueryRequest
 from domain.entitys.concept.entity import ConceptNotFoundError
 from application.port.collector_port import ConceptFetcher
@@ -23,6 +24,8 @@ from infrastructure.persistence.repositories.concept_repository import ConceptRe
 from route.api import _response as R
 
 router = APIRouter(prefix="/concepts", tags=["概念"])
+
+MAX_QUOTE_CODES = 100
 
 
 # ── 依赖注入 ────────────────────────────────────────
@@ -147,6 +150,37 @@ async def get_concept_tab_for_symbol(
 
 
 @router.get(
+    "/quotes",
+    response_model=None,
+    summary="批量概念实时行情（实时接口 concept_minute，15 秒缓存）",
+)
+async def get_concept_quotes(
+    codes: str = Query(..., description="index_code 列表，逗号分隔，最多 100 个，如 885525,885642"),
+    app: ConceptAppService = Depends(get_concept_app_service),
+):
+    """返回 {index_code: quote}；取不到的概念不出现在结果中。quote.stale=true 表示数据源失败、显示最近收盘"""
+    code_list = list(dict.fromkeys(c.strip() for c in codes.split(",") if c.strip()))
+    if len(code_list) > MAX_QUOTE_CODES:
+        return R.err(f"codes 最多 {MAX_QUOTE_CODES} 个", 400)
+    return R.ok(await app.get_quotes(code_list))
+
+
+@router.get(
+    "/{index_code}/minute",
+    response_model=None,
+    summary="单概念当日分时（实时接口 concept_minute）",
+)
+async def get_concept_minute(index_code: str):
+    try:
+        res = await get_realtime_app_service().query("concept_minute", {"index_code": index_code})
+    except ValueError as e:
+        return R.err(str(e), 400)
+    except RealtimeQueryError as e:
+        return R.err(str(e), 502)
+    return R.ok({**(res.data or {}), "stale": res.stale, "cached": res.cached, "fetched_at": res.fetched_at})
+
+
+@router.get(
     "/{name}",
     response_model=None,
     summary="单概念详情",
@@ -185,47 +219,6 @@ async def get_sync_status(
 # ═══════════════════════════════════════════════════════════════════════════════
 #  行情端点
 # ═══════════════════════════════════════════════════════════════════════════════
-
-
-@router.get(
-    "/{name}/snapshot",
-    response_model=None,
-    summary="取单概念最新行情快照（用于主概念 Tag 涨跌染色）",
-)
-async def get_concept_snapshot(
-    name: str,
-    db: AsyncSession = Depends(get_db),
-):
-    """取指定概念最新一条行情快照（09concept 新增）
-
-    返回 dict（含 pct_change / rank_label / up_down_label / color 等），
-    缺失则返回空对象 {}（前端按"暂无数据"展示）。
-    """
-    repo = ConceptRepoImpl(db)
-    snap = await repo.list_latest_snapshot(concept_name=name)
-    return R.ok(snap or {})
-
-
-@router.get(
-    "/snapshots/batch",
-    response_model=None,
-    summary="批量取多个概念的最新行情快照（避免 N+1）",
-)
-async def get_concept_snapshots_batch(
-    names: str = Query(..., description="概念名列表，逗号分隔，如 白酒概念,超级品牌,西部大开发"),
-    db: AsyncSession = Depends(get_db),
-):
-    """批量取多个概念的最新行情快照（09concept 新增）
-
-    用于主概念 Tag 批量染色：单次 SQL 拿到 N 个概念的 pct_change，
-    避免在 StockInfoList with_concepts=true 时 N+1 查询。
-    """
-    repo = ConceptRepoImpl(db)
-    name_list = [n.strip() for n in names.split(",") if n.strip()]
-    snaps = await repo.list_snapshots_for_names(names=name_list)
-    # 缺失的概念返回空 dict
-    out = {n: snaps.get(n, {}) for n in name_list}
-    return R.ok(out)
 
 
 @router.get(

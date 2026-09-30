@@ -24,9 +24,10 @@ import pandas as pd
 from application.port.collector_port import ConceptFetcher
 from infrastructure.adapter.base import BaseCollector
 from route.dto.request.concept import (
-    ConceptCurrentBO,
     ConceptIndexTHBO,
     ConceptListBO,
+    ConceptMinuteBO,
+    ConceptMinutePoint,
     ConceptOfStockBO,
 )
 
@@ -151,29 +152,47 @@ class AdataConceptFetcher(BaseCollector):
             ))
         return items
 
-    def fetch_current(self, index_code: str, delay: Optional[float] = None) -> Optional[ConceptCurrentBO]:
-        """概念实时行情（不含涨跌幅，由调用方用昨收计算）"""
+    def fetch_minute(self, index_code: str, delay: Optional[float] = 0) -> Optional[ConceptMinuteBO]:
+        """概念当日分时（实时接口，默认不限速；限流由 RealtimeAppService 的并发信号量控制）"""
         df = self._call(
-            lambda: self._adata.stock.market.get_market_concept_current_ths(index_code=index_code),
+            lambda: self._adata.stock.market.get_market_concept_min_ths(index_code=index_code),
             delay=delay,
         )
-        rows = _rows(df)
-        if not rows:
+        points: list[ConceptMinutePoint] = []
+        pre_close: Optional[float] = None
+        last: dict = {}
+        trade_date: Optional[str] = None
+        for row in _rows(df):
+            price = _float(row.get("price"))
+            if price is None:
+                continue
+            change = _float(row.get("change"))
+            if pre_close is None and change is not None:
+                pre_close = round(price - change, 4)
+            volume = _float(row.get("volume"))
+            trade_time = _datetime(row.get("trade_time"))
+            points.append(ConceptMinutePoint(
+                trade_time=trade_time.strftime("%H:%M") if trade_time else _str(row.get("trade_time")) or "",
+                price=price,
+                avg_price=_float(row.get("avg_price")),
+                volume=int(volume) if volume is not None else None,
+                amount=_float(row.get("amount")),
+                change_pct=_float(row.get("change_pct")),
+            ))
+            last = {"price": price, "change": change, "change_pct": _float(row.get("change_pct")),
+                    "trade_time": trade_time.strftime("%Y-%m-%d %H:%M") if trade_time else None}
+            trade_date = _str(row.get("trade_date")) or trade_date
+        if not points:
             return None
-        row = rows[0]
-        price = _float(row.get("price"))
-        if price is None:
-            return None
-        volume = _float(row.get("volume"))
-        return ConceptCurrentBO(
+        return ConceptMinuteBO(
             index_code=index_code,
-            trade_time=_datetime(row.get("trade_time")),
-            open=_float(row.get("open")),
-            high=_float(row.get("high")),
-            low=_float(row.get("low")),
-            price=price,
-            volume=int(volume) if volume is not None else None,
-            amount=_float(row.get("amount")),
+            trade_date=trade_date,
+            pre_close=pre_close,
+            price=last["price"],
+            change=last["change"],
+            change_pct=last["change_pct"],
+            trade_time=last["trade_time"],
+            points=points,
         )
 
     # ── 调用封装 ─────────────────────────────────────

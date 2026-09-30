@@ -69,16 +69,3 @@ class StockPanelComposeRepository(Protocol):
         本 Protocol 仅声明签名。
         """
         ...
-
-    async def list_snapshots_for_names(
-        self, names: list[str]
-    ) -> dict[str, dict]:
-        """批量取多个概念的"最新一条"快照（09concept 新增，避免 N+1）
-
-        用窗口函数 ROW_NUMBER() OVER (PARTITION BY concept_name ORDER BY captured_at DESC)
-        单 SQL 拿到 N 个概念的快照。
-
-        返回 dict[concept_name, snapshot_dict]。
-        若概念名不存在于数据库，返回中不包含该 key。
-        """
-        ...

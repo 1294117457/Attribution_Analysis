@@ -71,3 +71,9 @@ class KlineBO(BaseModel):
             "name": self.name or self.symbol,
             "source": self.source,
         }
+
+    def to_entity(self) -> "Kline":
+        from domain.entitys.kline.entity import Kline
+        args = self.to_entity_args()
+        args.pop("source")
+        return Kline.create(**args)

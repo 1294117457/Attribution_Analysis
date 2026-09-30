@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     COLLECT_CONCURRENCY: int = 3
     COLLECT_MAX_CONCURRENCY: int = 8
     COLLECT_CHUNK_SIZE: int = 30
+    # 采集方案 / 任务组的定时调度（开发时可在 .env 关闭）
+    COLLECT_SCHEDULER_ENABLED: bool = True
+    COLLECT_SCHEDULER_TIMEZONE: str = "Asia/Shanghai"
 
     # API 版本
     API_V1_PREFIX: str = "/api/v1"

@@ -23,10 +23,9 @@ from domain.entitys.concept.vo import ConceptBriefVO, ConceptGroupedVO
 from infrastructure.persistence.models.concept import (
     ConceptIndexTHDB,
     ConceptMemberDB,
-    ConceptSnapshotDB,
     ConceptsDB,
 )
-from route.dto.request.concept import ConceptIndexTHBO, ConceptListBO, ConceptSnapshotBO
+from route.dto.request.concept import ConceptIndexTHBO, ConceptListBO
 
 logger = logging.getLogger(__name__)
 
@@ -117,13 +116,8 @@ class ConceptRepoImpl:
         )
         return [(r.id, r.index_code, r.name) for r in (await self._session.execute(stmt)).all()]
 
-    async def concept_id_map(self) -> dict[str, int]:
-        """{index_code: concept_id}（含不活跃概念）"""
-        stmt = select(ConceptsDB.index_code, ConceptsDB.id)
-        return {r.index_code: r.id for r in (await self._session.execute(stmt)).all()}
-
     # ═════════════════════════════════════════════════════════════════════
-    #  写侧：成分股 / 入选理由
+    #  写侧：成分股
     # ═════════════════════════════════════════════════════════════════════
 
     async def count_members(self, concept_id: int) -> int:
@@ -178,29 +172,8 @@ class ConceptRepoImpl:
         await self._session.commit()
         return len(to_add), len(to_remove)
 
-    async def list_member_symbols(self, only_missing_reason: bool = False) -> list[str]:
-        """有概念关系的股票；only_missing_reason=True 时只返回还有 reason 为空的股票"""
-        stmt = select(ConceptMemberDB.symbol).distinct()
-        if only_missing_reason:
-            stmt = stmt.where(ConceptMemberDB.reason.is_(None))
-        stmt = stmt.order_by(ConceptMemberDB.symbol)
-        return list((await self._session.execute(stmt)).scalars().all())
-
-    async def update_reasons(self, symbol: str, pairs: list[tuple[int, str]]) -> int:
-        """只更新已存在关系的 reason，不插入新关系（成分股任务是关系唯一写入方）"""
-        updated = 0
-        for concept_id, reason in pairs:
-            result = await self._session.execute(
-                update(ConceptMemberDB)
-                .where(ConceptMemberDB.symbol == symbol, ConceptMemberDB.concept_id == concept_id)
-                .values(reason=reason)
-            )
-            updated += result.rowcount or 0
-        await self._session.commit()
-        return updated
-
     # ═════════════════════════════════════════════════════════════════════
-    #  写侧：指数日 K / 快照
+    #  写侧：指数日 K
     # ═════════════════════════════════════════════════════════════════════
 
     async def get_max_trade_dates(self) -> dict[str, date]:
@@ -254,49 +227,31 @@ class ConceptRepoImpl:
         await self._session.commit()
         return written
 
-    async def get_prev_closes(self, before: date) -> dict[str, float]:
-        """每个概念 trade_date < before 的最近一个收盘价（快照任务的昨收）"""
-        sql = text("""
-            SELECT DISTINCT ON (index_code) index_code, close
-            FROM concept_index_ths
-            WHERE trade_date < :before
-            ORDER BY index_code, trade_date DESC
-        """)
-        rows = (await self._session.execute(sql, {"before": before})).all()
-        return {r.index_code: float(r.close) for r in rows}
-
-    async def insert_snapshots(self, bos: list[ConceptSnapshotBO]) -> int:
-        """一批快照一次写入（不覆盖历史）"""
-        if not bos:
-            return 0
-        values = [
-            {
-                "index_code": b.index_code,
-                "concept_name": b.concept_name,
-                "trade_time": b.trade_time,
-                "open_price": b.open_price,
-                "high": b.high,
-                "low": b.low,
-                "price": b.price,
-                "prev_close": b.prev_close,
-                "pct_change": b.pct_change,
-                "rank_current": b.rank_current,
-                "rank_total": b.rank_total,
-                "volume_wan": b.volume_wan,
-                "turnover_yi": b.turnover_yi,
-                "source": ConceptSource.THS.value,
-                "captured_at": b.captured_at,
-            }
-            for b in bos
-        ]
-        for chunk in _chunks(values, 1000):
-            await self._session.execute(pg_insert(ConceptSnapshotDB).values(chunk))
-        await self._session.commit()
-        return len(values)
-
     # ═════════════════════════════════════════════════════════════════════
     #  读侧
     # ═════════════════════════════════════════════════════════════════════
+
+    async def get_latest_closes(self, index_codes: list[str]) -> dict[str, dict]:
+        """每个概念最近一条日 K（实时行情失败时的降级数据）"""
+        if not index_codes:
+            return {}
+        sql = text("""
+            SELECT DISTINCT ON (t.index_code)
+                t.index_code, COALESCE(c.name, t.concept_name) AS concept_name,
+                t.trade_date, t.close, t.change, t.change_pct
+            FROM concept_index_ths t
+            LEFT JOIN concepts c ON c.index_code = t.index_code
+            WHERE t.index_code = ANY(:codes)
+            ORDER BY t.index_code, t.trade_date DESC
+        """)
+        rows = (await self._session.execute(sql, {"codes": index_codes})).mappings().all()
+        return {r["index_code"]: dict(r) for r in rows}
+
+    async def get_names(self, index_codes: list[str]) -> dict[str, str]:
+        if not index_codes:
+            return {}
+        stmt = select(ConceptsDB.index_code, ConceptsDB.name).where(ConceptsDB.index_code.in_(index_codes))
+        return {r.index_code: r.name for r in (await self._session.execute(stmt)).all()}
 
     async def get_concept_by_id(self, concept_id: int) -> Optional[Concept]:
         row = await self._session.get(ConceptsDB, concept_id)
@@ -369,6 +324,7 @@ class ConceptRepoImpl:
         stmt = (
             select(
                 ConceptsDB.id,
+                ConceptsDB.index_code,
                 ConceptsDB.name,
                 ConceptsDB.source,
                 ConceptsDB.concept_type,
@@ -392,6 +348,7 @@ class ConceptRepoImpl:
                 concept_type=r.concept_type,
                 description=r.description,
                 reason=r.reason,
+                index_code=r.index_code,
             )
             for r in rows
         ]
@@ -432,29 +389,6 @@ class ConceptRepoImpl:
         stmt = select(func.max(ConceptsDB.last_synced_at))
         return (await self._session.execute(stmt)).scalar_one_or_none()
 
-    async def list_latest_snapshot(self, concept_name: str) -> Optional[dict]:
-        return (await self.list_snapshots_for_names([concept_name])).get(concept_name)
-
-    async def list_snapshots_for_names(self, names: list[str]) -> dict[str, dict]:
-        """批量取多个概念的最新一条快照（窗口函数，单 SQL）"""
-        if not names:
-            return {}
-        sql = text("""
-            WITH ranked AS (
-                SELECT
-                    index_code, concept_name, trade_time, open_price, high, low, price,
-                    prev_close, pct_change, rank_current, rank_total,
-                    up_count, down_count, volume_wan, net_inflow_yi, turnover_yi,
-                    captured_at,
-                    ROW_NUMBER() OVER (PARTITION BY concept_name ORDER BY captured_at DESC) AS rn
-                FROM concept_snapshots
-                WHERE concept_name = ANY(:names)
-            )
-            SELECT * FROM ranked WHERE rn = 1
-        """)
-        rows = (await self._session.execute(sql, {"names": names})).mappings().all()
-        return {r["concept_name"]: _snapshot_dict(r) for r in rows}
-
     async def list_index_th(
         self,
         concept_name: str,
@@ -484,35 +418,6 @@ class ConceptRepoImpl:
             }
             for r in rows
         ]
-
-
-def _snapshot_dict(r) -> dict:
-    pct = r["pct_change"]
-    return {
-        "index_code": r["index_code"],
-        "concept_name": r["concept_name"],
-        "trade_time": r["trade_time"],
-        "price": r["price"],
-        "prev_close": r["prev_close"],
-        "pct_change": pct,
-        "rank_current": r["rank_current"],
-        "rank_total": r["rank_total"],
-        "rank_label": (
-            f"{r['rank_current']}/{r['rank_total']}" if r["rank_current"] is not None else ""
-        ),
-        "up_count": r["up_count"],
-        "down_count": r["down_count"],
-        "up_down_label": (
-            f"{r['up_count']}/{r['down_count']}" if r["up_count"] is not None else ""
-        ),
-        "volume_wan": r["volume_wan"],
-        "net_inflow_yi": r["net_inflow_yi"],
-        "turnover_yi": r["turnover_yi"],
-        "captured_at": r["captured_at"],
-        "color": (
-            "flat" if pct is None else "up" if pct > 0 else "down" if pct < 0 else "flat"
-        ),
-    }
 
 
 ConceptRepoImpl.__implements_protocol__ = ConceptRepository

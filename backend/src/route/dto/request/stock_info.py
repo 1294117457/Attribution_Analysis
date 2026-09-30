@@ -26,8 +26,9 @@ class StockInfoBO(BaseModel):
     act_name: Optional[str] = Field(None, description="实控人名称")
     act_ent_type: Optional[str] = Field(None, description="实控人企业性质")
 
-    def to_entity(self, id: int = 0) -> StockInfo:
+    def to_entity(self, id: int = 0) -> "StockInfo":
         """转换为领域实体"""
+        from domain.entitys.stock_info.entity import StockInfo
         return StockInfo.create(
             id=id,
             symbol=self.symbol,
