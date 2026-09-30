@@ -3,26 +3,19 @@
 fetcher / 仓储 / session 全部替换为内存假对象，验证：
   · 清单：正常下线 / 清单骤减时不下线
   · 成分股：空结果跳过 / 骤降保护 / 首轮失败后重试 / 取消
-  · 入选理由：只按库中已有的 index_code 更新
   · 指数日 K：增量按最大日期往前 5 天截断
-  · 快照：昨收算涨跌幅、批次内排名、缺昨收时 pct 为 None
 """
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from unittest.mock import MagicMock
 
 import pytest
 
 from infrastructure.adapter.scheduler.collect import concept as mod
 from infrastructure.adapter.scheduler.collect.base import Cancelled, clear_cancel, request_cancel
-from route.dto.request.concept import (
-    ConceptCurrentBO,
-    ConceptIndexTHBO,
-    ConceptListBO,
-    ConceptOfStockBO,
-)
+from route.dto.request.concept import ConceptIndexTHBO, ConceptListBO
 
 TASK_ID = 4242
 
@@ -33,11 +26,8 @@ class FakeRepo:
         self.members: dict[int, set[str]] = {1: set(), 2: set(), 3: set()}
         self.upserted: list = []
         self.deactivated_with: list | None = None
-        self.reasons: list = []
         self.index_rows: list = []
         self.max_dates: dict = {}
-        self.prev_closes: dict = {}
-        self.snapshots: list = []
 
     async def count_active(self):
         return len(self.active)
@@ -53,9 +43,6 @@ class FakeRepo:
     async def list_active_concepts(self):
         return list(self.active)
 
-    async def concept_id_map(self):
-        return {code: cid for cid, code, _ in self.active}
-
     async def count_members(self, concept_id):
         return len(self.members[concept_id])
 
@@ -65,25 +52,11 @@ class FakeRepo:
         self.members[concept_id] = new
         return len(new - old), len(old - new)
 
-    async def list_member_symbols(self, only_missing_reason=False):
-        return ["600519", "000001"]
-
-    async def update_reasons(self, symbol, pairs):
-        self.reasons.append((symbol, pairs))
-        return len(pairs)
-
     async def get_max_trade_dates(self):
         return self.max_dates
 
     async def upsert_index_th(self, bos):
         self.index_rows.extend(bos)
-        return len(bos)
-
-    async def get_prev_closes(self, before):
-        return self.prev_closes
-
-    async def insert_snapshots(self, bos):
-        self.snapshots = bos
         return len(bos)
 
 
@@ -218,21 +191,6 @@ class TestConceptMembership:
             await _task(mod.ConceptMembershipCollectTask).run({}, _Reporter())
 
 
-# ── 入选理由 ─────────────────────────────────────────────────────────
-
-
-class TestConceptReason:
-    async def test_only_known_codes_updated(self, repo, fetcher):
-        fetcher.fetch_concepts_by_stock.side_effect = lambda symbol, delay: [
-            ConceptOfStockBO(symbol=symbol, index_code="885003", name="白酒", reason="白酒龙头"),
-            ConceptOfStockBO(symbol=symbol, index_code="889999", name="未知", reason="不在库中"),
-            ConceptOfStockBO(symbol=symbol, index_code="885001", name="机器人", reason=None),
-        ]
-        summary = await _task(mod.ConceptReasonCollectTask).run({}, _Reporter())
-        assert repo.reasons == [("600519", [(3, "白酒龙头")]), ("000001", [(3, "白酒龙头")])]
-        assert "更新理由 2 条" in summary.message
-
-
 # ── 指数日 K ─────────────────────────────────────────────────────────
 
 
@@ -257,58 +215,23 @@ class TestConceptIndexTH:
         assert len(repo.index_rows) == 30
 
 
-# ── 快照 ─────────────────────────────────────────────────────────────
-
-
-class TestConceptSnapshot:
-    async def test_pct_rank_and_units(self, repo, fetcher):
-        repo.prev_closes = {"885001": 100.0, "885002": 200.0}
-        t = datetime(2026, 9, 28, 14, 30)
-        prices = {"885001": 102.0, "885002": 198.0, "885003": 50.0}
-        fetcher.fetch_current.side_effect = lambda code, delay: ConceptCurrentBO(
-            index_code=code, trade_time=t, price=prices[code], volume=2_000_000, amount=3e8,
-        )
-        summary = await _task(mod.ConceptSnapshotCollectTask).run({}, _Reporter())
-
-        by_code = {b.index_code: b for b in repo.snapshots}
-        assert by_code["885001"].pct_change == 2.0
-        assert by_code["885002"].pct_change == -1.0
-        assert by_code["885003"].pct_change is None
-        assert (by_code["885001"].rank_current, by_code["885001"].rank_total) == (1, 2)
-        assert by_code["885002"].rank_current == 2
-        assert by_code["885003"].rank_current is None
-        assert by_code["885001"].volume_wan == 2.0
-        assert by_code["885001"].turnover_yi == 3.0
-        assert "缺昨收" in summary.message
-
-    async def test_no_quote_is_skipped(self, repo, fetcher):
-        fetcher.fetch_current.return_value = None
-        summary = await _task(mod.ConceptSnapshotCollectTask).run({}, _Reporter())
-        assert summary.skip == 3 and repo.snapshots == []
-
-
 def test_task_metadata():
-    tasks = [
-        mod.ConceptListCollectTask, mod.ConceptMembershipCollectTask, mod.ConceptReasonCollectTask,
-        mod.ConceptIndexTHCollectTask, mod.ConceptSnapshotCollectTask,
-    ]
-    assert [t.name for t in tasks] == [
-        "concept", "concept_membership", "concept_reason", "concept_index_th", "concept_snapshot",
-    ]
+    tasks = [mod.ConceptListCollectTask, mod.ConceptMembershipCollectTask, mod.ConceptIndexTHCollectTask]
+    assert [t.name for t in tasks] == ["concept", "concept_membership", "concept_index_th"]
     assert {(t.facet, t.sub_facet) for t in tasks} == {("fundamental", "concept")}
 
 
-def test_catalog_groups_concepts_in_user_order():
+def test_catalog_groups_concepts_in_user_order(monkeypatch):
+    from infrastructure.adapter.realtime import registry as rt_registry
+    from infrastructure.adapter.realtime.concept_minute import ConceptMinuteQuery
     from infrastructure.adapter.scheduler.collect.registry import CollectTaskRegistry
 
+    monkeypatch.setattr(rt_registry, "_registry", None)
+    rt_registry.setup_realtime_registry([ConceptMinuteQuery()])
+
     registry = CollectTaskRegistry()
-    for cls in (
-        mod.ConceptSnapshotCollectTask, mod.ConceptMembershipCollectTask, mod.ConceptListCollectTask,
-        mod.ConceptIndexTHCollectTask, mod.ConceptReasonCollectTask,
-    ):
+    for cls in (mod.ConceptIndexTHCollectTask, mod.ConceptMembershipCollectTask, mod.ConceptListCollectTask):
         registry.register(cls.name, cls())
-    catalog = registry.catalog()
-    assert [g.facet for g in catalog] == ["fundamental"]
-    assert [t.label for t in catalog[0].sub_groups["concept"]] == [
-        "概念清单", "概念入选理由", "概念成分股", "概念指数日 K", "概念行情快照",
-    ]
+    tasks = registry.catalog()[0].sub_groups["concept"]
+    assert [t.label for t in tasks] == ["概念清单", "概念成分股", "概念指数日 K", "概念实时行情"]
+    assert [t.kind for t in tasks] == ["batch", "batch", "batch", "realtime"]

@@ -1,6 +1,6 @@
 """Concept 仓储协议（读侧）
 
-写侧（清单 upsert、成分股替换、入选理由、日 K、快照）只被采集任务使用，
+写侧（清单 upsert、成分股替换、日 K）只被采集任务使用，
 直接调用 infrastructure 的 ConceptRepoImpl，不在领域协议中暴露。
 
 配套设计文档：
@@ -67,9 +67,7 @@ class ConceptRepository(Protocol):
         """成分股最近一次同步时间（concepts.last_synced_at 最大值）"""
         ...
 
-    # ── 概念快照 ───────────────────────
-    async def list_snapshots_for_names(
-        self, names: list[str]
-    ) -> dict[str, dict]:
-        """批量取多个概念的"最新一条"快照；返回 dict[concept_name, snapshot_dict]"""
+    # ── 日 K 收盘（实时行情降级用）─────────────
+    async def get_latest_closes(self, index_codes: list[str]) -> dict[str, dict]:
+        """每个概念最近一条日 K：{index_code: {concept_name, trade_date, close, change, change_pct}}"""
         ...

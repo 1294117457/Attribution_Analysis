@@ -1,9 +1,7 @@
 """日频估值采集任务
 
-迁移自 route/api/v1/collect_task.py::_collect_daily_basic
-保留原行为：按 trade_date 维度单元，顺序循环。
-
-配套设计文档：docs/dev/07collect-class/01-collect-task-class-design.md §5.2
+单元 = 交易日（YYYYMMDD），collect_one 采一天全市场估值并落库。
+业务入口 POST /stocks/sync-daily-basic 经 CollectAppService.run_one 复用 collect_one。
 """
 
 from __future__ import annotations
@@ -20,8 +18,8 @@ from infrastructure.persistence.repositories.fin_daily_basic_repository import (
 )
 from infrastructure.adapter.scheduler.collect.base import (
     BaseCollectTask,
-    TaskSummary,
     UnitResult,
+    UnitTally,
 )
 
 logger = logging.getLogger(__name__)
@@ -35,80 +33,39 @@ class DailyBasicCollectTask(BaseCollectTask):
     sub_facet = "valuation"
     label = "日频估值"
     description = "PE / PB / PS / 股息率 + 股本市值 + 换手率 / 量比"
+    default_params = {"days": 1}
 
-    # ── estimate_total ────────────────────────────────────────────────
+    async def list_units(self, params: dict) -> list[str]:
+        return self._resolve_dates(params)
 
-    async def estimate_total(self, params: dict) -> int:
-        """按 days / trade_date 计单元数"""
-        return len(self._resolve_dates(params))
-
-    # ── run：业务主循环 ───────────────────────────────────────────────
-
-    async def run(
-        self,
-        params: dict,
-        on_unit_done,
-    ) -> TaskSummary:
-        dates = self._resolve_dates(params)
+    async def collect_one(self, unit: str, params: dict) -> UnitResult:
         fetcher = get_registry().get(DailyBasicFetcher)
+        bo_list = await asyncio.to_thread(fetcher.fetch_daily_basic, unit)
+        if not bo_list:
+            logger.info("估值 %s: 无数据（非交易日？）", unit)
+            return UnitResult(success=True, detail=unit, skipped=True)
 
-        success = fail = total_saved = 0
-        logger.info(
-            "DailyBasic 任务 %d 启动: %d 个日期 %s",
-            self._task_id, len(dates), dates,
+        async with AsyncSessionLocal() as session:
+            saved = await FinDailyBasicRepoImpl(session).save_batch(
+                [bo.to_entity() for bo in bo_list]
+            )
+            await session.commit()
+        logger.info("估值 %s: 写入 %d 条", unit, saved)
+        return UnitResult(success=True, detail=unit, saved_count=saved)
+
+    def summary_message(self, tally: UnitTally) -> str:
+        return (
+            f"完成: {tally.success} 天（非交易日 {tally.skip}），"
+            f"失败 {tally.fail}；写入 {tally.saved} 条"
         )
-
-        for d in dates:
-            try:
-                bo_list = await asyncio.to_thread(fetcher.fetch_daily_basic, d)
-                if bo_list:
-                    entities = [bo.to_entity() for bo in bo_list]
-                    async with AsyncSessionLocal() as session:
-                        repo = FinDailyBasicRepoImpl(session)
-                        saved = await repo.save_batch(entities)
-                        await session.commit()
-                        total_saved += saved
-                    await on_unit_done(
-                        UnitResult(success=True, detail=d, saved_count=saved),
-                        d,
-                    )
-                    logger.info("任务 %d 估值 %s: 写入 %d 条",
-                                self._task_id, d, saved)
-                else:
-                    logger.info("任务 %d 估值 %s: 无数据（非交易日？）",
-                                self._task_id, d)
-                    await on_unit_done(
-                        UnitResult(success=True, detail=d, saved_count=0,
-                                   skipped=True),
-                        d,
-                    )
-                success += 1
-            except Exception as e:
-                logger.warning("任务 %d 估值 %s 失败: %s", self._task_id, d, e)
-                await on_unit_done(
-                    UnitResult(success=False, detail=d, error=str(e)),
-                    d,
-                )
-                fail += 1
-
-        return TaskSummary(
-            success=success,
-            fail=fail,
-            total_count=len(dates),
-            message=(
-                f"完成: {success} 天, {total_saved} 条"
-            ),
-        )
-
-    # ── helper ────────────────────────────────────────────────────────
 
     @staticmethod
     def _resolve_dates(params: dict) -> list[str]:
         """按 trade_date / days 解析需要采集的日期列表"""
         trade_date = params.get("trade_date")
         if trade_date:
-            return [trade_date]
-        days = params.get("days", 1)
+            return [str(trade_date).replace("-", "")]
+        days = int(params.get("days", 1))
         today = date.today()
         return [
             (today - timedelta(days=i)).strftime("%Y%m%d")

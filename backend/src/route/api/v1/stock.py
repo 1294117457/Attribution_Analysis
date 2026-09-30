@@ -14,10 +14,7 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from datetime import date, timedelta
-from functools import lru_cache
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
@@ -25,14 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from route.dto.response.panel import StockPanelQueryRequest
 from route.dto.request.stock import StockUpdateRequest
+from application.service.collect_app_service import CollectAppService
 from application.service.panel_app_service import StockPanelAppService
 from application.service.stock_app_service import StockAppService
-from application.port.collector_port import (
-    DailyBasicFetcher,
-    StockBasicFetcher,
-)
-from infrastructure.adapter import get_registry
-from infrastructure.config.di import get_panel_app_service
 from infrastructure.persistence.connection import get_db
 from route.api import _response as R
 
@@ -70,18 +62,6 @@ def get_panel_service(
         concept_repo=ConceptRepoImpl(db),
         brief_service=ConceptBriefService(),
     )
-
-
-@lru_cache
-def get_stock_fetcher() -> StockBasicFetcher:
-    """股票基本信息采集器（单例）— 与 K 线共用 Tushare"""
-    return get_registry().get(StockBasicFetcher)
-
-
-@lru_cache
-def get_daily_basic_fetcher() -> DailyBasicFetcher:
-    """日频估值采集器（单例）— 与 K 线共用 Tushare"""
-    return get_registry().get(DailyBasicFetcher)
 
 
 # ── 查询路由 ──────────────────────────────────────────────
@@ -172,16 +152,13 @@ async def upsert_stock(
 )
 async def sync_stocks(
     list_status: str = Query("L", description="上市状态 L/D/P"),
-    service: StockAppService = Depends(get_stock_service),
-    fetcher: StockBasicFetcher = Depends(get_stock_fetcher),
 ):
-    """全量同步 A股股票基本信息
+    """全量同步 A股股票基本信息（采集接口 stock_basic.collect_one）
 
-    从 Tushare 拉取股票基本信息并 upsert 到数据库。
     同步完成后，前端可调用 /stocks/meta 刷新枚举值。
     """
-    result = await service.sync_stocks(fetcher, list_status=list_status)
-    return R.created(result.model_dump())
+    result = await CollectAppService().run_one("stock_basic", "all", {"list_status": list_status})
+    return R.created(result.data)
 
 
 @router.patch("/{symbol}", summary="部分更新股票")
@@ -216,39 +193,22 @@ async def sync_daily_basic(
         description="YYYYMMDD 格式，不传默认取最近交易日",
     ),
     days: int = Query(1, ge=1, le=30, description="往回拉取天数（默认1天）"),
-    db: AsyncSession = Depends(get_db),
-    fetcher: DailyBasicFetcher = Depends(get_daily_basic_fetcher),
 ):
-    """从 Tushare daily_basic 同步全市场日频估值
+    """同步全市场日频估值（采集接口 daily_basic.collect_one，逐日）
 
     用于填充 fin_daily_basics 表，使股票列表能展示最新价、总市值、PE 等。
     """
-    from infrastructure.persistence.repositories.fin_daily_basic_repository import FinDailyBasicRepoImpl
-
-    repo = FinDailyBasicRepoImpl(db)
-
-    if trade_date:
-        dates_to_sync = [trade_date]
-    else:
-        today = date.today()
-        dates_to_sync = [
-            (today - timedelta(days=i)).strftime("%Y%m%d")
-            for i in range(days)
-        ]
+    svc = CollectAppService()
+    dates = await svc.handler("daily_basic").list_units({"trade_date": trade_date, "days": days})
 
     total_synced = 0
     synced_dates: list[str] = []
-
-    for td in dates_to_sync:
-        bo_list = await asyncio.to_thread(fetcher.fetch_daily_basic, td)
-        if not bo_list:
-            logger.info("daily_basic %s: 无数据（可能非交易日）", td)
+    for td in dates:
+        result = await svc.run_one("daily_basic", td)
+        if result.skipped:
             continue
-        entities = [bo.to_entity() for bo in bo_list]
-        count = await repo.save_batch(entities)
-        total_synced += count
+        total_synced += result.saved_count
         synced_dates.append(td)
-        logger.info("daily_basic %s: 写入 %d 条", td, count)
 
     return R.ok({
         "synced_count": total_synced,

@@ -18,6 +18,7 @@ import {
   getTaskProgress,
   cancelTask,
   type CollectTask,
+  type CreateTaskResult,
   type TaskProgress,
 } from '../api'
 
@@ -86,11 +87,16 @@ export function useCollectTasks(currentTaskType: () => string) {
   }
 
   // ── 启动任务 ────────────────────────────────────────────
-  async function startTask(taskType: string, params?: Record<string, any>) {
+  /** creator 默认 createTask；按方案执行时传 runPlan（响应形状相同） */
+  async function startTask(
+    taskType: string,
+    params?: Record<string, any>,
+    creator: () => Promise<CreateTaskResult> = () => createTask({ task_type: taskType, params }),
+  ) {
     console.log(LOG_PREFIX, 'startTask', taskType, params)
     startingTasks.add(taskType)
     try {
-      const res = await createTask({ task_type: taskType, params })
+      const res = await creator()
       console.log(LOG_PREFIX, 'createTask response:', res)
       if (res.task_id) {
         ElMessage.success(res.message || '任务已创建')

@@ -5,7 +5,8 @@
  *
  * 数据流：
  *   props.symbol → watch → getConceptTabForSymbol(symbol) → data
- *   data.sections → v-for 渲染分组
+ *   data.sections → v-for 渲染分组（组内按当日涨跌幅降序）
+ *   交易时段每 15 秒 getConceptQuotes 刷新行情（useRealtimePoll）
  *   ConceptTag 点击 → emit('conceptClick', c) → 由 StockDetailDrawer 上抛
  *
  * 配套设计文档：docs/dev/06gainian/04-frontend-detail-design.md §2.4.2
@@ -38,6 +39,11 @@
           <span v-if="merged && data.last_merged_at" class="text-xs text-gray-400">
             {{ formatRelativeTime(data.last_merged_at) }}
           </span>
+          <el-tag v-if="trading && !paused" size="small" type="danger" effect="plain">实时 · 15 秒</el-tag>
+          <el-tag v-else-if="!trading" size="small" type="info" effect="plain">已收盘</el-tag>
+          <el-link v-if="paused" type="warning" :underline="false" class="text-xs" @click="resume">
+            实时更新已暂停 · 重试
+          </el-link>
         </div>
         <el-button
           size="small"
@@ -100,11 +106,13 @@ import { ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, DataLine } from '@element-plus/icons-vue'
 import {
+  getConceptQuotes,
   getConceptTabForSymbol,
   getConceptTabForSymbolMerged,
   type ConceptTabContentVO,
   type ConceptGroupedVO,
 } from '@/views/stock-info/api'
+import { useRealtimePoll } from '@/composables/useRealtimePoll'
 import ConceptTag from './ConceptTag.vue'
 
 const props = defineProps<{
@@ -140,6 +148,32 @@ async function load() {
 async function reload() {
   await load()
 }
+
+/** 只刷新行情（15 秒），不重新查概念归属；各分组内按涨跌幅重新排序 */
+async function refreshQuotes() {
+  const sections = data.value?.sections
+  if (!sections?.length) return
+  const codes = sections.flatMap((s) => s.concepts.map((c) => c.index_code || c.concept_code || ''))
+  const unique = [...new Set(codes.filter(Boolean))]
+  if (!unique.length) return
+  const quotes = await getConceptQuotes(unique)
+  for (const s of sections) {
+    for (const c of s.concepts) {
+      const q = quotes[c.index_code || c.concept_code || '']
+      if (q) c.snapshot = q
+    }
+    s.concepts.sort((a, b) => {
+      const pa = a.snapshot?.pct_change
+      const pb = b.snapshot?.pct_change
+      if (pa == null && pb == null) return a.name.localeCompare(b.name)
+      if (pa == null) return 1
+      if (pb == null) return -1
+      return pb - pa
+    })
+  }
+}
+
+const { paused, trading, resume } = useRealtimePoll(refreshQuotes, { interval: 15_000 })
 
 /**
  * 🆕 实时刷新：合并 adata 实时数据

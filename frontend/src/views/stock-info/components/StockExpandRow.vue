@@ -55,7 +55,7 @@
             size="small"
             placeholder="周期"
             style="width: 80px"
-            @change="loadMinuteKlines"
+            @change="onIntervalChange"
           >
             <el-option v-for="o in intervalOptions" :key="o.value" :label="o.label" :value="o.value" />
           </el-select>
@@ -63,11 +63,17 @@
             v-model="minuteDays"
             size="small"
             placeholder="天数"
-            style="width: 70px"
-            @change="loadMinuteKlines"
+            style="width: 76px"
+            @change="loadMinuteKlines()"
           >
             <el-option v-for="o in minuteDayOptions" :key="o.value" :label="o.label" :value="o.value" />
           </el-select>
+          <el-tag v-if="trading && !paused" size="small" type="danger" effect="plain">实时 · 15 秒</el-tag>
+          <el-tag v-else-if="!trading" size="small" type="info" effect="plain">已收盘</el-tag>
+          <el-link v-if="paused" type="warning" :underline="false" class="minute-hint" @click="resume">
+            实时更新已暂停 · 重试
+          </el-link>
+          <span v-else-if="minuteUpdatedAt" class="minute-hint">{{ minuteUpdatedAt }}</span>
         </div>
         <MiniKlineChart
           :title="''"
@@ -94,6 +100,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import MiniKlineChart from './MiniKlineChart.vue'
 import { getKlines, getMinuteKlines } from '@/views/stock-info/api'
 import type { Kline, MinuteKline } from '@/views/stock-info/api'
+import { useRealtimePoll } from '@/composables/useRealtimePoll'
 
 const props = defineProps<{
   symbol: string
@@ -132,22 +139,23 @@ const intervalOptions = [
   { label: '30min', value: '30min' },
   { label: '60min', value: '60min' },
 ]
-const minuteDayOptions = [
-  { label: '1 日', value: 1 },
-  { label: '3 日', value: 3 },
-  { label: '5 日', value: 5 },
-  { label: '10 日', value: 10 },
-  { label: '20 日', value: 20 },
-]
+// 1 分钟只看当天；其他周期最多 5 日（多日走势看日 K）
 const minuteInterval = ref('5min')
 const minuteDays = ref(1)
+const minuteDayOptions = computed(() =>
+  minuteInterval.value === '1min'
+    ? [{ label: '当天', value: 1 }]
+    : [
+        { label: '当天', value: 1 },
+        { label: '3 日', value: 3 },
+        { label: '5 日', value: 5 },
+      ],
+)
 
-const BARS_PER_DAY: Record<string, number> = {
-  '1min': 240, '5min': 48, '15min': 16, '30min': 8, '60min': 4,
+function onIntervalChange() {
+  if (minuteInterval.value === '1min') minuteDays.value = 1
+  loadMinuteKlines()
 }
-const minuteCount = computed(() => {
-  return (BARS_PER_DAY[minuteInterval.value] ?? 48) * minuteDays.value
-})
 
 // ── 数据 ───────────────────────────────────────────────
 const dailyKlines = ref<Kline[]>([])
@@ -190,20 +198,27 @@ async function loadDailyKlines() {
   }
 }
 
-async function loadMinuteKlines() {
-  minuteLoading.value = true
+const minuteUpdatedAt = ref('')
+
+/** silent=true：轮询刷新，不显示 loading、失败时保留上一次的图并把错误抛给轮询器计数 */
+async function loadMinuteKlines(silent = false) {
+  if (!silent) minuteLoading.value = true
   try {
     const res = await getMinuteKlines(props.symbol, {
       interval: minuteInterval.value,
-      count: minuteCount.value,
+      days: minuteDays.value,
     })
     minuteKlines.value = res.items ?? []
-  } catch {
+    minuteUpdatedAt.value = res.fetched_at ? `更新于 ${res.fetched_at.slice(11, 19)}` : ''
+  } catch (e) {
+    if (silent) throw e
     minuteKlines.value = []
   } finally {
-    minuteLoading.value = false
+    if (!silent) minuteLoading.value = false
   }
 }
+
+const { paused, trading, resume } = useRealtimePoll(() => loadMinuteKlines(true), { interval: 15_000 })
 
 watch(() => props.symbol, () => {
   loadDailyKlines()
@@ -242,6 +257,12 @@ onMounted(() => {
   font-size: 12px;
   font-weight: 600;
   color: #374151;
+  white-space: nowrap;
+}
+
+.minute-hint {
+  font-size: 11px;
+  color: #9ca3af;
   white-space: nowrap;
 }
 

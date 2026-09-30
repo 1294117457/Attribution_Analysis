@@ -30,7 +30,8 @@
       :class="{
         'is-clickable': true,
         'is-realtime': isRealtime,
-        [`color-${snapshotColor}`]: !!snapshot,
+        [`color-${snapshotColor}`]: !!snapshot && !snapshot.stale,
+        'is-stale': !!snapshot?.stale,
       }"
       @mouseenter="hovered = true"
       @mouseleave="hovered = false"
@@ -134,9 +135,8 @@ const tooltipContent = computed(() => {
   const c = props.concept as any
   const s = snapshot.value
   if (s && s.pct_change != null) {
-    return `板块涨幅 ${formattedPctChange.value}\n` +
-      (s.rank_label ? `排名 ${s.rank_label}\n` : '') +
-      (s.up_down_label ? `涨跌家数 ${s.up_down_label}` : '')
+    if (s.stale) return `行情源暂不可用，显示最近收盘 ${formattedPctChange.value}`
+    return `板块涨幅 ${formattedPctChange.value}` + (s.trade_time ? `（${s.trade_time}）` : '')
   }
   if (c.reason) return c.reason
   if (c.description) return c.description
@@ -187,6 +187,10 @@ const tooltipContent = computed(() => {
 .concept-tag.color-flat .pct-suffix {
   color: #6b7280;
   font-weight: 500;
+  margin-left: 4px;
+}
+.concept-tag.is-stale .pct-suffix {
+  color: #9ca3af;
   margin-left: 4px;
 }
 .pct-suffix {

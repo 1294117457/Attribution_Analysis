@@ -27,6 +27,7 @@ from infrastructure.persistence.models.mkt_market_daily import MktMarketDailyDB 
 from infrastructure.persistence.models.mkt_sector_daily import MktSectorDailyDB     # noqa: F401
 from infrastructure.persistence.models.mkt_index_member import MktIndexMemberDB     # noqa: F401
 from infrastructure.persistence.models.sys_collect_task import SysCollectTaskDB, SysCollectTaskDetailDB  # noqa: F401
+from infrastructure.persistence.models.collect_config import CollectGroupDB, CollectPlanDB  # noqa: F401
 from infrastructure.persistence.models.concept import (                  # noqa: F401
     ConceptIndexTHDB,
     ConceptMemberDB,

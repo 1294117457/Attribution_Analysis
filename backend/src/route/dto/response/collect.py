@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -21,6 +21,13 @@ class TaskDefResponse(BaseModel):
         default="ready",
         description="ready: 已实现 / planned: 待实现",
     )
+    default_params: dict = Field(default_factory=dict, description="接口默认参数")
+    supports_run_one: bool = Field(default=False, description="是否支持按单元同步调用（业务复用）")
+    kind: Literal["batch", "realtime"] = Field(default="batch", description="batch: 采集入库 / realtime: 按需查询 + 缓存")
+    source: Optional[str] = Field(default=None, description="实时接口数据源分组 ths / tdx")
+    source_label: Optional[str] = None
+    ttl_trading: Optional[int] = Field(default=None, description="实时接口交易时段缓存秒数")
+    consumers: list[str] = Field(default_factory=list, description="实时接口的业务调用方")
 
 
 class FacetGroupResponse(BaseModel):

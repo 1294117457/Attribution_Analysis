@@ -14,14 +14,16 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Optional
 
+from infrastructure.adapter.realtime.registry import get_realtime_registry
 from infrastructure.adapter.scheduler.collect.base import BaseCollectTask
 
 logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Facet 预设（5 大面 — UI 排序 + 图标）
+# Facet 预设（4 大面 — UI 排序 + 图标）
 # ═══════════════════════════════════════════════════════════════════════════════
 
 _FACET_DEFS: list[dict] = [
@@ -29,7 +31,6 @@ _FACET_DEFS: list[dict] = [
     {"facet": "capital",      "label": "资金面",     "icon": "Money",       "sort_order": 2},
     {"facet": "fundamental",  "label": "基本面",     "icon": "PieChart",    "sort_order": 3},
     {"facet": "news",         "label": "新闻面",     "icon": "Document",    "sort_order": 4},
-    {"facet": "market",       "label": "市场全局",   "icon": "Connection",  "sort_order": 5},
 ]
 _FACET_BY_KEY: dict[str, dict] = {f["facet"]: f for f in _FACET_DEFS}
 
@@ -47,6 +48,13 @@ class TaskDef:
     label: str
     description: str
     status: str  # ready / planned
+    default_params: dict = field(default_factory=dict)
+    supports_run_one: bool = False
+    kind: str = "batch"  # batch：采集入库；realtime：按需查询 + 缓存
+    source: Optional[str] = None
+    source_label: Optional[str] = None
+    ttl_trading: Optional[int] = None
+    consumers: tuple[str, ...] = ()
 
 
 @dataclass
@@ -107,12 +115,11 @@ class CollectTaskRegistry:
 
         排序：
           1) facet 按预设 sort_order 升序
-          2) sub_facet 按 task_type 字符串升序（无更细粒度排序，保持稳定）
-          3) 同一 sub_facet 下按 task.label 升序
+          2) sub_facet 按 key 字符串升序
+          3) 同一 sub_facet 下按 (handler.sort_order, label) 升序
 
         用途：前端 CollectManage 左树渲染 + 启动按钮组。
         """
-        # 初始化 5 个 facet group（按预设顺序）
         groups: dict[str, FacetGroup] = {}
         for f in _FACET_DEFS:
             groups[f["facet"]] = FacetGroup(
@@ -140,19 +147,41 @@ class CollectTaskRegistry:
                 label=handler.label or handler.name,
                 description=handler.description,
                 status=handler.status or "ready",
+                default_params=dict(handler.default_params),
+                supports_run_one=handler.supports_collect_one,
             )
 
             group.sub_groups.setdefault(sub_key, []).append(td)
 
+        realtime = get_realtime_registry().all()
+        for q in realtime:
+            group = groups.get(q.facet)
+            if group is None:
+                logger.warning("实时接口 [%s] 的 facet=%r 不在预设中，跳过 catalog 输出", q.name, q.facet)
+                continue
+            group.sub_groups.setdefault(q.sub_facet or "_default", []).append(TaskDef(
+                task_type=q.name,
+                label=q.label or q.name,
+                description=q.description,
+                status="ready",
+                default_params=dict(q.sample_params),
+                kind="realtime",
+                source=q.source,
+                source_label=q.source_label,
+                ttl_trading=q.ttl_trading,
+                consumers=tuple(q.consumers),
+            ))
+
         # sub_facet 内排序 + 过滤空 group
+        order = {h.name: h.sort_order for h in self._handlers.values()}
+        order.update({q.name: q.sort_order for q in realtime})
         result: list[FacetGroup] = []
         for f in _FACET_DEFS:
             g = groups[f["facet"]]
             if not g.sub_groups:
                 continue
-            # sub_facet 内按 label 排序
             for tasks in g.sub_groups.values():
-                tasks.sort(key=lambda t: t.label)
+                tasks.sort(key=lambda t: (order.get(t.task_type, 0), t.label))
             # sub_facet 字典按 key 排序（Python 3.7+ 字典有序）
             g.sub_groups = dict(sorted(g.sub_groups.items()))
             result.append(g)

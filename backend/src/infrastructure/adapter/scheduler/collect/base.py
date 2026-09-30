@@ -8,10 +8,11 @@
   docs/dev/07collect-class/02-concept-collect-integration.md
 
 公开 API：
-  - BaseCollectTask        抽象基类，子类必须实现 estimate_total / run
+  - BaseCollectTask        抽象基类：实现 list_units + collect_one 即可，特殊流程可覆盖 run
   - UnitResult             单个单元的执行结果（frozen）
   - TaskSummary            整个 run() 的收尾汇报（frozen）
   - Cancelled              子类 run() 内 raise 即可中断
+  - run_units              逐单元执行 + 首轮失败的单元末尾重试一轮
   - execute_task           模板方法本体，唯一后台入口
   - request_cancel         写入取消标志
   - is_cancelled           检查取消标志
@@ -20,13 +21,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import logging
 import time
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, ClassVar
+from typing import Any, Awaitable, Callable, ClassVar, Optional
 
 from infrastructure.persistence.connection import AsyncSessionLocal
 from infrastructure.persistence.models.sys_collect_task import SysCollectTaskDB
@@ -71,6 +73,8 @@ class UnitResult:
     error: str | None = None
     skipped: bool = False
     saved_count: int = 0
+    # collect_one 给业务调用方的结构化结果（如 KlineCollectResponse.model_dump()）
+    data: Any = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +94,87 @@ class Cancelled(Exception):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# 单元执行器（默认 run() 与概念任务共用）
+# ═══════════════════════════════════════════════════════════════════════════════
+
+RETRY_DELAY = 2.0
+
+
+@dataclass
+class UnitTally:
+    success: int = 0
+    fail: int = 0
+    skip: int = 0
+    saved: int = 0
+
+
+async def run_units(
+    task_id: int,
+    units: list,
+    label: Callable[[Any], str],
+    work: Callable[[Any, Optional[float]], Awaitable[UnitResult]],
+    on_unit_done,
+    *,
+    concurrency: int = 1,
+    retry_delay: float = RETRY_DELAY,
+) -> UnitTally:
+    """逐单元执行 work(unit, delay)；抛异常的单元先挂起，主循环结束后以 delay=retry_delay 再试一轮
+
+    - 首轮 delay=None；按 concurrency 分批并发
+    - 挂起的单元在重试结束后才上报，避免进度被重复计数
+    """
+    tally = UnitTally()
+    pending: list = []
+
+    async def report(unit, result: UnitResult) -> None:
+        if result.success:
+            tally.success += 1
+            tally.saved += result.saved_count
+            if result.skipped:
+                tally.skip += 1
+        else:
+            tally.fail += 1
+        await on_unit_done(result, label(unit))
+
+    async def attempt(unit) -> tuple[Optional[UnitResult], Optional[Exception]]:
+        try:
+            return await work(unit, None), None
+        except Cancelled:
+            raise
+        except Exception as e:
+            return None, e
+
+    size = max(1, concurrency)
+    for i in range(0, len(units), size):
+        if is_cancelled(task_id):
+            raise Cancelled()
+        batch = units[i:i + size]
+        outcomes = await asyncio.gather(*(attempt(u) for u in batch))
+        for unit, (result, error) in zip(batch, outcomes):
+            if error is not None:
+                logger.debug("单元 %s 失败，稍后重试: %s", label(unit), error)
+                pending.append(unit)
+                continue
+            await report(unit, result)
+
+    if pending:
+        logger.info("任务 %d：%d 个单元首轮失败，间隔 %.1fs 重试", task_id, len(pending), retry_delay)
+    for unit in pending:
+        if is_cancelled(task_id):
+            raise Cancelled()
+        try:
+            result = await work(unit, retry_delay)
+        except Cancelled:
+            raise
+        except Exception as e:
+            logger.warning("单元 %s 重试仍失败: %s", label(unit), str(e)[:200])
+            result = UnitResult(success=False, detail=label(unit), error=str(e)[:500])
+        await report(unit, result)
+
+    return tally
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # 抽象基类
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -99,12 +184,14 @@ class BaseCollectTask(ABC):
 
     子类契约：
       ① 必须设置类变量 name（与 registry 中的 task_type 一致）
-      ② 必须实现 async estimate_total(params) → int
-         - 由 router 在创建任务时同步调（await）
-         - 0 是合法值（表示"无单元"或"未取到预估值"）
-      ③ 必须实现 async run(params, on_unit_done) → TaskSummary
+      ② 实现 list_units(params) + collect_one(unit, params)，即可使用默认
+         estimate_total / run（遍历单元、并发、失败重试一轮、上报进度）
+         - collect_one 采一个单元并落库（自开 session、自 commit）
+         - 成功 / 跳过返回 UnitResult；失败直接抛异常（任务内会重试一轮，
+           业务调用方 CollectAppService.run_one 拿到原始异常）
+         - collect_one 同时是业务可复用的最小单位（单只股票 / 单个交易日）
+      ③ 有特殊流程的任务可覆盖 estimate_total / run：
          - 每完成一个单元，立即调 on_unit_done(UnitResult, label)
-         - 业务异常不逃出，捕获后包装成 UnitResult(success=False, error=...)
          - 若需要取消，raise Cancelled() 让 framework 收尾
 
     可选钩子：
@@ -126,29 +213,73 @@ class BaseCollectTask(ABC):
     #   label:     UI 显示名（中文）
     #   status:    ready / planned  (planned 时 run() 直接返回'待实现')
     #   description: 一句话说明（UI 副标题 / tooltip）
+    #   sort_order: 同一 sub_facet 内的显示顺序（升序，相同时按 label）
     facet: ClassVar[str] = ""
     sub_facet: ClassVar[str] = ""
     label: ClassVar[str] = ""
     status: ClassVar[str] = "ready"
     description: ClassVar[str] = ""
+    sort_order: ClassVar[int] = 0
+
+    # ── 执行配置 ──
+    #   default_params: 接口默认参数（优先级：手动传入 > 采集方案 params > default_params）
+    #   concurrency:    默认 run() 的单元并发数
+    #   retry_delay:    默认 run() 首轮失败单元重试前的等待秒数
+    default_params: ClassVar[dict] = {}
+    concurrency: ClassVar[int] = 1
+    retry_delay: ClassVar[float] = RETRY_DELAY
 
     def __init__(self) -> None:
         # 由 execute_task() 在调用 run() 之前注入
         self._task_id: int = -1
 
-    # ── 抽象方法（子类必须实现）────────────────────────────────────────
+    # ── 单元接口（子类实现）────────────────────────────────────────────
 
-    @abstractmethod
+    async def list_units(self, params: dict) -> list[str]:
+        """本次要跑的单元（股票代码 / 交易日 / ...）"""
+        raise NotImplementedError(f"{type(self).__name__} 未实现 list_units")
+
+    async def collect_one(self, unit: str, params: dict) -> UnitResult:
+        """采一个单元并落库；失败抛异常"""
+        raise NotImplementedError(f"{type(self).__name__} 未实现 collect_one")
+
+    @property
+    def supports_collect_one(self) -> bool:
+        return type(self).collect_one is not BaseCollectTask.collect_one
+
+    # ── 默认实现（特殊流程的子类可覆盖）────────────────────────────────
+
     async def estimate_total(self, params: dict) -> int:
         """预估单元总数（router 同步 await）"""
+        return len(await self.list_units(params))
 
-    @abstractmethod
     async def run(
         self,
         params: dict,
-        on_unit_done: Callable[[UnitResult, str], None],
+        on_unit_done: Callable[[UnitResult, str], Awaitable[None]],
     ) -> TaskSummary:
         """业务主循环；完成一个单元立即调用 on_unit_done(result, label)"""
+        units = await self.list_units(params)
+
+        async def work(unit: str, delay: Optional[float]) -> UnitResult:
+            if delay:
+                await asyncio.sleep(delay)
+            return await self.collect_one(unit, params)
+
+        tally = await run_units(
+            self._task_id, units, str, work, on_unit_done,
+            concurrency=self.concurrency, retry_delay=self.retry_delay,
+        )
+        return TaskSummary(
+            success=tally.success,
+            fail=tally.fail,
+            skip=tally.skip,
+            total_count=len(units),
+            message=self.summary_message(tally),
+        )
+
+    def summary_message(self, tally: UnitTally) -> str:
+        return f"完成: 成功 {tally.success}（跳过 {tally.skip}），失败 {tally.fail}；写入 {tally.saved} 条"
 
     # ── 可选钩子 ────────────────────────────────────────────────────────
 
@@ -306,6 +437,20 @@ async def execute_task(
         )
         await redis.hset(f"collect:progress:{task_id}", "status", "cancelled")
 
+    except asyncio.CancelledError:
+        # 进程关闭 / 重载时事件循环取消后台协程：记录收尾后继续向上抛
+        logger.warning("采集任务 %d 被事件循环取消（服务关闭或重载）", task_id)
+        await handler._finish_task(
+            task_id,
+            "cancelled",
+            success=accumulated.success,
+            fail=accumulated.fail,
+            skip=accumulated.skip,
+            message=f"服务关闭中断: 成功 {accumulated.success}, 失败 {accumulated.fail}",
+        )
+        await redis.hset(f"collect:progress:{task_id}", "status", "cancelled")
+        raise
+
     except Exception as e:
         logger.exception("采集任务 %d 异常终止", task_id)
         await handler._finish_task(
@@ -337,8 +482,10 @@ def _decide_status(summary: TaskSummary) -> str:
 __all__ = [
     "BaseCollectTask",
     "UnitResult",
+    "UnitTally",
     "TaskSummary",
     "Cancelled",
+    "run_units",
     "execute_task",
     "request_cancel",
     "is_cancelled",

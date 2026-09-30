@@ -328,16 +328,6 @@ class StockPanelComposeRepoImpl:
             return {s: [] for s in symbols}
         return await self._concept_repo.list_concepts_by_symbols(symbols)
 
-    async def list_snapshots_for_names(
-        self, names: list[str]
-    ) -> dict[str, dict]:
-        """批量取多个概念的"最新一条"快照（委托给 ConceptRepository）"""
-        if not names:
-            return {}
-        if self._concept_repo is None:
-            return {}
-        return await self._concept_repo.list_snapshots_for_names(names)
-
 
 # ── Protocol 实现标注（运行时检查） ────────────────────────────
 StockPanelComposeRepoImpl.__implements_protocol__ = StockPanelComposeRepository

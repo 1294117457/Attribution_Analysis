@@ -1,66 +1,40 @@
-"""分钟 K 线 API 路由（纯透传，不落库）
+"""分钟 K 线 API 路由（实时接口 stock_minute_kline，不落库）
 
-前端请求 → pytdx 实时拉取 → 直接返回 JSON
+前端请求 → RealtimeAppService（Redis 15 秒缓存 / 单飞）→ pytdx
 """
 
-from functools import lru_cache
+from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Query
 
-from infrastructure.adapter import get_registry
-from application.port.collector_port import MinuteKlineFetcher
+from application.service.realtime_app_service import (
+    RealtimeQueryError,
+    get_realtime_app_service,
+)
 from route.api import _response as R
 
 router = APIRouter(prefix="/minute-klines", tags=["分钟K线"])
-
-
-@lru_cache
-def get_minute_kline_fetcher() -> MinuteKlineFetcher:
-    """分钟 K 线采集器依赖（单例）"""
-    return get_registry().get(MinuteKlineFetcher)
-
-
-class MinuteKlineItem(BaseModel):
-    datetime: str
-    interval: str
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: int
-    amount: float
 
 
 @router.get("/{symbol}", summary="实时获取分钟K线")
 async def get_minute_klines(
     symbol: str,
     interval: str = Query("5min", description="周期: 1min/5min/15min/30min/60min"),
-    count: int = Query(200, ge=1, le=1200, description="获取K线数量"),
-    fetcher: MinuteKlineFetcher = Depends(get_minute_kline_fetcher),
+    days: int = Query(1, ge=1, le=5, description="天数：1min 仅 1，其他 1–5"),
+    count: Optional[int] = Query(None, ge=1, le=1200, description="兼容旧参数：传了则按根数取"),
 ):
-    """实时从通达信拉取分钟 K 线，不存储"""
+    params = {"symbol": symbol, "interval": interval, "days": days, "count": count}
     try:
-        bos = await fetcher.fetch_minute_klines(
-            symbol=symbol,
-            interval=interval,
-            count=count,
-        )
-    except Exception as e:
-        return R.err(f"获取分K失败: {e}", 502)
+        res = await get_realtime_app_service().query("stock_minute_kline", params)
+    except ValueError as e:
+        return R.err(str(e), 400)
+    except RealtimeQueryError as e:
+        return R.err(str(e), 502)
 
-    items = [
-        MinuteKlineItem(
-            datetime=bo.dt.strftime("%Y-%m-%d %H:%M"),
-            interval=bo.interval,
-            open=bo.open,
-            high=bo.high,
-            low=bo.low,
-            close=bo.close,
-            volume=bo.volume,
-            amount=bo.amount,
-        ).model_dump()
-        for bo in bos
-    ]
-
-    return R.ok({"total": len(items), "items": items})
+    data = res.data or {"total": 0, "items": []}
+    return R.ok({
+        "total": data["total"],
+        "items": data["items"],
+        "cached": res.cached,
+        "fetched_at": res.fetched_at,
+    })

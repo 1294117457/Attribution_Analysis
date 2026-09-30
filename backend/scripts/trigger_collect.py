@@ -1,20 +1,21 @@
 """按依赖顺序触发概念采集任务并等待完成（需先启动后端服务）
 
 用法：
-    python scripts/trigger_collect.py                               # 全链路：清单 → 日 K → 快照 → 成分股 → 入选理由
+    python scripts/trigger_collect.py                               # 全链路：清单 → 日 K → 成分股
     python scripts/trigger_collect.py concept_membership --limit 3  # 单个任务，小批量测试
     python scripts/trigger_collect.py concept_index_th --param full=true
-    python scripts/trigger_collect.py --no-wait concept_snapshot    # 只触发不等待
+    python scripts/trigger_collect.py --no-wait concept_index_th    # 只触发不等待
     python scripts/trigger_collect.py --force-cancel-stale ...      # 先强制取消同类型残留的 running 任务
 
-任务依赖：concept → concept_index_th → concept_snapshot；concept → concept_membership → concept_reason
+任务依赖：concept → concept_index_th；concept → concept_membership
+概念实时行情是实时接口（concept_minute），不走采集任务
 """
 import argparse
 import time
 
 import requests
 
-DEFAULT_TASKS = ["concept", "concept_index_th", "concept_snapshot", "concept_membership", "concept_reason"]
+DEFAULT_TASKS = ["concept", "concept_index_th", "concept_membership"]
 POLL_SECONDS = 5
 
 

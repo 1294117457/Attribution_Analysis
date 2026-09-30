@@ -58,11 +58,9 @@ class OperationDispatcher:
                     )
                     await op_session.commit()
 
-                    from application.service.kline_app_service import KlineAppService
-                    from infrastructure.adapter import get_registry
-                    from application.port.collector_port import KlineFetcher
-                    from route.dto.request.kline import KlineCollectRequest
+                    from application.service.collect_app_service import CollectAppService
 
+                    collect = CollectAppService()
                     done = 0
                     failed = 0
                     saved_total = 0
@@ -75,41 +73,29 @@ class OperationDispatcher:
                             )
                             break
 
-                        # 每只股票用独立 session, 避免长事务
-                        async with AsyncSessionLocal() as task_session:
-                            try:
-                                kline_service = KlineAppService(session=task_session)
-                                fetcher = get_registry().create(KlineFetcher)
-                                request = KlineCollectRequest(
-                                    symbol=symbol,
-                                    days=days,
-                                )
-                                result = await kline_service.collect(
-                                    request=request,
-                                    fetcher=fetcher,
-                                )
-                                await task_session.commit()
-                                saved_total += result.saved_count
-                                details.append({
-                                    "symbol": symbol,
-                                    "status": "success",
-                                    "count": result.saved_count,
-                                })
-                                logger.debug(
-                                    "采集成功: symbol=%s, count=%d",
-                                    symbol, result.saved_count,
-                                )
-                            except Exception as e:
-                                await task_session.rollback()
-                                failed += 1
-                                details.append({
-                                    "symbol": symbol,
-                                    "status": "failed",
-                                    "message": str(e),
-                                })
-                                logger.warning(
-                                    "采集失败: symbol=%s, error=%s", symbol, e,
-                                )
+                        # daily_kline.collect_one 每只股票自开 session、自 commit
+                        try:
+                            result = await collect.run_one("daily_kline", symbol, {"days": days})
+                            saved_total += result.saved_count
+                            details.append({
+                                "symbol": symbol,
+                                "status": "success",
+                                "count": result.saved_count,
+                            })
+                            logger.debug(
+                                "采集成功: symbol=%s, count=%d",
+                                symbol, result.saved_count,
+                            )
+                        except Exception as e:
+                            failed += 1
+                            details.append({
+                                "symbol": symbol,
+                                "status": "failed",
+                                "message": str(e),
+                            })
+                            logger.warning(
+                                "采集失败: symbol=%s, error=%s", symbol, e,
+                            )
 
                         done += 1
                         # 进度更新走 op_session
