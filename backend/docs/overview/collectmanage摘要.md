@@ -4,13 +4,21 @@
 接口：`/api/v1/collect/*`（`backend/src/route/api/v1/collect_task.py`）
 应用服务：`backend/src/application/service/collect_app_service.py`
 框架：`backend/src/infrastructure/adapter/scheduler/collect/`；调度器：`scheduler/collect_scheduler.py`
-方案：[`../dev/step2/04采集管理优化/04-修订方案.md`](../dev/step2/04采集管理优化/04-修订方案.md)（S0–S4 已实施）
+实时接口：`backend/src/infrastructure/adapter/realtime/` + `application/service/realtime_app_service.py`
+方案：[`04-修订方案`](../dev/step2/04采集管理优化/04-修订方案.md)（S0–S4 已实施）、[`05接口优化`](../dev/step2/04采集管理优化/05接口优化.md)、[`06实时数据接口`](../dev/step2/04采集管理优化/06实时数据接口.md)（已实施）
 
 > 最后更新：2026-09-30
 
 ## 1. 现状一句话
 
-采集任务 = `BaseCollectTask` 子类（**采集接口**）。三种用法共用一套采集 + 落库逻辑：
+采集管理里有两类接口，共用一棵四面目录树（catalog 用 `kind` 区分）：
+
+| 类型 | 基类 | 结果去向 | 管理方式 |
+|---|---|---|---|
+| 批量接口 `kind=batch` | `BaseCollectTask` | 入库 | 任务记录、采集方案、任务组 |
+| 实时接口 `kind=realtime` | `BaseRealtimeQuery` | 只写 Redis（15 秒） | 试查、调用统计；不建任务、不能进任务组 |
+
+批量接口的三种用法共用一套采集 + 落库逻辑：
 
 | 用法 | 入口 | 执行方式 |
 |---|---|---|
@@ -44,7 +52,7 @@ flowchart LR
 - **状态**：只有 `success == 0 且 fail > 0` 才算 `failed`。
 - **默认 `run()`**：按 `concurrency` 分批执行 `collect_one`，抛异常的单元在末尾间隔 `retry_delay` 重试一轮。
 
-## 3. 采集接口（9 个可用 + 14 个占位）
+## 3. 批量接口（7 个可用 + 14 个占位）
 
 | task_type | 分类 | 单元 | `collect_one` | 默认参数 | 写入表 |
 |---|---|---|---|---|---|
@@ -54,15 +62,40 @@ flowchart LR
 | `fin_report` | fundamental / report | 股票 | ✓ | `years=1` | `fin_reports` |
 | `concept` | fundamental / concept | 一次全量 | — | | `concepts` |
 | `concept_membership` | fundamental / concept | 概念 index_code | ✓ | | `stock_concept_members` |
-| `concept_reason` | fundamental / concept | 股票 | ✓ | | `stock_concept_members.reason` |
 | `concept_index_th` | fundamental / concept | 概念 | — | | `concept_index_ths` |
-| `concept_snapshot` | fundamental / concept | 概念 | —（整批排名后写库） | | `concept_snapshots` |
 
 - `daily_kline` 批量时保留自定义 `run()`（fetcher 池 + chunk 限频），支持 `symbols` / `exchange` / `start_date`+`end_date` / `concurrency`。
-- 概念依赖：`concept` → `concept_membership` → `concept_reason`；`concept` → `concept_index_th` → `concept_snapshot`。可建任务组按顺序执行。
+- 概念全部来自同花顺（adata），以 `index_code`（885xxx）为键。依赖：`concept` → `concept_membership`；`concept` → `concept_index_th`。可建任务组按顺序执行。
+- 已去除 `concept_reason`（入选理由）和 `concept_snapshot`（行情快照）：理由由详情 Tab「实时刷新」按需拉取，`stock_concept_members.reason` 旧数据保留；行情改由实时接口 `concept_minute` 提供，`concept_snapshots` 表保留但不再写入。
 - 占位任务（`planned.py`，不能启用定时、不能加入任务组）：`base_adj_factor` `base_suspend` `base_name_change` `minute_kline` `cap_margin_detail` `cap_moneyflow` `cap_top_list` `cap_top_inst` `cap_block_trade` `cap_holder_num` `fin_top10_holders` `fin_top10_floatholders` `base_dividend` `news_article`。实现一个 = fetcher 方法 + 子类（`list_units` + `collect_one`）+ 状态改 `ready`。
 
-## 4. 采集方案与任务组
+## 4. 实时接口（2 个）
+
+| name | 分类 | 数据源 | 参数 | 数据 | 降级 |
+|---|---|---|---|---|---|
+| `concept_minute` | fundamental / concept | 同花顺 `get_market_concept_min_ths` | `index_code` | 当日分时 241 点 + 头部 `pre_close / price / change / change_pct / trade_time`（`pre_close = price - change`） | `concept_index_ths` 最近一条收盘（无分时） |
+| `stock_minute_kline` | tech / kline | 通达信 pytdx | `symbol, interval, days`（1min 仅 1 天，其他 1–5 天；兼容旧 `count` ≤ 1200） | 分钟 K 线 | 无 |
+
+```mermaid
+flowchart LR
+    BIZ["业务路由<br/>/concepts/quotes · /concepts/{code}/minute<br/>/concepts/tab-by-symbol · /minute-klines"] --> RT
+    CM["采集管理 RealtimePanel<br/>/collect/realtime/{name}/query · /stats"] --> RT
+    RT["RealtimeAppService<br/>query / query_many"] -->|命中| C[("Redis rt:{name}:{key}")]
+    RT -->|未命中：单飞锁 + 同源信号量| Q["BaseRealtimeQuery.fetch"]
+    Q --> F["Fetcher（adata / pytdx）"]
+    Q -. 失败 .-> FB["fallback（stale=true，不缓存）"]
+    RT --> ST[("Redis rt:stats:{name}:{日期}")]
+```
+
+- **缓存**：工作日 09:25–11:30、13:00–15:00 缓存 15 秒；午休缓存到 13:00；其余时段缓存到下个工作日 09:25（节假日按工作日处理）。
+- **单飞**：`SET rt:lock:{name}:{key} NX EX 5`，没抢到锁的请求最多等约 2 秒后重读缓存。
+- **限流**：进程内 `asyncio.Semaphore`，`ths=5`、`tdx=1`；单次 `fetch` 超时 10 秒。pytdx fetcher 内部另有 `threading.Lock`（单连接不线程安全）；北交所代码（8/4/92 开头）直接返回 400。
+- **统计**：`rt:stats:{name}:{yyyymmdd}` 哈希（calls / hits / misses / errors / latency_sum / last_error），保留 7 天。
+- **Redis 不可用**时直连数据源、不缓存。
+- 新增实时接口 = `BaseRealtimeQuery` 子类（`normalize` / `cache_key` / `fetch` / 可选 `fallback`）+ 在 `main.py` 的 `setup_realtime_registry` 注册。
+- 与 `planned.py` 的占位 `minute_kline`（分钟 K **入库**）是两回事。
+
+## 5. 采集方案与任务组
 
 | 表 | 关键字段 | 说明 |
 |---|---|---|
@@ -73,14 +106,16 @@ flowchart LR
 - **调度器**：APScheduler `AsyncIOScheduler`，时区 `Asia/Shanghai`，job id `plan:{task_type}` / `group:{id}`，`max_instances=1`、`coalesce=True`。保存方案 / 任务组时同步刷新 job。
 - **cron**：5 段（分 时 日 月 周），保存时校验，非法返回 400。
 - **仅交易日**：第一版只排除周六日（`mkt_calendars` 暂无数据）。
-- **任务组规则**：某项已在运行 → 跳过继续；某项 `failed` / `cancelled` 且 `stop_on_fail` → 停止后续项。
+- **任务组规则**：某项已在运行 → 跳过继续；某项 `failed` / `cancelled` 且 `stop_on_fail` → 停止后续项。实时接口不能加入任务组（前端过滤 + `_check_group` 校验）。
 - **开关**：`.env` 设 `COLLECT_SCHEDULER_ENABLED=false` 可关闭定时（开发时避免重复触发）。
 
-## 5. API
+## 6. API
 
 | 端点 | 说明 |
 |---|---|
-| `GET /collect/catalog` | 四面目录树；每个接口带 `default_params`、`supports_run_one` |
+| `GET /collect/catalog` | 四面目录树；每个接口带 `kind`、`default_params`、`supports_run_one`；实时接口另带 `source`、`ttl_trading`、`consumers` |
+| `POST /collect/realtime/{name}/query` | 调用实时接口，body 为参数；返回 `{data, cached, stale, fetched_at, latency_ms}` |
+| `GET /collect/realtime/{name}/stats?days=1` | 实时接口按天调用统计（命中率、平均耗时、最近错误） |
 | `POST /collect/tasks` | 创建任务 `{task_type, params}`；冲突时 200 + `data.message`（无 `task_id`） |
 | `GET /collect/tasks` | 分页，可按 `task_type` / `status` / `group_run_id` 过滤 |
 | `GET /collect/tasks/{id}` / `/progress` | 详情 / Redis 实时进度 |
@@ -91,7 +126,7 @@ flowchart LR
 | `GET/POST /collect/groups`、`PUT/DELETE /collect/groups/{id}` | 任务组增删改查 |
 | `POST /collect/groups/{id}/run` | 后台按顺序执行任务组 |
 
-## 6. 业务侧入口（均已改为调采集接口，响应字段不变）
+## 7. 业务侧入口（均已改为调采集接口 / 实时接口）
 
 | 业务路由 | 前端调用处 | 实现 |
 |---|---|---|
@@ -100,22 +135,28 @@ flowchart LR
 | `POST /klines/collect` | `stock-info` K 线抽屉 | `run_one("daily_kline", symbol, {days / start_date / end_date})` |
 | `POST /klines/collect/batch` | — | 逐只 `run_one`，单只失败 `saved_count=-1`；大批量请用 `POST /collect/tasks` + `symbols` |
 | 池操作（`operation_dispatcher.py`） | 操作池页 | 逐只 `run_one("daily_kline", ...)` |
-| `GET /minute-klines/{symbol}` | K 线组件 | 实时拉通达信，不入库，不属于采集接口 |
+| `GET /minute-klines/{symbol}?interval&days` | 股票列表展开行分 K（15 秒轮询） | `query("stock_minute_kline", ...)`；响应多 `cached`、`fetched_at` |
+| `GET /concepts/quotes?codes=`（≤100） | 详情抽屉概念 Tab（15 秒轮询） | `query_many("concept_minute", ...)`，返回 `{index_code: quote}` |
+| `GET /concepts/{index_code}/minute` | 概念分时图（后续） | `query("concept_minute", ...)` 整条数据 |
+| `GET /concepts/tab-by-symbol/{symbol}` | 详情抽屉概念 Tab | 各概念 `snapshot` 由 `concept_minute` 填充，组内按涨跌幅降序 |
 
-## 7. 前端文件
+## 8. 前端文件
 
 | 文件 | 作用 |
 |---|---|
-| `CollectManage.vue` | 页面：标签页（采集接口 / 任务组）；左侧四面树 + 右侧启动区、方案卡片、任务列表（含「来源」列：手动 / 定时 / 组） |
+| `CollectManage.vue` | 页面：标签页（采集接口 / 任务组）；左侧四面树（实时接口带「实时」标签）+ 右侧启动区、方案卡片、任务列表（含「来源」列：手动 / 定时 / 组）；选中实时接口时右侧换成 `RealtimePanel` |
+| `RealtimePanel.vue` | 实时接口：基本信息（数据源 / 缓存策略 / 调用方）、试查（参数表单 → 耗时、是否命中缓存、前 20 行预览）、今日调用统计 |
 | `PlanCard.vue` | 当前接口的采集方案：定时开关、cron 预设、仅交易日、参数 JSON、下次 / 上次执行、「按方案执行」 |
 | `CollectGroups.vue` | 任务组列表、编辑弹窗（按顺序选接口 + 参数 JSON、上移下移）、执行、最近一次执行记录 |
 | `QuickStartBar.vue` / `AdvancedFilters.vue` | 快捷参数按钮 / `daily_kline` 高级条件 |
 | `composables/useCatalog.ts` / `useCollectTasks.ts` | 目录树 / 任务列表与进度轮询（`startTask` 可传自定义 creator） |
-| `api.ts` | `/collect/*` 接口封装与类型、`CRON_PRESETS` |
+| `api.ts` | `/collect/*` 接口封装与类型（含 `queryRealtime` / `getRealtimeStats`）、`CRON_PRESETS` |
+| `frontend/src/composables/useRealtimePoll.ts` | 通用实时轮询：仅交易时段 + 页面可见时按间隔执行，请求未返回跳过，连续失败 3 次暂停 |
 
-## 8. 已知问题
+## 9. 已知问题
 
-- 取消标志、调度器、残留 `running` 清理都假设**单进程**；多 worker 部署需要改为 Redis 锁 / 独立调度进程。
+- 取消标志、调度器、残留 `running` 清理、实时接口的同源信号量都假设**单进程**；多 worker 部署需要改为 Redis 锁 / 独立调度进程。
+- 看板阶段计划用 SSE（`GET /realtime/stream?subs=...`）替代轮询，本期未做；pytdx 仍是单连接加锁，未做连接池。
 - `trading_day_only` 在节假日仍会触发（只排除周末），空跑无副作用。
 - 前端 `stock-info/api.ts` 里的 `/moneyflows/*` 等接口后端尚未实现。
 - 前端 `vue-tsc -p tsconfig.app.json` 在 `stock-info` / `stock-pool` / `market` 等目录仍有 `http.get<T>().then(unwrap)` 泛型写法导致的类型错误（`collect-manage` 已改为 `ApiResponse<T>`）。
