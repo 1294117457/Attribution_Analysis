@@ -35,6 +35,15 @@
 | `tech_kline_dailys` | `daily_kline` | Tushare `daily` |
 | `stock_pools` / `stock_pool_members` | 用户在操作池页维护 | — |
 
+## 页面内的采集入口
+
+| 操作 | 前端函数（`stock-info/api.ts`） | 后端路由 | 对应采集任务 |
+|---|---|---|---|
+| 同步股票 | `syncStocks` | `POST /stocks/sync` | `stock_basic`（`run_one(..., "all")`） |
+| K 线抽屉「采集」 | `collectKlines` / `collectBatch` | `POST /klines/collect`、`/collect/batch` | `daily_kline`（逐只 `run_one`） |
+
+这些路由已改为通过 `CollectAppService.run_one` 调用采集接口的 `collect_one`，与采集管理页共用一套采集 + 落库逻辑；响应字段不变，前端没有改动。大批量采集建议走采集管理（`POST /collect/tasks`，有进度、可取消）。整体情况见 [`collectmanage摘要.md`](collectmanage摘要.md)。
+
 ## 对应关系图
 
 ```mermaid

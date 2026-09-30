@@ -175,8 +175,8 @@ class ConceptFetcher(Protocol):
         """概念指数日 K 全部历史：[ConceptIndexTHBO]"""
         ...
 
-    def fetch_current(self, index_code: str, delay: Optional[float] = None) -> Any:
-        """概念实时行情：ConceptCurrentBO | None"""
+    def fetch_minute(self, index_code: str, delay: Optional[float] = 0) -> Any:
+        """概念当日分时：ConceptMinuteBO | None"""
         ...
 
     @property

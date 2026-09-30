@@ -75,10 +75,7 @@ export function useCatalog() {
     block_trade: '大宗交易',
     chip: '筹码',
     article: '资讯',
-    concept_list: '概念清单',
-    concept_member: '成分股',
-    concept_quote: '行情快照',
-    concept_index: '指数 K 线',
+    concept: '概念',
   }
 
   const totalReady = computed(() =>

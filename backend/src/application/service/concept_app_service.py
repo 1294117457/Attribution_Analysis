@@ -29,6 +29,7 @@ from domain.entitys.concept.entity import Concept, ConceptNotFoundError
 from domain.entitys.concept.repository import ConceptRepository
 from domain.entitys.concept.vo import CONCEPT_TYPE_PRIORITY, ConceptBriefVO
 from application.port.collector_port import ConceptFetcher
+from application.service.realtime_app_service import RealtimeResult, get_realtime_app_service
 from infrastructure.persistence.repositories.concept_repository import ConceptRepoImpl
 
 logger = logging.getLogger(__name__)
@@ -96,22 +97,24 @@ class ConceptAppService:
         """批量反向查询（避免 N+1）"""
         return await self._repo.list_concepts_by_symbols(symbols)
 
-    async def list_for_symbols_with_snapshots(
-        self, symbols: list[str]
-    ) -> dict[str, dict[str, dict]]:
-        """批量反查 + 批量取快照
+    # ── 实时行情（实时接口 concept_minute）──────────────
 
-        Returns: {symbol: {concept_name: snapshot_dict, ...}, ...}，用于主概念 Tag 涨跌染色
-        """
-        briefs_map = await self._repo.list_concepts_by_symbols(symbols)
-        all_names = {b.name for briefs in briefs_map.values() for b in briefs}
-        if not all_names:
-            return {s: {} for s in symbols}
-
-        snaps = await self._repo.list_snapshots_for_names(list(all_names))
+    async def get_quotes(
+        self, index_codes: list[str], names: Optional[dict[str, str]] = None,
+    ) -> dict[str, dict]:
+        """批量概念实时行情 {index_code: quote}；字段兼容前端 ConceptSnapshot"""
+        codes = list(dict.fromkeys(c for c in index_codes if c))
+        if not codes:
+            return {}
+        if names is None:
+            names = await self._repo.get_names(codes)
+        results = await get_realtime_app_service().query_many(
+            "concept_minute", [{"index_code": c} for c in codes],
+        )
         return {
-            sym: {b.name: snaps.get(b.name, {}) for b in briefs_map.get(sym, [])}
-            for sym in symbols
+            code: _to_quote(code, names.get(code, ""), res)
+            for code, res in zip(codes, results)
+            if res.data
         }
 
     # ── 实时反查 ─────────────────────────────────────
@@ -131,21 +134,24 @@ class ConceptAppService:
         symbol: str,
         stock_name: Optional[str] = None,
     ) -> ConceptTabContentVO:
-        """详情抽屉「概念」Tab：库中概念按 concept_type 分组，附最新快照与入选理由"""
+        """详情抽屉「概念」Tab：库中概念按 concept_type 分组，附实时行情与入选理由"""
         grouped_vos = await self._repo.list_concepts_by_symbol_grouped(symbol)
-        all_names = [v.name for v in grouped_vos]
-        snap_map = await self._repo.list_snapshots_for_names(all_names) if all_names else {}
+        quotes = await self.get_quotes(
+            [v.index_code for v in grouped_vos],
+            names={v.index_code: v.name for v in grouped_vos if v.index_code},
+        )
 
         bucket: dict[str, list] = {t: [] for t in CONCEPT_TYPE_ORDER}
         for vo in grouped_vos:
             bucket.setdefault(vo.concept_type, []).append({
                 "concept_id": vo.concept_id,
+                "index_code": vo.index_code,
                 "name": vo.name,
                 "source": vo.source,
                 "concept_type": vo.concept_type,
                 "description": vo.description,
                 "reason": vo.reason,
-                "snapshot": snap_map.get(vo.name),
+                "snapshot": quotes.get(vo.index_code),
             })
 
         sections = _build_sections(bucket)
@@ -175,12 +181,14 @@ class ConceptAppService:
         except Exception as e:
             logger.warning("实时反查 %s 失败，降级为仅 DB: %s", symbol, e)
 
-        all_names = list({v.name for v in grouped_vos} | {v.name for v in live_vos})
-        snap_map = await self._repo.list_snapshots_for_names(all_names) if all_names else {}
+        code_names = {v.index_code: v.name for v in grouped_vos if v.index_code}
+        code_names.update({v.concept_code: v.name for v in live_vos if v.concept_code})
+        quotes = await self.get_quotes(list(code_names), names=code_names)
 
         db_index: dict[tuple[str, str], dict] = {
             (v.name, v.source): {
                 "concept_id": v.concept_id,
+                "index_code": v.index_code,
                 "name": v.name,
                 "source": v.source,
                 "concept_type": v.concept_type,
@@ -188,7 +196,7 @@ class ConceptAppService:
                 "concept_code": None,
                 "is_realtime": False,
                 "reason": v.reason,
-                "snapshot": snap_map.get(v.name),
+                "snapshot": quotes.get(v.index_code),
             }
             for v in grouped_vos
         }
@@ -210,6 +218,7 @@ class ConceptAppService:
             else:
                 merged_rows.append({
                     "concept_id": None,
+                    "index_code": live_row.concept_code,
                     "concept_code": live_row.concept_code,
                     "name": live_row.name,
                     "source": live_row.source,
@@ -217,7 +226,7 @@ class ConceptAppService:
                     "description": None,
                     "is_realtime": True,
                     "reason": live_row.reason,
-                    "snapshot": snap_map.get(live_row.name),
+                    "snapshot": quotes.get(live_row.concept_code),
                 })
 
         merged_rows.sort(
@@ -243,15 +252,40 @@ class ConceptAppService:
 
 
 def _build_sections(bucket: dict[str, list[dict]]) -> list[ConceptTabSectionVO]:
+    """各分组内按当日涨跌幅降序，无行情的排最后"""
+
+    def key(r: dict):
+        pct = (r.get("snapshot") or {}).get("pct_change")
+        return (pct is None, -(pct or 0), r["name"])
+
     return [
         ConceptTabSectionVO(
             type=t,
             type_label=CONCEPT_TYPE_LABELS.get(t, t),
-            concepts=sorted(bucket[t], key=lambda r: r["name"]),
+            concepts=sorted(bucket[t], key=key),
         )
         for t in CONCEPT_TYPE_ORDER
         if bucket.get(t)
     ]
+
+
+def _to_quote(index_code: str, name: str, res: RealtimeResult) -> dict:
+    d = res.data or {}
+    pct = d.get("change_pct")
+    return {
+        "index_code": index_code,
+        "concept_name": name,
+        "price": d.get("price"),
+        "prev_close": d.get("pre_close"),
+        "change": d.get("change"),
+        "pct_change": pct,
+        "color": "flat" if not pct else ("up" if pct > 0 else "down"),
+        "trade_time": d.get("trade_time"),
+        "captured_at": res.fetched_at,
+        "stale": res.stale,
+        "rank_label": "",
+        "up_down_label": "",
+    }
 
 
 # ── 依赖注入工厂 ──────────────────────────────────────

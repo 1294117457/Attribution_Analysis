@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
+import threading
 
 import pandas as pd
 
@@ -46,6 +46,8 @@ class PytdxFetcher(BaseCollector):
         super().__init__()
         self._api = None
         self._connected = False
+        # TdxHq_API 单连接非线程安全，run_in_executor 并发调用必须串行
+        self._lock = threading.Lock()
 
     def _get_api(self):
         if self._api is None:
@@ -77,6 +79,11 @@ class PytdxFetcher(BaseCollector):
         raise RuntimeError("无法连接任何通达信服务器")
 
     @staticmethod
+    def is_supported(symbol: str) -> bool:
+        """北交所（8/4/92 开头）不在 pytdx 标准行情服务器中"""
+        return not (symbol.startswith(("8", "4")) or symbol.startswith("92"))
+
+    @staticmethod
     def symbol_to_market(symbol: str) -> int:
         """股票代码 → pytdx 市场代码（0=深圳 1=上海）"""
         prefix = symbol[:2]
@@ -95,8 +102,16 @@ class PytdxFetcher(BaseCollector):
         category = _INTERVAL_MAP.get(interval)
         if category is None:
             raise ValueError(f"不支持的周期: {interval}，可选: {list(_INTERVAL_MAP.keys())}")
+        if not self.is_supported(symbol):
+            raise ValueError(f"{symbol} 为北交所代码，分K暂不支持")
 
         market = self.symbol_to_market(symbol)
+        with self._lock:
+            return self._fetch_locked(category, market, symbol, interval, count, name)
+
+    def _fetch_locked(
+        self, category: int, market: int, symbol: str, interval: str, count: int, name: str,
+    ) -> list[MinuteKlineBO]:
         self._ensure_connected()
 
         api = self._get_api()
@@ -142,9 +157,10 @@ class PytdxFetcher(BaseCollector):
         )
 
     def disconnect(self):
-        if self._api and self._connected:
-            try:
-                self._api.disconnect()
-            except Exception:
-                pass
-            self._connected = False
+        with self._lock:
+            if self._api and self._connected:
+                try:
+                    self._api.disconnect()
+                except Exception:
+                    pass
+                self._connected = False

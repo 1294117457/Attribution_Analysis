@@ -101,20 +101,9 @@ class StockPanelAppService:
         if req.with_concepts and rows and self._concept_repo is not None:
             concept_map = await self._repo.list_concepts_by_symbols(symbols)
 
-        # 09concept：批量取概念快照（最多 1 次额外 SQL，避免每行 N+1）
-        snapshot_map: dict[str, dict] = {}
-        if concept_map and self._concept_repo is not None:
-            all_names: set[str] = set()
-            for briefs in concept_map.values():
-                for b in briefs:
-                    all_names.add(b.name)
-            if all_names:
-                snapshot_map = await self._repo.list_snapshots_for_names(list(all_names))
-
-        # 08concept：用 ConceptBriefService（domain）做主概念排序
+        # 概念实时涨跌只在详情抽屉取（/concepts/tab-by-symbol），列表不再附带行情
         main_concept_map = self._brief_service.build_main_concepts(
             concept_map,
-            snapshot_map=snapshot_map,
             top_k=self._top_k,
         )
 

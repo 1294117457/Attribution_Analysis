@@ -20,7 +20,14 @@
       采集管理
     </template>
 
-    <div class="layout-body">
+    <el-tabs v-model="pageTab" class="page-tabs">
+      <el-tab-pane label="采集接口" name="tasks" />
+      <el-tab-pane label="任务组" name="groups" />
+    </el-tabs>
+
+    <CollectGroups v-if="pageTab === 'groups'" :ready-tasks="readyTasks" />
+
+    <div v-show="pageTab === 'tasks'" class="layout-body">
       <!-- ═══ 左：目录树 ═══ -->
       <aside class="catalog-tree">
         <div v-if="catalogLoading" class="loading-tip">加载中...</div>
@@ -30,12 +37,17 @@
           :key="facet.facet"
           class="facet-block"
         >
-          <div class="facet-header">
+          <div
+            class="facet-header"
+            role="button"
+            :aria-expanded="!isCollapsed(facet.facet)"
+            @click="toggleCollapsed(facet.facet)"
+          >
+            <el-icon class="collapse-arrow" :class="{ collapsed: isCollapsed(facet.facet) }"><ArrowDown /></el-icon>
             <el-icon class="mr-1"><TrendCharts v-if="facet.facet === 'tech'"
               /><Money v-else-if="facet.facet === 'capital'"
               /><PieChart v-else-if="facet.facet === 'fundamental'"
-              /><Document v-else-if="facet.facet === 'news'"
-              /><Connection v-else /></el-icon>
+              /><Document v-else /></el-icon>
             <b>{{ facet.label }}</b>
             <el-badge
               v-if="countReady(facet) > 0"
@@ -50,14 +62,24 @@
               class="ml-1"
             />
           </div>
-          <div class="sub-facet-list">
+          <div v-show="!isCollapsed(facet.facet)" class="sub-facet-list">
             <div
               v-for="(tasks, subKey) in facet.sub_groups"
               :key="subKey"
               class="sub-facet-block"
             >
-              <div class="sub-facet-label">{{ SUB_FACET_LABELS[subKey] || subKey }}</div>
+              <div
+                class="sub-facet-label"
+                role="button"
+                :aria-expanded="!isCollapsed(`${facet.facet}/${subKey}`)"
+                @click="toggleCollapsed(`${facet.facet}/${subKey}`)"
+              >
+                <el-icon class="collapse-arrow" :class="{ collapsed: isCollapsed(`${facet.facet}/${subKey}`) }"><ArrowDown /></el-icon>
+                {{ SUB_FACET_LABELS[subKey] || subKey }}
+                <span class="sub-facet-count">{{ tasks.length }}</span>
+              </div>
               <button
+                v-show="!isCollapsed(`${facet.facet}/${subKey}`)"
                 v-for="t in tasks"
                 :key="t.task_type"
                 class="task-btn"
@@ -67,6 +89,7 @@
                 <el-tooltip :content="t.description" placement="right" :show-after="300">
                   <span class="task-btn-inner">
                     <span class="task-btn-label">{{ t.label }}</span>
+                    <el-tag v-if="t.kind === 'realtime'" size="small" type="danger" effect="plain" class="ml-1">实时</el-tag>
                     <el-tag v-if="t.status === 'planned'" size="small" type="info" class="ml-1">待实现</el-tag>
                   </span>
                 </el-tooltip>
@@ -79,6 +102,8 @@
       <!-- ═══ 右：当前 task 主区 ═══ -->
       <main class="main-pane">
         <div v-if="!currentTaskDef" class="empty-tip">请从左侧选择采集任务</div>
+
+        <RealtimePanel v-else-if="isRealtime" :task-def="currentTaskDef" />
 
         <template v-else>
           <!-- 顶部：标题 + 启动按钮组 + 筛选 -->
@@ -121,6 +146,13 @@
               :state="filterState"
               @update:state="filterState = $event"
               @startWithDates="onStartWithDates"
+            />
+
+            <PlanCard
+              :task-type="activeTaskType"
+              :task-def="currentTaskDef"
+              :running="startingTasks.has(activeTaskType)"
+              @run="onRunPlan"
             />
           </header>
 
@@ -180,6 +212,16 @@
                 </div>
               </template>
             </el-table-column>
+            <el-table-column label="来源" width="96">
+              <template #default="{ row }">
+                <el-tag size="small" effect="plain" :type="row.trigger_type === 'schedule' ? 'warning' : 'info'">
+                  {{ row.trigger_type === 'schedule' ? '定时' : '手动' }}
+                </el-tag>
+                <el-tooltip v-if="row.group_run_id" :content="`任务组执行 #${row.group_run_id}`" placement="top">
+                  <el-tag size="small" effect="plain" type="success" class="ml-1">组</el-tag>
+                </el-tooltip>
+              </template>
+            </el-table-column>
             <el-table-column label="参数" min-width="150">
               <template #default="{ row }">
                 <span class="text-sm text-gray-600">{{ formatParams(row) }}</span>
@@ -234,7 +276,7 @@
     </div>
 
     <template #bottom>
-      <el-row justify="end">
+      <el-row v-show="pageTab === 'tasks' && !isRealtime" justify="end">
         <el-pagination
           v-model:current-page="taskPage"
           v-model:page-size="taskPageSize"
@@ -255,13 +297,16 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import {
   Upload, ArrowDown, ArrowUp,
-  TrendCharts, Money, PieChart, Document, Connection,
+  TrendCharts, Money, PieChart, Document,
 } from '@element-plus/icons-vue'
 
 import PageWrapper from '@/components/PageWrapper.vue'
 import QuickStartBar from './QuickStartBar.vue'
 import AdvancedFilters, { countActiveFilters } from './AdvancedFilters.vue'
-import type { CollectTask } from './api'
+import PlanCard from './PlanCard.vue'
+import CollectGroups from './CollectGroups.vue'
+import RealtimePanel from './RealtimePanel.vue'
+import { runPlan, type CollectTask, type TaskDef } from './api'
 
 import { useCatalog } from './composables/useCatalog'
 import { useCollectTasks } from './composables/useCollectTasks'
@@ -279,9 +324,44 @@ const {
   SUB_FACET_LABELS,
 } = useCatalog()
 
+// ── 左树折叠状态（key = facet 或 facet/subKey，持久化到 localStorage） ──
+const COLLAPSE_STORAGE_KEY = 'collect-manage:collapsed'
+
+function loadCollapsed(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(COLLAPSE_STORAGE_KEY) || '[]'))
+  } catch {
+    return new Set()
+  }
+}
+
+const collapsed = ref<Set<string>>(loadCollapsed())
+
+function isCollapsed(key: string): boolean {
+  return collapsed.value.has(key)
+}
+
+function toggleCollapsed(key: string) {
+  const next = new Set(collapsed.value)
+  if (!next.delete(key)) next.add(key)
+  collapsed.value = next
+  localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...next]))
+}
+
+// ── 页面标签：采集接口 / 任务组 ──────────────────────────────
+const pageTab = ref<'tasks' | 'groups'>('tasks')
+
+// 任务组只能选批量接口（实时接口不建任务）
+const readyTasks = computed<TaskDef[]>(() =>
+  catalog.value
+    .flatMap((f) => Object.values(f.sub_groups).flat())
+    .filter((t) => t.status === 'ready' && t.kind !== 'realtime'),
+)
+
 // ── 当前选中 task_type ────────────────────────────────────────
 const activeTaskType = ref<string>('daily_kline')
 const currentTaskDef = computed(() => getTaskDef(activeTaskType.value))
+const isRealtime = computed(() => currentTaskDef.value?.kind === 'realtime')
 
 function switchTask(taskType: string) {
   if (activeTaskType.value === taskType) return
@@ -311,8 +391,6 @@ const filterState = reactive<Record<string, any>>({
   exchange: [] as string[],
   daterange: null as [string, string] | null,
   concurrency: 3,
-  source: 'ths',
-  force_resync: false,
 })
 
 const activeFilterCount = computed(() =>
@@ -331,15 +409,12 @@ function onQuickStart(taskType: string, params: Record<string, any>) {
     startTask(taskType, merged)
     return
   }
-  // concept 需要 source / force_resync
-  if (taskType === 'concept') {
-    startTask(taskType, {
-      source: filterState.source,
-      force_resync: filterState.force_resync,
-    })
-    return
-  }
   startTask(taskType, params)
+}
+
+function onRunPlan() {
+  const taskType = activeTaskType.value
+  startTask(taskType, undefined, () => runPlan(taskType))
 }
 
 function onStartWithDates(params: { start_date: string; end_date: string }) {
@@ -376,12 +451,6 @@ function formatParams(task: CollectTask): string {
   if (!task.params) return '-'
   const p = task.params
   const parts: string[] = []
-  if (task.task_type === 'concept') {
-    const source = p.source === 'ths' ? '同花顺' : '东方财富'
-    parts.push(source)
-    if (p.force_resync) parts.push('强制重传')
-    return parts.join(' · ') || '-'
-  }
   if (Array.isArray(p.exchange) && p.exchange.length > 0) {
     parts.push(p.exchange.join('/'))
   }
@@ -398,6 +467,8 @@ function formatParams(task: CollectTask): string {
   if (p.limit != null) {
     parts.push(`前${p.limit}`)
   }
+  if (p.full) parts.push('全量重写')
+  if (p.only_missing) parts.push('仅缺失')
   if (p.list_status) parts.push(`状态: ${p.list_status}`)
   return parts.length > 0 ? parts.join(' · ') : '-'
 }
@@ -434,6 +505,10 @@ function _unused_router_push() {
 </script>
 
 <style scoped>
+.page-tabs {
+  margin-bottom: 4px;
+}
+
 .layout-body {
   display: flex;
   gap: 16px;
@@ -466,6 +541,23 @@ function _unused_router_push() {
   border-left: 3px solid #3b82f6;
   background: #fff;
   border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.facet-header:hover {
+  background: #eff6ff;
+}
+
+.collapse-arrow {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #94a3b8;
+  transition: transform 0.15s;
+}
+
+.collapse-arrow.collapsed {
+  transform: rotate(-90deg);
 }
 
 .sub-facet-list {
@@ -478,11 +570,28 @@ function _unused_router_push() {
 }
 
 .sub-facet-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
   color: #94a3b8;
   padding: 2px 6px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+}
+
+.sub-facet-label:hover {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.sub-facet-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: #cbd5e1;
 }
 
 .task-btn {

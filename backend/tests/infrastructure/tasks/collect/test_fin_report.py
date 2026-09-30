@@ -152,7 +152,7 @@ def wiring(monkeypatch, repo, fetcher):
     monkeypatch.setattr(mod, "get_registry", lambda: registry)
     monkeypatch.setattr(mod, "AsyncSessionLocal", lambda: _Session())
     monkeypatch.setattr(mod, "FinReportRepoImpl", lambda session: repo)
-    monkeypatch.setattr(mod, "RETRY_DELAY", 0)
+    monkeypatch.setattr(mod.FinReportCollectTask, "retry_delay", 0)
     monkeypatch.setattr(mod, "RATE_LIMIT_WAIT", 0)
     yield
     clear_cancel(TASK_ID)

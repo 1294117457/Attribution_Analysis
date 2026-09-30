@@ -99,7 +99,7 @@ class MinuteKlineCollectTask(PlannedCollectTask):
     facet = "tech"
     sub_facet = "kline"
     label = "分钟 K 线"
-    description = "Pytdx 通达信 1/5/15/30/60min（实时拉取，不入库）"
+    description = "分钟 K 入库（批量，占位）；实时查看见实时接口 stock_minute_kline"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -168,18 +168,8 @@ class CapHolderNumCollectTask(PlannedCollectTask):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 基本面（季报 / 十大股东 / 分红送股）
+# 基本面（十大股东 / 分红送股）
 # ═══════════════════════════════════════════════════════════════════════════════
-
-
-class FinReportCollectTask(PlannedCollectTask):
-    """季报财务指标"""
-
-    name = "fin_report"
-    facet = "fundamental"
-    sub_facet = "report"
-    label = "季报财务"
-    description = "盈利 / 成长 / 偿债 / 现金流（tushare fina_indicator）"
 
 
 class FinTop10HoldersCollectTask(PlannedCollectTask):
@@ -248,7 +238,6 @@ def all_planned_tasks() -> list[BaseCollectTask]:
         CapBlockTradeCollectTask(),
         CapHolderNumCollectTask(),
         # 基本面
-        FinReportCollectTask(),
         FinTop10HoldersCollectTask(),
         FinTop10FloatHoldersCollectTask(),
         BaseDividendCollectTask(),
@@ -272,7 +261,6 @@ __all__ = [
     "CapBlockTradeCollectTask",
     "CapHolderNumCollectTask",
     # fundamental
-    "FinReportCollectTask",
     "FinTop10HoldersCollectTask",
     "FinTop10FloatHoldersCollectTask",
     "BaseDividendCollectTask",

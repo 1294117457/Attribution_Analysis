@@ -26,8 +26,8 @@ from infrastructure.adapter import get_registry
 from infrastructure.adapter.scheduler.collect.base import (
     BaseCollectTask,
     Cancelled,
-    TaskSummary,
     UnitResult,
+    UnitTally,
     is_cancelled,
 )
 from infrastructure.adapter.tushare.fetcher import symbol_to_ts_code
@@ -53,66 +53,25 @@ class FinReportCollectTask(BaseCollectTask):
     label = "季报财务"
     description = "利润表：营收 / 净利润 / EPS（tushare income，合并报表），面板净利润率数据来源"
 
-    async def estimate_total(self, params: dict) -> int:
-        return len(await self._symbols(params))
+    default_params = {"years": 1}
+    retry_delay = RETRY_DELAY
 
-    async def run(self, params: dict, on_unit_done) -> TaskSummary:
-        symbols = await self._symbols(params)
-        start_date = self._start_date(params)
+    async def list_units(self, params: dict) -> list[str]:
+        return await self._symbols(params)
+
+    async def collect_one(self, unit: str, params: dict) -> UnitResult:
         fetcher: FinReportFetcher = get_registry().get(FinReportFetcher)
-        logger.info("FinReport 任务 %d 启动: %d 只股票, 公告日 >= %s", self._task_id, len(symbols), start_date)
+        bos = await self._fetch_with_rate_limit(fetcher, unit, self._start_date(params))
+        if not bos:
+            return UnitResult(success=True, skipped=True, detail=unit)
+        async with AsyncSessionLocal() as session:
+            saved = await FinReportRepoImpl(session).save_batch([b.to_entity() for b in bos])
+        return UnitResult(success=True, detail=unit, saved_count=saved)
 
-        success = fail = skip = saved_total = 0
-        pending: list[str] = []
-
-        async def work(symbol: str) -> UnitResult:
-            bos = await self._fetch_with_rate_limit(fetcher, symbol, start_date)
-            if not bos:
-                return UnitResult(success=True, skipped=True, detail=symbol)
-            async with AsyncSessionLocal() as session:
-                saved = await FinReportRepoImpl(session).save_batch([b.to_entity() for b in bos])
-            return UnitResult(success=True, detail=symbol, saved_count=saved)
-
-        async def report(symbol: str, result: UnitResult) -> None:
-            nonlocal success, fail, skip, saved_total
-            if result.success:
-                success += 1
-                saved_total += result.saved_count
-                skip += 1 if result.skipped else 0
-            else:
-                fail += 1
-            await on_unit_done(result, symbol)
-
-        for symbol in symbols:
-            self._check_cancel()
-            try:
-                result = await work(symbol)
-            except Cancelled:
-                raise
-            except Exception as e:
-                logger.debug("财报 %s 失败，稍后重试: %s", symbol, e)
-                pending.append(symbol)
-                continue
-            await report(symbol, result)
-
-        for symbol in pending:
-            self._check_cancel()
-            await asyncio.sleep(RETRY_DELAY)
-            try:
-                result = await work(symbol)
-            except Cancelled:
-                raise
-            except Exception as e:
-                logger.warning("财报 %s 重试仍失败: %s", symbol, str(e)[:200])
-                result = UnitResult(success=False, detail=symbol, error=str(e)[:500])
-            await report(symbol, result)
-
-        return TaskSummary(
-            success=success,
-            fail=fail,
-            skip=skip,
-            total_count=len(symbols),
-            message=f"完成: 股票 {success}（无财报 {skip}），失败 {fail}；写入报告期 {saved_total} 条",
+    def summary_message(self, tally: UnitTally) -> str:
+        return (
+            f"完成: 股票 {tally.success}（无财报 {tally.skip}），失败 {tally.fail}；"
+            f"写入报告期 {tally.saved} 条"
         )
 
     # ── helper ────────────────────────────────────────────────────────

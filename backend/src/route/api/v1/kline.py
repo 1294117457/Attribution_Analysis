@@ -5,14 +5,15 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
 
+from application.service.collect_app_service import CollectAppService
 from application.service.kline_app_service import KlineAppService
 from route.dto.request.kline import (
     KlineCollectRequest,
     KlineDeleteRequest,
     KlineQueryRequest,
 )
-from application.port.collector_port import KlineFetcher
-from infrastructure.config.di import get_kline_app_service, get_kline_fetcher
+from route.dto.response.kline import KlineCollectResponse
+from infrastructure.config.di import get_kline_app_service
 from route.api import _response as R
 
 router = APIRouter(prefix="/klines", tags=["K线"])
@@ -74,14 +75,12 @@ async def get_kline_by_date(
     summary="采集K线",
     status_code=status.HTTP_201_CREATED,
 )
-async def collect_kline(
-    request: KlineCollectRequest,
-    service: KlineAppService = Depends(get_kline_service),
-    fetcher: KlineFetcher = Depends(get_kline_fetcher),
-):
-    """采集并存储K线数据"""
-    response = await service.collect(request, fetcher)
-    return R.created(response.model_dump())
+async def collect_kline(request: KlineCollectRequest):
+    """采集并存储K线数据（采集接口 daily_kline.collect_one）"""
+    result = await CollectAppService().run_one(
+        "daily_kline", request.symbol, _kline_params(request.days, request.start_date, request.end_date),
+    )
+    return R.created(result.data)
 
 
 @router.post(
@@ -92,14 +91,28 @@ async def collect_kline(
 async def collect_batch(
     symbols: list[str] = Query(..., description="股票代码列表"),
     days: int = Query(30, ge=1, le=3650, description="回溯天数"),
-    service: KlineAppService = Depends(get_kline_service),
-    fetcher: KlineFetcher = Depends(get_kline_fetcher),
 ):
-    """批量采集多只股票的K线数据"""
-    results = await service.collect_batch(symbols, days, fetcher)
-    return R.created({
-        symbol: resp.model_dump() for symbol, resp in results.items()
-    })
+    """批量采集多只股票的K线数据（逐只 daily_kline.collect_one；单只失败 saved_count=-1）
+
+    大批量请用 POST /collect/tasks {"task_type": "daily_kline", "params": {"symbols": [...]}}
+    """
+    svc = CollectAppService()
+    results: dict[str, dict] = {}
+    for symbol in symbols:
+        try:
+            results[symbol] = (await svc.run_one("daily_kline", symbol, _kline_params(days))).data
+        except Exception as e:
+            results[symbol] = KlineCollectResponse(
+                symbol=symbol, name="", saved_count=-1, total_count=0, message=str(e),
+            ).model_dump()
+    return R.created(results)
+
+
+def _kline_params(days: int, start_date: Optional[date] = None, end_date: Optional[date] = None) -> dict:
+    params: dict = {"days": days}
+    if start_date and end_date:
+        params.update(start_date=start_date, end_date=end_date)
+    return params
 
 
 # ── 删除路由 ──────────────────────────────────────────────

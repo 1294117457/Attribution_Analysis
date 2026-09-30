@@ -83,26 +83,29 @@ export interface ConceptMainVO {
   snapshot?: ConceptSnapshot | null
 }
 
-/** 09concept 新增：概念板块行情快照（涨跌染色用） */
+/** 概念实时行情（实时接口 concept_minute，15 秒缓存；涨跌染色用） */
 export interface ConceptSnapshot {
+  index_code: string
   concept_name: string
-  /** 现价 / 昨收计算；缺昨收（未跑概念指数日 K）时为 null */
+  price: number | null
+  prev_close: number | null
+  change: number | null
   pct_change: number | null
-  rank_current: number | null
-  rank_total: number | null
-  rank_label: string          // "191/390"
-  up_count: number | null
-  down_count: number | null
-  up_down_label: string       // "90/372"
-  net_inflow_yi: number | null
-  turnover_yi: number | null
   color: 'up' | 'down' | 'flat'
-  captured_at: string
+  trade_time: string | null
+  /** 数据源取数时间 */
+  captured_at: string | null
+  /** true：行情源不可用，显示的是最近一条日 K 收盘 */
+  stale: boolean
+  /** 兼容旧字段，恒为空 */
+  rank_label: string
+  up_down_label: string
 }
 
 /** 分组 VO（详情抽屉「概念」Tab 用） */
 export interface ConceptGroupedVO {
   concept_id: number
+  index_code?: string | null
   name: string
   source: ConceptSource
   concept_type: ConceptType
@@ -697,13 +700,17 @@ export interface MinuteKline {
   amount:      number
 }
 
-/** GET /minute-klines/{symbol}  实时获取分钟 K 线（不落库） */
+/** GET /minute-klines/{symbol}  实时获取分钟 K 线（实时接口 stock_minute_kline，15 秒缓存）
+ *  days：1min 仅 1（当天），其他周期 1–5 */
 export const getMinuteKlines = (
   symbol: string,
-  params: { interval?: string; count?: number } = {}
+  params: { interval?: string; days?: number } = {}
 ) =>
   http
-    .get<{ total: number; items: MinuteKline[] }>(`/minute-klines/${symbol}`, { params })
+    .get<{ total: number; items: MinuteKline[]; cached: boolean; fetched_at: string | null }>(
+      `/minute-klines/${symbol}`,
+      { params },
+    )
     .then(unwrap)
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -764,28 +771,12 @@ export const getConceptSyncStatus = (): Promise<{
 }> =>
   http.get('/concepts/sync/status').then(unwrap)
 
-// ═══════════════════════════════════════════════════════════════
-//  🆕 09concept 新增 API
-// ═══════════════════════════════════════════════════════════════
-
-/**
- * GET /api/v1/concepts/{name}/snapshot  取单概念最新行情快照
- *
- * 用于主概念 Tag 涨跌染色（ConceptTag / ConceptTab）
- */
-export const getConceptSnapshot = (name: string): Promise<ConceptSnapshot> =>
-  http.get<ConceptSnapshot>(`/concepts/${encodeURIComponent(name)}/snapshot`).then(unwrap)
-
-/**
- * GET /api/v1/concepts/snapshots/batch  批量取多概念快照
- *
- * 用于主概念 Tag 批量涨跌染色（StockInfoList 一次性下发）
- */
-export const getConceptSnapshotsBatch = (
-  names: string[],
+/** GET /api/v1/concepts/quotes?codes=  批量概念实时行情（最多 100 个；取不到的不在结果中） */
+export const getConceptQuotes = (
+  indexCodes: string[],
 ): Promise<Record<string, ConceptSnapshot>> =>
   http
-    .get<Record<string, ConceptSnapshot>>('/concepts/snapshots/batch', {
-      params: { names: names.join(',') },
+    .get<Record<string, ConceptSnapshot>>('/concepts/quotes', {
+      params: { codes: indexCodes.join(',') },
     })
     .then(unwrap)

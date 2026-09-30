@@ -51,6 +51,7 @@ class ConceptGroupedVO:
     concept_type: str  # industry / theme / style / region / event / other
     description: Optional[str] = None
     reason: Optional[str] = None  # 该股票的入选理由（stock_concept_members.reason）
+    index_code: Optional[str] = None  # 同花顺指数编码，实时行情按它查询
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
