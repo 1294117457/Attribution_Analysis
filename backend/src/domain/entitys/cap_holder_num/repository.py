@@ -1,3 +1,4 @@
+# TODO: DDD 仓储接口已定义，待 infrastructure 层实现对应 *_repo_impl
 """cap_holder_num — 仓储接口"""
 
 from abc import ABC, abstractmethod
