@@ -15,7 +15,7 @@ import pytest
 from application.port.collector_port import RateLimitError
 from infrastructure.adapter.scheduler.collect import fin_report as mod
 from infrastructure.adapter.scheduler.collect.base import Cancelled, clear_cancel, request_cancel
-from infrastructure.adapter.tushare.fetcher import TushareFetcher, dedupe_income, symbol_to_ts_code
+from infrastructure.adapter.fetcher.tushare import TushareFetcher, dedupe_income, symbol_to_ts_code
 from route.dto.request.fin_report import FinReportBO
 
 TASK_ID = 5151
