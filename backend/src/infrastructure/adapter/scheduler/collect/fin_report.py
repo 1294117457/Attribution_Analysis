@@ -30,7 +30,7 @@ from infrastructure.adapter.scheduler.collect.base import (
     UnitTally,
     is_cancelled,
 )
-from infrastructure.adapter.tushare.fetcher import symbol_to_ts_code
+from infrastructure.adapter.fetcher.tushare import symbol_to_ts_code
 from infrastructure.persistence.connection import AsyncSessionLocal
 from infrastructure.persistence.models.stock_info import StockInfoDB
 from infrastructure.persistence.repositories.fin_report_repository import FinReportRepoImpl

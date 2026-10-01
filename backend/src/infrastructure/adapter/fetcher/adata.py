@@ -22,7 +22,7 @@ from typing import Any, Callable, Optional
 import pandas as pd
 
 from application.port.collector_port import ConceptFetcher
-from infrastructure.adapter.base import BaseCollector
+from infrastructure.adapter.fetcher.base import BaseCollector
 from route.dto.request.concept import (
     ConceptIndexTHBO,
     ConceptListBO,
