@@ -146,7 +146,7 @@ def setup_default_registry() -> FetcherRegistry:
 
     # ── KlineFetcher ─────────────────────────────────────
     # 路由层单例（低并发）
-    from infrastructure.adapter.tushare import TushareFetcher
+    from infrastructure.adapter.fetcher.tushare import TushareFetcher
     from route.dto.request.kline import KlineBO
 
     tushare_singleton = TushareFetcher(KlineBO)
@@ -172,7 +172,7 @@ def setup_default_registry() -> FetcherRegistry:
     # ── MinuteKlineFetcher ────────────────────────────────
     # PytdxFetcher 有状态（维护 TCP 连接），单例复用连接
     # 若未来需要并发隔离分钟K线采集，可改为 register_factory(PytdxFetcher)
-    from infrastructure.adapter.pytdx import PytdxFetcher
+    from infrastructure.adapter.fetcher.pytdx import PytdxFetcher
 
     pytdx_fetcher = PytdxFetcher()
     reg.register_instance(MinuteKlineFetcher, pytdx_fetcher)
@@ -181,7 +181,7 @@ def setup_default_registry() -> FetcherRegistry:
     # ── ConceptFetcher（adata · 同花顺，概念数据唯一来源）──────────
     # adata 未安装时降级为无该能力（概念接口返回 503）
     try:
-        from infrastructure.adapter.adata.fetcher import AdataConceptFetcher
+        from infrastructure.adapter.fetcher.adata import AdataConceptFetcher
 
         reg.register_instance(ConceptFetcher, AdataConceptFetcher())
         reg.register_factory(ConceptFetcher, AdataConceptFetcher)
