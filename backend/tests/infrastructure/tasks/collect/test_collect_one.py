@@ -205,6 +205,14 @@ class TestDailyKline:
         built = {}
 
         class _Svc:
+            @classmethod
+            def from_session(cls, _session, indicator_calc=None):
+                # 把从 session 拿到的 repo 替换成 mock，让 __init__ 收到
+                inst = cls.__new__(cls)
+                inst.__init__(kline_repo="kline_repo", stock_repo="stock_repo")
+                built["repos"] = ("kline_repo", "stock_repo")
+                return inst
+
             def __init__(self, kline_repo, stock_repo):
                 built["repos"] = (kline_repo, stock_repo)
 
@@ -216,8 +224,6 @@ class TestDailyKline:
 
         monkeypatch.setattr(daily_kline, "AsyncSessionLocal", lambda: session)
         monkeypatch.setattr(daily_kline, "KlineAppService", _Svc)
-        monkeypatch.setattr(daily_kline, "KlineRepoImpl", lambda s: "kline_repo")
-        monkeypatch.setattr(daily_kline, "StockRepoImpl", lambda s: "stock_repo")
         monkeypatch.setattr(daily_kline, "get_registry", lambda: MagicMock())
 
         result = await daily_kline.DailyKlineCollectTask().collect_one("600519", {"days": 5})

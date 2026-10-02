@@ -10,17 +10,16 @@ from __future__ import annotations
 from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.service.concept_app_service import ConceptAppService
-from application.service.realtime_app_service import RealtimeQueryError, get_realtime_app_service
-from route.dto.response.concept import ConceptQueryRequest
-from domain.entitys.concept.entity import ConceptNotFoundError
-from application.port.collector_port import ConceptFetcher
-from application.port.registry import get_registry
+from infrastructure.adapter.realtime import RealtimeQueryError, get_realtime_query_framework
+from infrastructure.config.di import get_concept_app_service
 from infrastructure.persistence.connection import get_db
 from infrastructure.persistence.repositories.concept_repository import ConceptRepoImpl
+from route.dto.response.concept import ConceptQueryRequest
+from domain.entitys.concept.entity import ConceptNotFoundError
 from route.api import _response as R
 
 router = APIRouter(prefix="/concepts", tags=["概念"])
@@ -28,19 +27,7 @@ router = APIRouter(prefix="/concepts", tags=["概念"])
 MAX_QUOTE_CODES = 100
 
 
-# ── 依赖注入 ────────────────────────────────────────
-
-
-def get_concept_app_service(
-    db: AsyncSession = Depends(get_db),
-) -> ConceptAppService:
-    """构造 ConceptAppService 实例"""
-    registry = get_registry()
-    if not registry.has(ConceptFetcher):
-        raise HTTPException(503, "概念采集器未注册")
-    fetcher = registry.get(ConceptFetcher)
-    repo = ConceptRepoImpl(db)
-    return ConceptAppService(repo=repo, fetcher=fetcher)
+# ── 依赖注入工厂（来自 infrastructure.config.di） ──────────────────────────
 
 
 # ── 路由定义 ────────────────────────────────────────
@@ -172,7 +159,7 @@ async def get_concept_quotes(
 )
 async def get_concept_minute(index_code: str):
     try:
-        res = await get_realtime_app_service().query("concept_minute", {"index_code": index_code})
+        res = await get_realtime_query_framework().query("concept_minute", {"index_code": index_code})
     except ValueError as e:
         return R.err(str(e), 400)
     except RealtimeQueryError as e:

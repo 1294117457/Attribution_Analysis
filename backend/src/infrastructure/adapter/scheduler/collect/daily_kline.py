@@ -23,13 +23,12 @@ from sqlalchemy import select
 
 from route.dto.request.kline import KlineCollectRequest
 from application.service.kline_app_service import KlineAppService
+from application.port.collector_port import KlineFetcher, RateLimitError
+from domain.entitys.kline.entity import CollectionError
 from infrastructure.adapter import get_registry
-from application.port.collector_port import KlineFetcher
 from infrastructure.config.settings import get_settings
 from infrastructure.persistence.connection import AsyncSessionLocal
 from infrastructure.persistence.models.stock_info import StockInfoDB
-from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl
-from infrastructure.persistence.repositories.stock_repository import StockRepoImpl
 from infrastructure.adapter.scheduler.collect.base import (
     BaseCollectTask,
     TaskSummary,
@@ -95,19 +94,37 @@ class DailyKlineCollectTask(BaseCollectTask):
         self, symbol: str, params: dict, fetcher: KlineFetcher,
     ) -> UnitResult:
         async with AsyncSessionLocal() as session:
-            svc = KlineAppService(KlineRepoImpl(session), StockRepoImpl(session))
-            resp = await asyncio.wait_for(
-                svc.collect(build_request(symbol, params), fetcher),
-                timeout=UNIT_TIMEOUT,
-            )
-            await session.commit()
-        return UnitResult(
-            success=True,
-            detail=resp.message,
-            skipped=resp.total_count == 0,
-            saved_count=resp.saved_count,
-            data=resp.model_dump(),
-        )
+            try:
+                svc = KlineAppService.from_session(session)
+                resp = await asyncio.wait_for(
+                    svc.collect(build_request(symbol, params), fetcher),
+                    timeout=UNIT_TIMEOUT,
+                )
+                await session.commit()
+                return UnitResult(
+                    success=True,
+                    detail=resp.message,
+                    skipped=resp.total_count == 0,
+                    saved_count=resp.saved_count,
+                    data=resp.model_dump(),
+                )
+            except asyncio.TimeoutError:
+                logger.warning("股票 %s 采集超时 (%ds)", symbol, UNIT_TIMEOUT)
+                return UnitResult(
+                    success=False, detail=symbol, error=f"timeout {UNIT_TIMEOUT}s",
+                )
+            except CollectionError as e:
+                logger.warning("股票 %s 采集业务异常: %s", symbol, e)
+                return UnitResult(success=False, detail=symbol, error=str(e)[:500])
+            except RateLimitError as e:
+                # 限频异常：让上层 one() 走 sleep 退避
+                logger.warning("股票 %s 触发限频: %s", symbol, e)
+                raise
+            except Exception as e:
+                logger.error(
+                    "股票 %s 采集异常: %s", symbol, e, exc_info=True,
+                )
+                return UnitResult(success=False, detail=symbol, error=str(e)[:500])
 
     # ── 批量：fetcher 池 + chunk 限频 ─────────────────────────────────
 
@@ -131,15 +148,19 @@ class DailyKlineCollectTask(BaseCollectTask):
     async def run(self, params: dict, on_unit_done) -> TaskSummary:
         assert self._fetcher_pool is not None, "pre_execute 未执行"
         pool = self._fetcher_pool
-        chunk_size = self._settings.COLLECT_CHUNK_SIZE
+        # chunk_size 不超过 concurrency：避免 chunk 内前 N 个挤爆 fetcher 池触发限频
+        chunk_size = min(self._settings.COLLECT_CHUNK_SIZE, self._concurrency)
+        # 限频单只退避（base.RetryDelay 在异常后递增）
+        rate_limit_backoff = 1.0
+        rate_limit_max_backoff = 60.0
 
         symbols = await self.list_units(params)
         total = len(symbols)
         exchange_filter = params.get("exchange")
         exchange_desc = ",".join(exchange_filter) if exchange_filter else "全部"
         logger.info(
-            "日K采集 %d: 共 %d 只股票 (%s), 并发=%d",
-            self._task_id, total, exchange_desc, self._concurrency,
+            "日K采集 %d: 共 %d 只股票 (%s), 并发=%d, chunk=%d, interval=%.2fs",
+            self._task_id, total, exchange_desc, self._concurrency, chunk_size, self._api_interval,
         )
 
         sem = asyncio.Semaphore(self._concurrency)
@@ -152,6 +173,9 @@ class DailyKlineCollectTask(BaseCollectTask):
                     return await self._collect_symbol(symbol, params, fetcher)
                 except asyncio.TimeoutError:
                     return UnitResult(success=False, detail=symbol, error=f"timeout {UNIT_TIMEOUT}s")
+                except RateLimitError as e:
+                    # 限频：返回 fail，由 run() 统一 backoff
+                    return UnitResult(success=False, detail=symbol, error=f"限频: {str(e)[:200]}")
                 except Exception as e:
                     return UnitResult(success=False, detail=symbol, error=str(e)[:500])
                 finally:
@@ -161,6 +185,7 @@ class DailyKlineCollectTask(BaseCollectTask):
             chunk = symbols[i:i + chunk_size]
             results = await asyncio.gather(*[one(s) for s in chunk])
 
+            chunk_rate_limited = False
             for r, label in zip(results, chunk):
                 await on_unit_done(r, label)
                 if r.success:
@@ -169,8 +194,22 @@ class DailyKlineCollectTask(BaseCollectTask):
                     skip += 1 if r.skipped else 0
                 else:
                     fail += 1
+                    if r.error and r.error.startswith("限频"):
+                        chunk_rate_limited = True
 
-            await asyncio.sleep(self._api_interval * len(chunk))
+            # 限频时整 chunk 退避（指数回退到上限）
+            if chunk_rate_limited:
+                logger.warning(
+                    "任务 %d: 本 chunk 触发限频，backoff %.1fs",
+                    self._task_id, rate_limit_backoff,
+                )
+                await asyncio.sleep(rate_limit_backoff)
+                rate_limit_backoff = min(rate_limit_backoff * 2, rate_limit_max_backoff)
+            else:
+                # 正常节奏：每只之间留间隔（api_interval = 并发 × 0.15s）
+                await asyncio.sleep(self._api_interval * len(chunk))
+                # 一旦有成功，恢复退避
+                rate_limit_backoff = 1.0
 
         return TaskSummary(
             success=success,

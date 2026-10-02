@@ -23,7 +23,7 @@ from application.service.collect_app_service import (
     UnknownTaskType,
     task_to_dict,
 )
-from application.service.realtime_app_service import RealtimeQueryError, get_realtime_app_service
+from infrastructure.adapter.realtime import RealtimeQueryError, get_realtime_query_framework
 from infrastructure.persistence.connection import get_db
 from infrastructure.persistence.models.sys_collect_task import SysCollectTaskDB
 from infrastructure.adapter.cache.redis_client import get_redis
@@ -103,7 +103,7 @@ async def get_collect_catalog():
 
 @router.post("/realtime/{name}/query", summary="调用实时接口（试查 / 通用入口）")
 async def query_realtime(name: str, body: Optional[dict] = None):
-    svc = get_realtime_app_service()
+    svc = get_realtime_query_framework()
     try:
         res = await svc.query(name, body or {})
     except KeyError as e:
@@ -118,7 +118,7 @@ async def query_realtime(name: str, body: Optional[dict] = None):
 @router.get("/realtime/{name}/stats", summary="实时接口调用统计（按天）")
 async def realtime_stats(name: str, days: int = Query(1, ge=1, le=7)):
     try:
-        return R.ok(await get_realtime_app_service().stats(name, days))
+        return R.ok(await get_realtime_query_framework().stats(name, days))
     except KeyError as e:
         return R.err(str(e), 404)
 

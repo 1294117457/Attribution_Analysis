@@ -20,6 +20,7 @@ from datetime import timedelta
 from typing import Any, Awaitable, Callable, Optional
 
 from application.port.collector_port import ConceptFetcher
+from domain.concept.collection_policy import ConceptCollectionPolicy
 from infrastructure.adapter import get_registry
 from infrastructure.adapter.scheduler.collect.base import (
     BaseCollectTask,
@@ -33,15 +34,22 @@ from infrastructure.persistence.repositories.concept_repository import ConceptRe
 
 logger = logging.getLogger(__name__)
 
-# 清单数量低于库中活跃数的该比例时，视为问财接口返回不全，不做下线
+# 清单缩量保护阈值（与领域常量保持一致，保留为模块级常量以便历史 grep）
 LIST_SHRINK_GUARD = 0.8
-# 成分股数量骤降保护：旧数量超过 MIN 且新数量低于旧数量的该比例时，不替换
+# 成分股骤降保护阈值
 MEMBER_SHRINK_GUARD = 0.5
 MEMBER_SHRINK_MIN = 20
 # 失败单元重试时的请求间隔（秒），高于 fetcher 默认值以避开限频
 RETRY_DELAY = 2.0
 # 日 K 增量：重写库中最大日期往前 N 天，修正盘中写入的当日数据
 INDEX_TH_OVERLAP_DAYS = 5
+
+# 领域策略（注入同一进程，保证导入期间无副作用）
+_COLLECTION_POLICY = ConceptCollectionPolicy(
+    list_shrink_guard=LIST_SHRINK_GUARD,
+    member_shrink_min=MEMBER_SHRINK_MIN,
+    member_shrink_guard=MEMBER_SHRINK_GUARD,
+)
 
 
 def _fetcher() -> ConceptFetcher:
@@ -109,7 +117,10 @@ class ConceptListCollectTask(BaseCollectTask):
             repo = ConceptRepoImpl(session)
             active_before = await repo.count_active()
             id_map = await repo.upsert_concepts(bos)
-            shrunk = active_before > 0 and len(bos) < active_before * LIST_SHRINK_GUARD
+            shrunk = _COLLECTION_POLICY.should_skip_list_update(
+                old_active_count=active_before,
+                new_listing_count=len(bos),
+            )
             deactivated = 0 if shrunk else await repo.deactivate_missing(list(id_map.keys()))
 
         message = f"完成: 清单 {len(bos)} 个，下线 {deactivated} 个"
@@ -158,7 +169,10 @@ class ConceptMembershipCollectTask(BaseCollectTask):
         async with AsyncSessionLocal() as session:
             repo = ConceptRepoImpl(session)
             old = await repo.count_members(concept_id)
-            if old > MEMBER_SHRINK_MIN and len(symbols) < old * MEMBER_SHRINK_GUARD:
+            if _COLLECTION_POLICY.should_skip_member_sync(
+                old_member_count=old,
+                new_member_count=len(symbols),
+            ):
                 return UnitResult(
                     success=True, skipped=True,
                     detail=f"{label}：成分股 {old} → {len(symbols)} 疑似不全，保留旧关系",
