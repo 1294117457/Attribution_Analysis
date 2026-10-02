@@ -36,3 +36,6 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+
+# JWT 密钥目录（运行时自动生成，不入库）
+.keys/
