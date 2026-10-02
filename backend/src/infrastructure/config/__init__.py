@@ -10,11 +10,16 @@ __all__ = ["get_settings"]
 def __getattr__(name):
     """PEP 562 — module-level __getattr__，按需加载 di 的内容"""
     if name in (
+        "get_concept_app_service",
         "get_concept_brief_service",
         "get_indicator_calculator",
         "get_kline_app_service",
         "get_kline_fetcher",
         "get_panel_app_service",
+        "get_pool_app_service",
+        "get_pool_operation_app_service",
+        "get_stock_analysis_app_service",
+        "get_stock_app_service",
     ):
         from infrastructure.config import di
         return getattr(di, name)

@@ -6,24 +6,14 @@ GET /stocks/{symbol}/analysis?days=365
 from fastapi import APIRouter, Depends, Query
 
 from application.service.stock_analysis_app_service import StockAnalysisAppService
-from infrastructure.persistence.connection import get_db
-from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl
-from infrastructure.persistence.repositories.pool_repository import StockPoolRepoImpl
-from infrastructure.persistence.repositories.stock_repository import StockRepoImpl
+from infrastructure.config.di import get_stock_analysis_app_service
 from route.api import _response as R
 
 router = APIRouter(prefix="/stocks", tags=["AI 归因"])
 
 
-def get_analysis_service(
-    db=Depends(get_db),
-) -> StockAnalysisAppService:
-    """DDD 改造：构造改为依赖注入"""
-    return StockAnalysisAppService(
-        stock_repo=StockRepoImpl(db),
-        kline_repo=KlineRepoImpl(db),
-        pool_repo=StockPoolRepoImpl(db),
-    )
+# ── 依赖注入工厂（来自 infrastructure.config.di） ──────────────────────────
+get_analysis_service = get_stock_analysis_app_service
 
 
 @router.get(

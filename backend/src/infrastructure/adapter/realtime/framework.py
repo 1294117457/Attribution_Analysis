@@ -1,7 +1,11 @@
-"""实时接口执行入口：缓存 / 单飞 / 同源限流 / 超时 / 降级 / 统计
+"""实时接口执行框架（缓存 / 单飞 / 同源限流 / 超时 / 降级 / 统计）
+
+本模块是**技术框架**，不是业务服务——负责对实时查询请求做通用的
+缓存、并发限流、统计、降级处理，**不持有任何业务逻辑**。
+业务侧的"什么时候调、调什么参数"仍由 application/service/*_app_service.py 编排。
 
 Redis 键：
-- 缓存  rt:{name}:{cache_key}          JSON {data, fetched_at}，TTL 见 ttl_for
+- 缓存  rt:{name}:{cache_key}          JSON {data, fetched_at}，TTL 来自 domain.market.MarketSessionService
 - 单飞  rt:lock:{name}:{cache_key}     SET NX EX 5
 - 统计  rt:stats:{name}:{yyyymmdd}     HASH，保留 7 天
 
@@ -9,7 +13,6 @@ Redis 键：
 
 配套设计文档：docs/dev/step2/04采集管理优化/06实时数据接口.md §3
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -20,8 +23,9 @@ from dataclasses import asdict, dataclass
 from datetime import timedelta
 from typing import Any, Optional
 
+from domain.market import market_now, ttl_for
 from infrastructure.adapter.cache.redis_client import get_redis
-from infrastructure.adapter.realtime.base import BaseRealtimeQuery, market_now, ttl_for
+from infrastructure.adapter.realtime.base import BaseRealtimeQuery
 from infrastructure.adapter.realtime.registry import get_realtime_registry
 
 logger = logging.getLogger(__name__)
@@ -41,6 +45,17 @@ class RealtimeQueryError(RuntimeError):
 
 @dataclass
 class RealtimeResult:
+    """实时接口查询结果（VO 性质的领域输出对象）
+
+    字段：
+    - data:           接口返回的数据
+    - cached:         是否来自缓存
+    - stale:          是否为降级数据（数据源失败时用 fallback 兜底，标记 stale=true）
+    - fetched_at:     数据获取时间（ISO 字符串）
+    - latency_ms:     本次调用耗时（含缓存命中检查等）
+    - error:          失败信息（query_many 单项失败时填充）
+    """
+
     data: Any
     cached: bool = False
     stale: bool = False
@@ -52,7 +67,19 @@ class RealtimeResult:
         return asdict(self)
 
 
-class RealtimeAppService:
+class RealtimeQueryFramework:
+    """实时接口查询框架（技术框架，非业务服务）
+
+    职责：
+    - 缓存管理（GET / SET）
+    - 单飞锁（避免同一缓存键并发请求）
+    - 同源并发限制（Semaphore）
+    - 降级处理（fetch 失败 → q.fallback）
+    - 统计记录（Redis HASH）
+
+    调用方只需要 query() / query_many() / stats()，不必关心上述细节。
+    """
+
     def __init__(self) -> None:
         self._semaphores: dict[str, asyncio.Semaphore] = {}
 
@@ -88,6 +115,7 @@ class RealtimeAppService:
         return list(await asyncio.gather(*(one(p) for p in params_list)))
 
     async def stats(self, name: str, days: int = 1) -> list[dict]:
+        """按天返回实时接口的调用统计（命中率、平均耗时、最近错误）"""
         self.get_query(name)
         redis = await get_redis()
         today = market_now().date()
@@ -222,11 +250,20 @@ async def _safe_fallback(q: BaseRealtimeQuery, params: dict) -> Any:
         return None
 
 
-_service: Optional[RealtimeAppService] = None
+_framework: Optional[RealtimeQueryFramework] = None
 
 
-def get_realtime_app_service() -> RealtimeAppService:
-    global _service
-    if _service is None:
-        _service = RealtimeAppService()
-    return _service
+def get_realtime_query_framework() -> RealtimeQueryFramework:
+    """获取全局实时查询框架实例（延迟初始化）"""
+    global _framework
+    if _framework is None:
+        _framework = RealtimeQueryFramework()
+    return _framework
+
+
+__all__ = [
+    "RealtimeQueryFramework",
+    "RealtimeQueryError",
+    "RealtimeResult",
+    "get_realtime_query_framework",
+]

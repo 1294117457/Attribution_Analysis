@@ -771,6 +771,171 @@ function colW(px: number) { return Math.round(px * middleDensityProxy.value) }
 | `.density-inline { overflow: hidden }` | 内容被硬切断，看不到 |
 | `.top-area__title { /* 默认 flex }` | 缺 `min-width: 0`，子项 min-content 撑大整个链 |
 
+### 10.6 内部高度锁死是防线的"外层"——`expand-row` 一类"内联展开型组件"的外部高度锁死原则
+
+> **核心原则（一句话）**：**内部能多小做多小，但只要外容器不定，内部就有机会撑爆**。
+>
+> 这条原则适用于**所有"内联展开型组件"**——典型场景：
+> - `expand-row`（表格行内嵌展开区：chips / 摘要 / 子表 / toolbar）
+> - `density-inline`（已在 §十.2 落实）
+> - 任何"在同一行 / 同一卡片内、由数据异步驱动内容显隐"的内联区
+
+#### 10.6.1 为什么这是"核心"
+
+数据驱动的内联组件有**两个时态**：
+
+1. **初始态**：数据未到达 / 数据为空 / 数据加载中
+2. **数据态**：数据到达 / 列表长度变化 / 加载完成
+
+**只要外层容器高度随这两个时态变化，整个父布局链就会抖动**——表格行高、卡片高度、面板高度都会随之伸缩。
+
+**正解**：**外层容器高度锁死**，内部用 `v-show` / `min-height` / 占位元素控制内容显隐。**内容变化只在外层内部发生，外层永远是同一个高度**。
+
+#### 10.6.2 三条落地规则
+
+**规则 1：外层 div 始终渲染（无 `v-if`）**
+
+```vue
+<!-- ✅ 正确：div 始终在 DOM 里 -->
+<div class="expand-concepts">
+  <span class="expand-concepts__label">概念</span>
+  <span v-show="loading">加载中…</span>
+  <el-tag v-for="c in chips" v-show="!loading" :key="c.code">{{ c.name }}</el-tag>
+  <span v-if="!loading && chips.length === 0">—</span>
+</div>
+
+<!-- ❌ 错误：div 在数据态切换时进出 DOM -->
+<div v-if="chips.length > 0 || loading" class="expand-concepts">...</div>
+```
+
+**规则 2：高度锁死用 `height` + `min-height` + `max-height` 三连锁**
+
+```css
+.expand-concepts {
+  height: 30px;        /* 固定高度（行内 chip 22 + 上下 padding 4×2）*/
+  min-height: 30px;    /* 锁下限：chip=0 / 加载中保持 30px → 父容器位置不变 */
+  max-height: 30px;    /* 锁上限：chip 数量增加时绝不撑高 */
+  flex-wrap: nowrap;   /* 锁单行：chip 数变不影响高度 */
+  overflow-x: auto;    /* 超出横滚，不换行 */
+  overflow-y: hidden;
+  box-sizing: border-box;
+}
+```
+
+**规则 3：内部子元素按"是否影响外层高度"分类用 `v-show` / `v-if`**
+
+| 子元素类型 | 用法 | 原因 |
+|-----------|------|------|
+| **占位元素**（label / 骨架屏 / 空态） | `v-show` | DOM 始终在，但可见性受状态控制 |
+| **数据列表**（chip / 行 / tag） | 父 `template v-for` + 子元素 `v-show` | DOM 始终在，列表长度变化只影响横向滚动 |
+| **条件性元素**（+N tooltip / hint / 错误提示） | `v-if` | 纯条件性元素，无副作用 |
+
+> **核心区分**：
+> - **`v-show`**：DOM 始终在，靠 `display:none` 控制可见。**用于"出现/消失"会改变父布局的元素。**
+> - **`v-if`**：DOM 在条件为 true 时才创建。**用于"依赖于具体数据值"的元素。**
+
+#### 10.6.3 完整参考实现 · `expand-concepts`（展开行顶部 chips 区）
+
+模板：
+
+```vue
+<template>
+  <div class="expand-row">
+    <!-- 概念 chips 区：div 始终渲染，外部高度锁 30px -->
+    <div class="expand-concepts">
+      <span class="expand-concepts__label">概念</span>
+      <span v-show="chipsLoading && chips.length === 0" class="concept-skeleton-chip">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        加载中…
+      </span>
+      <template v-for="c in chips.slice(0, MAX_CHIPS_VISIBLE)" :key="c.index_code">
+        <el-tag
+          v-show="!chipsLoading || chips.length > 0"
+          size="small"
+          :type="chipTagType(c)"
+          class="concept-chip"
+        >{{ c.concept_name }}</el-tag>
+      </template>
+      <el-tooltip v-if="chips.length > MAX_CHIPS_VISIBLE" :content="...">
+        <span class="concept-chip concept-chip--more">+{{ chips.length - MAX_CHIPS_VISIBLE }}</span>
+      </el-tooltip>
+      <span v-if="chips.some(c => c.stale)" class="expand-concepts__hint">行情源暂不可用</span>
+      <span v-if="!chipsLoading && chips.length === 0" class="expand-concepts__empty">—</span>
+    </div>
+
+    <div class="expand-charts">...</div>
+  </div>
+</template>
+```
+
+样式：
+
+```css
+/* 外层高度锁死是核心 */
+.expand-concepts {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+
+  height: 30px;        /* ⭐ 三连锁 */
+  min-height: 30px;
+  max-height: 30px;
+
+  padding: 4px 8px;
+  margin-bottom: 6px;   /* 与 .expand-charts 视觉分隔 */
+  border-bottom: 1px dashed #e2e8f0;
+
+  overflow-x: auto;     /* chip 多于可见区时横滚 */
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+  box-sizing: border-box;
+}
+
+.expand-concepts__empty {
+  font-size: 11px;
+  color: #cbd5e1;       /* 弱占位色 */
+  white-space: nowrap;
+  flex-shrink: 0;
+  user-select: none;
+}
+```
+
+#### 10.6.4 四状态对照表（"外部高度锁死"的最终验证）
+
+| 状态 | 内部可见 | 外层 div 高度 | 父布局影响 |
+|------|---------|--------------|----------|
+| **未开始加载** | `概念 —`（占位）| **30px** | chart 起点 = 30px（不变） |
+| **加载中** | `概念 ⟳ 加载中…` | **30px** | chart 起点 = 30px（不变） |
+| **加载完成 chip>0** | `概念 chip1 chip2 ...` | **30px** | chart 起点 = 30px（不变） |
+| **加载完成 chip=0** | `概念 —` | **30px** | chart 起点 = 30px（不变） |
+
+> **唯一允许的副作用**：外部容器**首次进入 DOM 时**（即组件 mount / 表格行展开瞬间），高度从 0 变为 30px。
+> **不允许的副作用**：数据态切换时（加载中 → 完成；chip=0 → chip>0）任何高度变化。
+
+#### 10.6.5 ⚠️ 反面教材
+
+| 错误 | 后果 |
+|------|------|
+| `<div v-if="data.length || loading">` | 数据态切换时 div 进出 DOM，外层高度从 0 → 30px → 0 抖动 |
+| `height: auto; min-height: 30px` | 缺 `max-height` 锁上限，chip 多时撑高外层 |
+| `flex-wrap: wrap` | chip 多时换行，外层高度 +chip行高，破坏锁高 |
+| 用 `position: absolute` 把内联区浮起来 | 看似解决了高度问题，但**遮挡父布局其他元素**（如 kline 的 select 框） |
+| `transition + max-height` 做展开/折叠动画 | max-height 必须猜一个固定上限值，要么偏小裁切、要么偏大抖动 |
+
+#### 10.6.6 适用范围检查清单
+
+写任何"内联展开型组件"前，问自己：
+
+- [ ] 这个组件的**外层容器 div 是否始终在 DOM**？（无 `v-if`，或者 `v-show`）
+- [ ] 这个组件的**高度是否三连锁**（`height` + `min-height` + `max-height`）？
+- [ ] **内部子元素**是否按 `v-show`（占位型）/ `v-if`（条件型）正确分类？
+- [ ] **数据态切换**时（空 → 加载中 → 有数据 → 数据增减），外层高度是否完全不变？
+- [ ] **父布局**（展开行 / 卡片 / 表格行）是否因为这个组件而出现抖动？
+
+只要有一条没满足，**就有可能在数据动态变化时撑爆父布局**——回到本文档 §十.6，重新设计。
+
 ---
 
 ## 十一、Element Plus 集成备忘
@@ -1038,6 +1203,8 @@ onMounted(load)
 | 表格列宽写死像素 | density 拖不动表格宽度 | 列宽用 `colW(px)` 函数缩放 |
 | 中部内容 `<div height: 600px>` | 表格被压扁、底部留白 | 让 flex 自动撑满 |
 | 顶部搜索框有多个 `<el-input>` | UX 混乱 | 统一一个主搜索 + 高级筛选 |
+| **内联展开区用 `<div v-if="data">`** | **数据态切换时外层高度从 0→N 抖动** | **外层 div 始终渲染 + 三连锁高度锁死（详见 §十.6）** |
+| **内联区只设 `min-height`，缺 `max-height`** | **数据多时撑高外层，破坏锁高** | **`height` + `min-height` + `max-height` 三连锁** |
 
 ---
 
@@ -1074,6 +1241,8 @@ onMounted(load)
 - [ ] advanced-wrapper 用 grid-rows 动画，不用 transition+v-if
 - [ ] 表格 .my-table 五条不变式齐全
 - [ ] 分页器 .my-pagination 内部 px 覆盖齐全
+- [ ] **内联展开型组件（chips / 摘要 / 子表 / 内联 toolbar）**：外层 div 始终渲染，无 `v-if`
+- [ ] **内联展开型组件**：高度锁死用 `height` + `min-height` + `max-height` 三连锁（详见 §十.6）
 
 ### EP 集成
 - [ ] el-select / el-input-number 像素级一致
@@ -1115,6 +1284,7 @@ onMounted(load)
 | §九 Bottom   | 行 1362–1435（`.bottom-area-inner` / `.sil-pagination`） |
 | §十 内联面板  | 行 893–1033（`.density-inline` 全套）     |
 | §十.3 父级覆盖 | 行 925–941（`.top-area__header` / `.top-area__title`） |
+| §十.6 外部高度锁死 | `src/views/stock-info/components/StockExpandRow.vue` `.expand-concepts` 全套 |
 | §十一 EP 集成 | 行 1207–1220 / 1372–1435（主题变量重声明） |
 </content>
 </invoke>

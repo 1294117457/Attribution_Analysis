@@ -1,4 +1,4 @@
-"""实时接口执行入口单元测试（内存假 Redis）
+"""实时接口框架单元测试（内存假 Redis）
 
   · 缓存命中不调 fetch
   · 并发同 key 只调一次 fetch（单飞）
@@ -15,10 +15,11 @@ from datetime import datetime
 
 import pytest
 
-from application.service import realtime_app_service as svc_mod
-from application.service.realtime_app_service import RealtimeAppService, RealtimeQueryError
+from domain.market import MarketTimeZone
+from infrastructure.adapter.realtime import framework as real_fw
 from infrastructure.adapter.realtime import registry as rt_registry
-from infrastructure.adapter.realtime.base import MARKET_TZ, BaseRealtimeQuery, ttl_for
+from infrastructure.adapter.realtime import RealtimeQueryFramework, RealtimeQueryError
+from infrastructure.adapter.realtime.base import BaseRealtimeQuery, ttl_for
 from infrastructure.adapter.realtime.stock_minute_kline import StockMinuteKlineQuery
 
 
@@ -116,14 +117,14 @@ def redis(monkeypatch):
     async def _get():
         return r
 
-    monkeypatch.setattr(svc_mod, "get_redis", _get)
+    monkeypatch.setattr(real_fw, "get_redis", _get)
     return r
 
 
 def _setup(monkeypatch, query):
     monkeypatch.setattr(rt_registry, "_registry", None)
     rt_registry.setup_realtime_registry([query])
-    return RealtimeAppService()
+    return RealtimeQueryFramework()
 
 
 async def test_cache_hit_skips_fetch(monkeypatch, redis):
@@ -170,7 +171,7 @@ async def test_query_many_isolates_errors(monkeypatch, redis):
 
 
 def _at(y, m, d, hh, mm):
-    return datetime(y, m, d, hh, mm, tzinfo=MARKET_TZ)
+    return datetime(y, m, d, hh, mm, tzinfo=MarketTimeZone.VALUE)
 
 
 @pytest.mark.parametrize(

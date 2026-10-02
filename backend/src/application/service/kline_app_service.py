@@ -1,12 +1,15 @@
 """K线应用服务
 
 用例编排：
-- 采集 K 线（采集时一并计算技术指标 — 方案 A）
-- 查询 K 线
-- 删除 K 线
+- 业务侧同步 K 线采集（小范围：单只股票 + 指标计算 — 方案 A）
+- K 线查询 / 单条查询 / 统计
+- K 线删除
 - 单只股票指标重算
 
-应用层不包含业务逻辑，业务逻辑在领域层。
+大批量采集走 CollectAppService → scheduler.collect.daily_kline 任务；
+本服务的 collect() 用于业务路由同步触发（pool_collect 单只股票等）。
+
+应用层不包含业务逻辑，业务逻辑在领域层（指标 → IndicatorCalculator）。
 """
 
 from __future__ import annotations
@@ -65,6 +68,26 @@ class KlineAppService:
         self._kline_repo = kline_repo
         self._stock_repo = stock_repo
         self._calc = indicator_calc or IndicatorCalculator()
+
+    @classmethod
+    def from_session(
+        cls,
+        session,
+        indicator_calc: Optional[IndicatorCalculator] = None,
+    ) -> "KlineAppService":
+        """工厂方法：从 session 构造（每个事务一个新实例）
+
+        适用场景：scheduler 子任务（已持有 AsyncSessionLocal，但未走 route Depends），
+        以及 tests/conftest.py 中 fixture 直接构造。
+        """
+        from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl
+        from infrastructure.persistence.repositories.stock_repository import StockRepoImpl
+
+        return cls(
+            kline_repo=KlineRepoImpl(session),
+            stock_repo=StockRepoImpl(session),
+            indicator_calc=indicator_calc,
+        )
 
     # ── 采集用例 ────────────────────────────────────────────
 

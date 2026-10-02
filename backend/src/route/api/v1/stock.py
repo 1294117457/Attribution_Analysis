@@ -18,14 +18,16 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from route.dto.response.panel import StockPanelQueryRequest
 from route.dto.request.stock import StockUpdateRequest
 from application.service.collect_app_service import CollectAppService
-from application.service.panel_app_service import StockPanelAppService
 from application.service.stock_app_service import StockAppService
-from infrastructure.persistence.connection import get_db
+from infrastructure.config.di import (
+    get_panel_app_service,
+    get_stock_app_service,
+)
+from application.service.panel_app_service import StockPanelAppService
 from route.api import _response as R
 
 logger = logging.getLogger(__name__)
@@ -33,35 +35,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/stocks", tags=["股票"])
 
 
-# DDD 改造：DI 工厂统一在 infrastructure/config/di.py
-# 此处委托 get_panel_app_service，注入 ConceptBriefService（domain）
-
-
-# ── 依赖注入工厂 ──────────────────────────────────────────
-
-def get_stock_service(
-    db: AsyncSession = Depends(get_db),
-) -> StockAppService:
-    return StockAppService(session=db)
-
-
-def get_panel_service(
-    db: AsyncSession = Depends(get_db),
-) -> StockPanelAppService:
-    """面板应用服务（兼容旧 /stocks/ 路由委托使用）
-
-    直接复用 infrastructure.config.di.get_panel_app_service，
-    保证概念、快照等概念相关数据正确注入。
-    """
-    # 由于 FastAPI Depends 限制不能直接复用，这里手动调用工厂
-    from application.service.panel_app_service import StockPanelAppService
-    from domain.service import ConceptBriefService
-    from infrastructure.persistence.repositories.concept_repository import ConceptRepoImpl
-    return StockPanelAppService(
-        session=db,
-        concept_repo=ConceptRepoImpl(db),
-        brief_service=ConceptBriefService(),
-    )
+# ── 依赖注入工厂（来自 infrastructure.config.di） ──────────────────────────
+get_stock_service = get_stock_app_service
+get_panel_service = get_panel_app_service
 
 
 # ── 查询路由 ──────────────────────────────────────────────

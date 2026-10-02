@@ -840,9 +840,10 @@ onMounted(async () => {
  * 内联密度设置面板（与标题同一行，展开后出现在按钮右侧）
  * ──────────────────────────────────────────────── */
 .density-inline {
-  /* 锁定高度，避免内部控件（slider / button）的高度变化反向撑高 title 行 */
-  height: 2.5rem;
-  max-height: 2.5rem;
+  /* 锁定高度 32px：≤ header(40px) × 80%，给上下各留 4px 居中 padding，
+   * 防止 slider/button 高度变化反向撑高 title 行（详见 .top-area__header 锁死 40px） */
+  height: 2rem;
+  max-height: 2rem;
   display: flex;
   align-items: center;
   /* 不设 flex-shrink:0，让 .density-inline 自身能被父级（.top-area__title）压缩到容器宽度内
@@ -871,14 +872,16 @@ onMounted(async () => {
   color: #1e40af;
 }
 
-/* 本页面内的 .top-area__header：高度自适应内容
+/* 本页面内的 .top-area__header：高度锁死 40px
  *
- *  原因：.density-inline 高度 2.5rem（40px）展开后会撑高父容器。
- *  与其硬锁高度（导致子项溢出裁切），不如让 header 自适应到 max(最小 32px, 内容 40px)。
- *  PageWrapper.vue 全局样式保留不变（其它页面继续按 min-height 自适应）。 */
+ * 关键不变式：density-inline 出现/消失不引起整页布局抖动。
+ *   - 旧方案：height:auto（被 .density-inline 40px 撑高到 40px）→ 展开时 header 32→40，整页上移 8px
+ *   - 新方案：height:40px 锁死 + .density-inline 32px（header 内居中）→ 展开/收起 header 恒 40px
+ * PageWrapper.vue 全局样式保留不变（其它页面继续按原规则自适应）。 */
 .stock-info-page :deep(.top-area__header) {
-  min-height: var(--density-title-min);
-  height: auto;
+  height: 2.5rem;              /* 40px 锁死 */
+  max-height: 2.5rem;
+  min-height: 2.5rem;
 }
 
 /* 防止 .top-area__title 这个 flex 容器内的子项（特别是 .density-inline 的 min-content）

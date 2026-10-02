@@ -29,7 +29,7 @@ from domain.entitys.concept.entity import Concept, ConceptNotFoundError
 from domain.entitys.concept.repository import ConceptRepository
 from domain.entitys.concept.vo import CONCEPT_TYPE_PRIORITY, ConceptBriefVO
 from application.port.collector_port import ConceptFetcher
-from application.service.realtime_app_service import RealtimeResult, get_realtime_app_service
+from infrastructure.adapter.realtime import RealtimeResult, get_realtime_query_framework
 from infrastructure.persistence.repositories.concept_repository import ConceptRepoImpl
 
 logger = logging.getLogger(__name__)
@@ -108,7 +108,7 @@ class ConceptAppService:
             return {}
         if names is None:
             names = await self._repo.get_names(codes)
-        results = await get_realtime_app_service().query_many(
+        results = await get_realtime_query_framework().query_many(
             "concept_minute", [{"index_code": c} for c in codes],
         )
         return {

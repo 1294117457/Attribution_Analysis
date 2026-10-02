@@ -3,6 +3,10 @@
 页面：`frontend/src/views/stock-info/StockInfoList.vue`
 接口：`GET /api/v1/stock-panel/`（`with_pools=true`）
 查询：`backend/src/infrastructure/persistence/repositories/panel_compose_repository.py`
+后端 DDD 现状（2026-10-02）：
+- `domain/market/` 提供交易时段规则（`MarketSessionService` + `is_trading_time` / `ttl_for` / `market_now`），被 `infrastructure/adapter/realtime/framework.py` 调用以决定实时接口缓存 TTL
+- `infrastructure/adapter/realtime/RealtimeQueryFramework` 替代旧的 `application/service/realtime_app_service.py`（技术框架下移到 infrastructure 层）
+- 业务侧 service 与实时接口的关系：`*_app_service` 调 `get_realtime_query_framework().query(...)` 拉行情数据，不持有缓存/限流/单飞等横切逻辑
 
 ## 列 → 表
 
@@ -34,7 +38,7 @@
 - 分 K 天数：1 分钟只有「当天」，其他周期「当天 / 3 日 / 5 日」；「当天」指最近一个交易日。北交所代码暂不支持。
 - 概念 Tab 各分组内按当日涨跌幅降序；行情源失败时显示最近一条日 K 收盘（`stale=true`，灰色，悬浮提示「行情源暂不可用」）。
 - 轮询用 `frontend/src/composables/useRealtimePoll.ts`：仅交易时段 + 页面可见时刷新，折叠 / 关闭即停止，连续失败 3 次暂停并显示「重试」。工具栏显示「实时 · 15 秒」/「已收盘」标记和最后更新时间。
-- 后端缓存 / 单飞 / 限流细节见 [`collectmanage摘要.md`](collectmanage摘要.md) §4。
+- 后端缓存 / 单飞 / 限流细节见 [`collectmanage摘要.md`](collectmanage摘要.md) §4 / §10。
 
 ## 表 → 采集任务
 

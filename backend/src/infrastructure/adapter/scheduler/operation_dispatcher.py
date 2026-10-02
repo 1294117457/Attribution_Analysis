@@ -14,7 +14,7 @@ from datetime import datetime
 
 from infrastructure.persistence.connection import AsyncSessionLocal
 from infrastructure.persistence.repositories.pool_operation_repository import PoolOperationRepoImpl
-from infrastructure.adapter.scheduler.registry import get_task_registry
+from infrastructure.adapter.scheduler.task_registry import get_task_registry
 
 logger = logging.getLogger(__name__)
 

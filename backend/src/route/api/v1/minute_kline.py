@@ -1,16 +1,13 @@
 """分钟 K 线 API 路由（实时接口 stock_minute_kline，不落库）
 
-前端请求 → RealtimeAppService（Redis 15 秒缓存 / 单飞）→ pytdx
+前端请求 → RealtimeQueryFramework（Redis 15 秒缓存 / 单飞 / 同源限流 / 降级 / 统计）→ pytdx
 """
 
 from typing import Optional
 
 from fastapi import APIRouter, Query
 
-from application.service.realtime_app_service import (
-    RealtimeQueryError,
-    get_realtime_app_service,
-)
+from infrastructure.adapter.realtime import RealtimeQueryError, get_realtime_query_framework
 from route.api import _response as R
 
 router = APIRouter(prefix="/minute-klines", tags=["分钟K线"])
@@ -25,7 +22,7 @@ async def get_minute_klines(
 ):
     params = {"symbol": symbol, "interval": interval, "days": days, "count": count}
     try:
-        res = await get_realtime_app_service().query("stock_minute_kline", params)
+        res = await get_realtime_query_framework().query("stock_minute_kline", params)
     except ValueError as e:
         return R.err(str(e), 400)
     except RealtimeQueryError as e:

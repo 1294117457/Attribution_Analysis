@@ -4,10 +4,10 @@
 接口：`/api/v1/collect/*`（`backend/src/route/api/v1/collect_task.py`）
 应用服务：`backend/src/application/service/collect_app_service.py`
 框架：`backend/src/infrastructure/adapter/scheduler/collect/`；调度器：`scheduler/collect_scheduler.py`
-实时接口：`backend/src/infrastructure/adapter/realtime/` + `application/service/realtime_app_service.py`
+实时接口：`backend/src/infrastructure/adapter/realtime/`（含 `framework.py` 的 `RealtimeQueryFramework` + `BaseRealtimeQuery` 子类 + `domain/market/` 提供的交易时段规则）
 方案：[`04-修订方案`](../dev/step2/04采集管理优化/04-修订方案.md)（S0–S4 已实施）、[`05接口优化`](../dev/step2/04采集管理优化/05接口优化.md)、[`06实时数据接口`](../dev/step2/04采集管理优化/06实时数据接口.md)（已实施）
 
-> 最后更新：2026-09-30
+> 最后更新：2026-10-02
 
 ## 1. 现状一句话
 
@@ -80,7 +80,7 @@ flowchart LR
 flowchart LR
     BIZ["业务路由<br/>/concepts/quotes · /concepts/{code}/minute<br/>/concepts/tab-by-symbol · /minute-klines"] --> RT
     CM["采集管理 RealtimePanel<br/>/collect/realtime/{name}/query · /stats"] --> RT
-    RT["RealtimeAppService<br/>query / query_many"] -->|命中| C[("Redis rt:{name}:{key}")]
+    RT["RealtimeQueryFramework<br/>query / query_many"] -->|命中| C[("Redis rt:{name}:{key}")]
     RT -->|未命中：单飞锁 + 同源信号量| Q["BaseRealtimeQuery.fetch"]
     Q --> F["Fetcher（adata / pytdx）"]
     Q -. 失败 .-> FB["fallback（stale=true，不缓存）"]
@@ -160,3 +160,42 @@ flowchart LR
 - `trading_day_only` 在节假日仍会触发（只排除周末），空跑无副作用。
 - 前端 `stock-info/api.ts` 里的 `/moneyflows/*` 等接口后端尚未实现。
 - 前端 `vue-tsc -p tsconfig.app.json` 在 `stock-info` / `stock-pool` / `market` 等目录仍有 `http.get<T>().then(unwrap)` 泛型写法导致的类型错误（`collect-manage` 已改为 `ApiResponse<T>`）。
+
+## 10. DDD 重构（2026-10-02）
+
+把"领域规则"和"技术框架"从基础设施层上提到 domain 层或归位：
+
+### 10.1 上提到 domain 层
+
+| 原位置 | 现位置 | 性质 |
+|---|---|---|
+| `realtime/base.py` 的 `market_now` / `is_trading_time` / `ttl_for` | `domain/market/market_session.py`（`MarketSessionService` 等） | 市场交易时段规则 |
+| `scheduler/collect/concept.py` 的 `LIST_SHRINK_GUARD` / `MEMBER_SHRINK_GUARD` / `MEMBER_SHRINK_MIN` 常量与内联表达式 | `domain/concept/collection_policy.py`（`ConceptCollectionPolicy.should_skip_list_update` / `should_skip_member_sync`） | 概念采集保护策略 |
+
+- `realtime/base.py` 仍保留 `is_trading_time` / `market_now` / `ttl_for` 的兼容 shim 重导出，旧 import 路径仍可用。
+- `scheduler/collect/concept.py` 仍保留同名模块级常量，便于历史 grep；实际判断改用注入的 `_COLLECTION_POLICY`。
+
+### 10.2 归位到 infrastructure（明确技术框架定位）
+
+| 原位置 | 现位置 | 备注 |
+|---|---|---|
+| `application/service/realtime_app_service.py` 的 `RealtimeAppService` | `infrastructure/adapter/realtime/framework.py` 的 `RealtimeQueryFramework` | **技术框架**而非业务服务，迁入 infrastructure 层 |
+| `application/service/realtime_app_service.py` 的 `RealtimeResult` / `RealtimeQueryError` | `infrastructure/adapter/realtime/framework.py` | 领域输出对象（DTO） |
+| `application/service/realtime_app_service.py` 的 `get_realtime_app_service()` | `get_realtime_query_framework()` | 重命名 |
+
+- 文件 `application/service/realtime_app_service.py` 已删除。
+- 调用方（路由 / service / 测试）已全部迁移到 `from infrastructure.adapter.realtime import ...`：
+  - `route/api/v1/minute_kline.py`
+  - `route/api/v1/concept.py`
+  - `route/api/v1/collect_task.py`
+  - `application/service/concept_app_service.py`
+  - `tests/infrastructure/realtime/test_realtime_app_service.py` → 重命名为 `test_realtime_framework.py`
+
+### 10.3 设计意图
+
+| 模块 | 性质 | 与 application/service 的关系 |
+|---|---|---|
+| `domain/market/MarketSessionService` | **领域服务**（纯规则，无 IO） | application/service 可直接调用，不依赖 infrastructure |
+| `domain/concept/ConceptCollectionPolicy` | **领域服务**（纯规则） | application/service / scheduler/collect 调用 |
+| `infrastructure/adapter/realtime/RealtimeQueryFramework` | **技术框架**（缓存 / 单飞 / 限流 / 降级 / 统计） | application/service 调它，但不持有任何业务规则 |
+| `infrastructure/adapter/realtime/BaseRealtimeQuery` 子类 | **领域行为**（cache_key / fallback / normalize） + **基础设施**（fetch）的混合，由子类实现 | 框架调子类的领域方法，子类调 fetcher 拿数据 |

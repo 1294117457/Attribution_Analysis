@@ -1,59 +1,34 @@
-"""实时接口基类与交易时段工具
+"""实时接口协议基类与目录元数据字段
 
 实时接口 = 页面当前要看的数据：按需请求数据源，结果只写 Redis，不入库、不建任务记录。
-缓存 / 单飞 / 限流 / 降级 / 统计由 application.service.realtime_app_service 统一处理，
+缓存 / 单飞 / 限流 / 降级 / 统计由 infrastructure.adapter.realtime.framework.RealtimeQueryFramework 统一处理，
 子类只描述「缓存键、怎么取、失败怎么降级」。
+
+交易时段相关领域规则（is_trading_time / ttl_for / market_now）已迁移到 domain.market，
+本模块保留旧名作为兼容 shim，业务代码请直接 from domain.market import ...。
 
 配套设计文档：docs/dev/step2/04采集管理优化/06实时数据接口.md §3
 """
-
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime, time, timedelta
 from typing import Any, ClassVar, Optional
-from zoneinfo import ZoneInfo
 
-MARKET_TZ = ZoneInfo("Asia/Shanghai")
-
-_MORNING = (time(9, 25), time(11, 30))
-_AFTERNOON = (time(13, 0), time(15, 0))
-
-
-def market_now() -> datetime:
-    return datetime.now(MARKET_TZ)
-
-
-def is_trading_time(now: Optional[datetime] = None) -> bool:
-    """工作日 09:25–11:30、13:00–15:00（节假日按工作日处理）"""
-    now = (now or market_now()).astimezone(MARKET_TZ)
-    if now.weekday() >= 5:
-        return False
-    t = now.time()
-    return _MORNING[0] <= t < _MORNING[1] or _AFTERNOON[0] <= t < _AFTERNOON[1]
-
-
-def ttl_for(ttl_trading: int, now: Optional[datetime] = None) -> int:
-    """交易时段返回 ttl_trading；其余时段缓存到下一次开盘（午休到 13:00，收盘后到下个工作日 09:25）"""
-    now = (now or market_now()).astimezone(MARKET_TZ)
-    if is_trading_time(now):
-        return ttl_trading
-
-    t = now.time()
-    if now.weekday() < 5 and t < _MORNING[0]:
-        target = now.replace(hour=9, minute=25, second=0, microsecond=0)
-    elif now.weekday() < 5 and _MORNING[1] <= t < _AFTERNOON[0]:
-        target = now.replace(hour=13, minute=0, second=0, microsecond=0)
-    else:
-        day = now + timedelta(days=1)
-        while day.weekday() >= 5:
-            day += timedelta(days=1)
-        target = day.replace(hour=9, minute=25, second=0, microsecond=0)
-    return max(ttl_trading, int((target - now).total_seconds()))
+# 领域规则重导出（向后兼容旧 import 路径）
+from domain.market import is_trading_time as is_trading_time  # noqa: F401
+from domain.market import market_now as market_now  # noqa: F401
+from domain.market import ttl_for as ttl_for  # noqa: F401
 
 
 class BaseRealtimeQuery(ABC):
-    """实时接口基类（与 BaseCollectTask 共用目录元数据字段）"""
+    """实时接口基类（与 BaseCollectTask 共用目录元数据字段）
+
+    子类契约：
+    - cache_key(params)  —— 计算缓存键（领域行为）
+    - fetch(params)       —— 请求数据源，返回可 JSON 序列化的结果（基础设施）
+    - normalize(params)   —— 校验 / 规范化参数（领域行为）
+    - fallback(params)    —— 数据源失败时的降级结果（领域降级策略，可选）
+    """
 
     name: ClassVar[str] = ""
     facet: ClassVar[str] = ""
@@ -87,4 +62,9 @@ class BaseRealtimeQuery(ABC):
         return None
 
 
-__all__ = ["BaseRealtimeQuery", "MARKET_TZ", "is_trading_time", "market_now", "ttl_for"]
+__all__ = [
+    "BaseRealtimeQuery",
+    "is_trading_time",
+    "market_now",
+    "ttl_for",
+]

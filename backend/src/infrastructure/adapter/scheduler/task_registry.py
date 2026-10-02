@@ -1,4 +1,10 @@
-"""异步任务注册表"""
+"""异步任务注册表（asyncio.Task 生命周期管理）
+
+与 collect/registry.py::CollectTaskRegistry 是两件事：
+- 本文件 TaskRegistry：管理后台 asyncio.Task 的派发/取消/查询（池操作 dispatcher 用）
+- collect/registry.py CollectTaskRegistry：task_type → BaseCollectTask 子类注册表（采集管理用）
+两者职责不同，并存。
+"""
 
 from __future__ import annotations
 

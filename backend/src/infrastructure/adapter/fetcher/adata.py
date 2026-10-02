@@ -153,7 +153,7 @@ class AdataConceptFetcher(BaseCollector):
         return items
 
     def fetch_minute(self, index_code: str, delay: Optional[float] = 0) -> Optional[ConceptMinuteBO]:
-        """概念当日分时（实时接口，默认不限速；限流由 RealtimeAppService 的并发信号量控制）"""
+        """概念当日分时（实时接口，默认不限速；限流由 RealtimeQueryFramework 的并发信号量控制）"""
         df = self._call(
             lambda: self._adata.stock.market.get_market_concept_min_ths(index_code=index_code),
             delay=delay,

@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 import pandas as pd
@@ -278,12 +278,16 @@ class TushareFetcher(BaseCollector):
                 end_date=end_str,
             )
         except Exception as e:
+            if _is_rate_limit(e):
+                raise RateLimitError(str(e)) from e
             raise self._wrap_error(f"调用 Tushare daily() 失败", e)
 
         if df is None or df.empty:
             self._log("warning", f"{params.symbol}: Tushare 返回空数据")
             return []
 
+        # 空 DataFrame 但触发了限频特征（Tushare 偶发返回空 + 限频）—— 不视为成功 0 条
+        # 注：上面已 raise RateLimitError，这里只是兜底
         df = df.sort_values("trade_date").reset_index(drop=True)
         klines = self._parser.parse(df, params.symbol)
 

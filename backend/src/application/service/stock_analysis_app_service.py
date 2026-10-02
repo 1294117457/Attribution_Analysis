@@ -2,15 +2,13 @@
 
 聚合「股票档案」供前端图表 + 后续 AI Agent 一次性消费：
 - 股票基本信息（StockInfo）
-- K 线 + 17 个指标列（daily_klines）
+- K 线 + 17 个指标列（tech_kline_dailys）
 - 技术形态摘要（SignalDetector 算好金叉/超买/突破等）
 - 所在操作池列表
 
 对应路由：GET /stocks/{symbol}/analysis?days=365
 
-DDD 改造：
-- 类名原 StockAnalysisService → AppService（统一命名）
-- 仍依赖 application.signals.SignalDetector（待后续移到 domain/kline/service/）
+构造：依赖注入接收 Repository 与可选的 SignalDetector 实例。
 """
 
 from __future__ import annotations
