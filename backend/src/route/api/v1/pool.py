@@ -1,7 +1,6 @@
 """操作池 API 路由"""
 
 from fastapi import APIRouter, Depends, Path, Query, Body, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from route.dto.response.pool import (
     PoolCreateRequest,
@@ -16,7 +15,10 @@ from route.dto.request.pool_operation import (
 )
 from application.service.pool_app_service import StockPoolAppService
 from application.service.pool_operation_app_service import PoolOperationAppService
-from infrastructure.persistence.connection import get_db
+from infrastructure.config.di import (
+    get_pool_app_service,
+    get_pool_operation_app_service,
+)
 from route.api._response import (
     ok, created, bad_request, not_found, err,
 )
@@ -24,14 +26,9 @@ from route.api._response import (
 router = APIRouter(tags=["操作池"])
 
 
-def get_pool_service(db: AsyncSession = Depends(get_db)) -> StockPoolAppService:
-    return StockPoolAppService(session=db)
-
-
-def get_pool_op_service(
-    db: AsyncSession = Depends(get_db),
-) -> PoolOperationAppService:
-    return PoolOperationAppService(session=db)
+# ── 依赖注入工厂（来自 infrastructure.config.di） ──────────────────────────
+get_pool_service = get_pool_app_service
+get_pool_op_service = get_pool_operation_app_service
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
