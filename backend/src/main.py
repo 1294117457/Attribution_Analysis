@@ -60,6 +60,13 @@ from infrastructure.persistence.models import (                                 
     ConceptSnapshotDB,
     CollectPlanDB,
     CollectGroupDB,
+    # 认证授权 ORM 模型
+    UserDB,                                                              # noqa: F401
+    RoleDB,                                                              # noqa: F401
+    PermissionDB,                                                        # noqa: F401
+    UserRoleDB,                                                          # noqa: F401
+    RolePermissionDB,                                                    # noqa: F401
+    RefreshTokenDB,                                                      # noqa: F401
 )
 from application.service.collect_app_service import cancel_background
 from infrastructure.adapter.scheduler.collect_scheduler import (
@@ -83,6 +90,7 @@ from infrastructure.adapter.realtime import (
     setup_realtime_registry,
 )
 from route.api.router import api_router
+from infrastructure.security import key_manager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -95,6 +103,9 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """应用生命周期管理"""
+    # JWT 密钥预热(第一次启动时生成 RSA 密钥对到 .keys/)
+    key_manager.warmup()
+
     async with async_engine.begin() as conn:
         # 先做重命名 / 重建（必须在 create_all 之前，否则 create_all 会创建空的新表）
         await _migrate_rename_kline_table(conn)
@@ -107,6 +118,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await _migrate_sys_collect_tasks(conn)
         # 初始化操作池：创建默认池
         await _ensure_default_pool(conn)
+        # 鉴权系统：6 张 sys_* 表 + 3 角色 + 16 权限 + 默认绑定
+        await _migrate_auth_system(conn)
+        # 第一个 admin 用户（仅 sys_users 为空时创建）
+        await _ensure_initial_admin(conn)
 
     # 注册数据源到采集器注册中心
     setup_default_registry()
@@ -292,6 +307,82 @@ async def _ensure_default_pool(conn) -> None:
             logging.info("已创建默认池：我的自选")
     except Exception as e:
         logging.warning("默认池初始化跳过: %s", e)
+
+
+async def _migrate_auth_system(conn) -> None:
+    """加载 backend/migrations/002_auth_system.sql 执行
+    (CREATE TABLE IF NOT EXISTS + INSERT ON CONFLICT DO NOTHING) 全部幂等。
+    """
+    from pathlib import Path
+    from sqlalchemy import text
+
+    sql_path = Path(__file__).resolve().parent.parent.parent / "migrations" / "002_auth_system.sql"
+    if not sql_path.exists():
+        logging.warning("002_auth_system.sql 未找到: %s,跳过", sql_path)
+        return
+    sql = sql_path.read_text(encoding="utf-8")
+
+    success = 0
+    skip = 0
+    for stmt in sql.split(";"):
+        s = stmt.strip()
+        if not s:
+            continue
+        try:
+            await conn.execute(text(s))
+            success += 1
+        except Exception as e:
+            skip += 1
+            logging.warning("auth 迁移跳过: %s | err=%s", s[:80], e)
+    logging.info("auth 系统迁移完成: success=%d skip=%d", success, skip)
+
+
+async def _ensure_initial_admin(conn) -> None:
+    """首次启动时创建初始 admin 用户
+    email=admin@local / username=admin / password=admin123,
+    并绑定 admin 角色。仅 sys_users 为空时执行。
+    """
+    import bcrypt as _bcrypt
+    from sqlalchemy import text
+
+    try:
+        count = (await conn.execute(text("SELECT COUNT(*) FROM sys_users"))).scalar()
+    except Exception as e:
+        logging.warning("查询 sys_users 失败,跳过 admin 初始化: %s", e)
+        return
+    if count and count > 0:
+        return
+
+    h = _bcrypt.hashpw(b"admin123", _bcrypt.gensalt(rounds=12)).decode("utf-8")
+    try:
+        admin_id = (
+            await conn.execute(
+                text(
+                    "INSERT INTO sys_users (email, username, password_hash, nickname, "
+                    "is_active, is_verified) VALUES "
+                    "('admin@local', 'admin', :h, '系统管理员', TRUE, TRUE) RETURNING id"
+                ),
+                {"h": h},
+            )
+        ).scalar()
+        await conn.execute(
+            text(
+                "INSERT INTO sys_user_roles (user_id, role_id) "
+                "VALUES (:u, (SELECT id FROM sys_roles WHERE code = 'admin'))"
+            ),
+            {"u": admin_id},
+        )
+        logging.warning(
+            "=" * 70 + "\n"
+            "  初始 admin 账号已创建!\n"
+            "    email    : admin@local\n"
+            "    username : admin\n"
+            "    password : admin123\n"
+            "  [WARNING]  请登录后第一时间修改!\n" +
+            "=" * 70
+        )
+    except Exception as e:
+        logging.error("创建初始 admin 失败: %s", e)
 
 
 def create_app() -> FastAPI:

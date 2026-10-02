@@ -34,3 +34,13 @@ from infrastructure.persistence.models.concept import (                  # noqa:
     ConceptSnapshotDB,
     ConceptsDB,
 )
+from infrastructure.persistence.models.user import (                    # noqa: F401
+    UserDB,
+    RoleDB,
+    PermissionDB,
+)
+from infrastructure.persistence.models.user_role import (               # noqa: F401
+    UserRoleDB,
+    RolePermissionDB,
+)
+from infrastructure.persistence.models.refresh_token import RefreshTokenDB  # noqa: F401

@@ -33,6 +33,7 @@ from application.service.pool_app_service import StockPoolAppService
 from application.service.pool_operation_app_service import PoolOperationAppService
 from application.service.stock_analysis_app_service import StockAnalysisAppService
 from application.service.stock_app_service import StockAppService
+from application.service.auth_app_service import AuthAppService
 from domain.service import ConceptBriefService, IndicatorCalculator
 from infrastructure.persistence.connection import get_db
 from infrastructure.persistence.repositories.concept_repository import ConceptRepoImpl
@@ -153,3 +154,13 @@ def get_stock_analysis_app_service(
         kline_repo=KlineRepoImpl(session),
         pool_repo=StockPoolRepoImpl(session),
     )
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────
+
+
+def get_auth_app_service(
+    session: AsyncSession = Depends(get_db),
+) -> AuthAppService:
+    """认证授权应用服务"""
+    return AuthAppService(session=session)
