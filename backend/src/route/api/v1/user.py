@@ -12,12 +12,12 @@ from application.service.auth_app_service import AuthAppService
 from infrastructure.config.di import get_auth_app_service
 from route.api import _response as R
 from route.api.v1.deps_auth import require_permission
-from route.dto.auth import (
+from route.dto.request.auth import (
     AssignRoleRequest,
     ResetPasswordRequest,
     UpdateUserStatusRequest,
-    UserListResponse,
 )
+from route.dto.response.auth import UserListResponse
 
 
 router = APIRouter(prefix="/users", tags=["用户管理"])

@@ -1,47 +1,48 @@
-"""操作池应用服务"""
+"""操作池应用服务
 
+DDD 改造（2026-10-03）：构造改为依赖注入，只接收 Repository，不再持有 AsyncSession，
+也不再直接 import `infrastructure.persistence.*`（DDD.md §4）。
+"""
 from __future__ import annotations
 
 import logging
-from typing import Optional
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from route.dto.response.pool import (
-    PoolCreateRequest,
-    PoolUpdateRequest,
     PoolAddMembersRequest,
-    PoolRemoveMembersRequest,
-    PoolUpdateMemberMemoRequest,
-    PoolVO,
+    PoolAddMembersResponse,
+    PoolCreateRequest,
     PoolDetailVO,
-    PoolMemberVO,
     PoolListResponse,
     PoolMemberListResponse,
-    PoolAddMembersResponse,
+    PoolMemberVO,
     PoolPoolsBySymbolResponse,
+    PoolRemoveMembersRequest,
+    PoolUpdateMemberMemoRequest,
+    PoolUpdateRequest,
+    PoolVO,
 )
+from domain.entitys.stock_info.repository import StockInfoRepository
 from domain.entitys.stock_pool.entity import (
     CannotDeleteDefaultPoolError,
-    DuplicateMemberError,
     MemberNotFoundError,
     PoolNotFoundError,
     StockPool,
 )
 from domain.entitys.stock_pool.repository import StockPoolRepository
-from infrastructure.persistence.repositories.pool_repository import StockPoolRepoImpl
-from infrastructure.persistence.repositories.stock_repository import StockRepoImpl
 
 logger = logging.getLogger(__name__)
 
 
 class StockPoolAppService:
-    """操作池应用服务"""
+    """操作池应用服务（依赖注入：只接 Repository）"""
 
-    def __init__(self, session: AsyncSession):
-        self._session = session
-        self._repo: StockPoolRepository = StockPoolRepoImpl(session)
-        self._stock_repo = StockRepoImpl(session)
+    def __init__(
+        self,
+        pool_repo: StockPoolRepository,
+        stock_repo: StockInfoRepository,
+    ) -> None:
+        self._repo = pool_repo
+        self._stock_repo = stock_repo
 
     # ── 池 CRUD ─────────────────────────────────────────────────────────────
 

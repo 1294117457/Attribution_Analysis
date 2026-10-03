@@ -2,11 +2,13 @@
 
 写入只走采集任务（infrastructure/adapter/scheduler/collect/concept.py），本服务只负责查询与实时反查。
 
+DDD 改造（2026-10-03）：不再持有 AsyncSession / 不再 import `infrastructure.persistence.*`；
+实时行情通过 RealtimeQueryPort 注入。
+
 配套设计文档：
   docs/dev/06gainian/03-application-and-route-design.md §2.1
   docs/dev/step2/02datamanage/04-概念数据adata同源改造方案.md §5.5
 """
-
 from __future__ import annotations
 
 import logging
@@ -24,13 +26,12 @@ from route.dto.response.concept import (
     CONCEPT_TYPE_LABELS,
     CONCEPT_TYPE_ORDER,
 )
-from route.dto.page import Page
+from application.port.page import Page
+from application.port.collector_port import ConceptFetcher
+from application.port.realtime_query_port import RealtimeQueryPort
 from domain.entitys.concept.entity import Concept, ConceptNotFoundError
 from domain.entitys.concept.repository import ConceptRepository
 from domain.entitys.concept.vo import CONCEPT_TYPE_PRIORITY, ConceptBriefVO
-from application.port.collector_port import ConceptFetcher
-from infrastructure.adapter.realtime import RealtimeResult, get_realtime_query_framework
-from infrastructure.persistence.repositories.concept_repository import ConceptRepoImpl
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +63,16 @@ class ConceptAppService:
     - 实时反查：按股票调同花顺拿所属概念与入选理由（不入库）
     """
 
-    def __init__(self, repo: ConceptRepository, fetcher: ConceptFetcher):
+    def __init__(
+        self,
+        *,
+        repo: ConceptRepository,
+        fetcher: ConceptFetcher,
+        realtime: Optional[RealtimeQueryPort] = None,
+    ):
         self._repo = repo
         self._fetcher = fetcher
+        self._realtime = realtime
 
     # ── 查询 ─────────────────────────────────────────
 
@@ -108,7 +116,9 @@ class ConceptAppService:
             return {}
         if names is None:
             names = await self._repo.get_names(codes)
-        results = await get_realtime_query_framework().query_many(
+        if self._realtime is None:
+            return {}
+        results = await self._realtime.query_many(
             "concept_minute", [{"index_code": c} for c in codes],
         )
         return {
@@ -269,8 +279,8 @@ def _build_sections(bucket: dict[str, list[dict]]) -> list[ConceptTabSectionVO]:
     ]
 
 
-def _to_quote(index_code: str, name: str, res: RealtimeResult) -> dict:
-    d = res.data or {}
+def _to_quote(index_code: str, name: str, res: object) -> dict:
+    d = (getattr(res, "data", None) or {})
     pct = d.get("change_pct")
     return {
         "index_code": index_code,
@@ -281,17 +291,8 @@ def _to_quote(index_code: str, name: str, res: RealtimeResult) -> dict:
         "pct_change": pct,
         "color": "flat" if not pct else ("up" if pct > 0 else "down"),
         "trade_time": d.get("trade_time"),
-        "captured_at": res.fetched_at,
-        "stale": res.stale,
+        "captured_at": getattr(res, "fetched_at", None),
+        "stale": getattr(res, "stale", False),
         "rank_label": "",
         "up_down_label": "",
     }
-
-
-# ── 依赖注入工厂 ──────────────────────────────────────
-
-async def get_concept_app_service(session) -> ConceptAppService:
-    """构造 ConceptAppService 实例（session: AsyncSession）"""
-    from application.port.registry import get_registry
-
-    return ConceptAppService(repo=ConceptRepoImpl(session), fetcher=get_registry().get(ConceptFetcher))

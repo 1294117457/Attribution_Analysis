@@ -1,19 +1,21 @@
 """认证授权 - 应用服务
 
 AuthAppService 是用户登录、注册、刷新令牌、登出、用户列表/角色管理等的统一入口。
-所有密码校验均通过基础设施层 infrastructure.security.password 完成。
+
+DDD 改造（2026-10-03）：
+- 不再持有 AsyncSession / ORM 模型：只接收已注入的 Repository（DDD.md §2.2、§4）
+- 不再 import `infrastructure.*`：基础设施适配通过 DI 在构造时注入
+- 所有权限 join 下沉到 `UserRepository.list_permission_codes_by_user`
+- 密码 hash / verify、captcha、email verification、JWT 由 port 注入
 """
 from __future__ import annotations
 
-import hashlib
-from datetime import datetime
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Optional, Protocol
 
 import jwt as pyjwt
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from domain.auth.entity import (
+from domain.entitys.auth.entity import (
     InvalidCredentialsError,
     Permission,
     Role,
@@ -23,38 +25,145 @@ from domain.auth.entity import (
     UserInactiveError,
     UserNotFoundError,
 )
-from domain.auth.repository import (
+from domain.entitys.auth.repository import (
     PermissionRepository,
     RefreshTokenRepository,
     RoleRepository,
     UserRepository,
 )
-from infrastructure.persistence.models.user_role import RolePermissionDB
-from infrastructure.persistence.models.user import (
-    PermissionDB,
-)
-from infrastructure.persistence.repositories.auth_repository import (
-    PermissionRepoImpl,
-    RefreshTokenRepoImpl,
-    RoleRepoImpl,
-    UserRepoImpl,
-)
-from infrastructure.security.jwt_service import (
-    ACCESS_TOKEN_EXPIRE_SECONDS,
-    create_access_token,
-    create_refresh_token,
-    decode_token,
-)
-from infrastructure.security.password import hash_password, verify_password
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Port 接口（DDD.md §2.2 — application 定义 port，由 infrastructure 实现）
+# ════════════════════════════════════════════════════════════════════════
+
+
+class PasswordHasherPort(Protocol):
+    """密码 hash / verify 抽象端口"""
+
+    def hash(self, plain: str) -> str: ...
+    def verify(self, plain: str, hashed: str) -> bool: ...
+
+
+class CaptchaPort(Protocol):
+    """图形验证码校验端口"""
+
+    async def verify(self, captcha_id: str, captcha_code: str) -> tuple[bool, str]: ...
+
+
+class EmailVerificationPort(Protocol):
+    """邮箱验证码发送 / 校验端口（实现位于 infrastructure.adapter.email_verification）"""
+
+    async def send(
+        self,
+        *,
+        email: str,
+        purpose: str,
+        ip: Optional[str],
+        user_agent: Optional[str],
+    ) -> dict: ...
+
+    async def verify(self, *, email: str, purpose: str, input_code: str) -> None: ...
+
+
+class JwtPort(Protocol):
+    """JWT 签发 / 解码端口"""
+
+    @property
+    def access_expire_seconds(self) -> int: ...
+    @property
+    def refresh_expire_seconds(self) -> int: ...
+
+    def create_access_token(
+        self,
+        *,
+        user_id: int,
+        email: str,
+        roles: list[str],
+        permissions: list[str],
+    ) -> tuple[str, int]: ...
+
+    def create_refresh_token(self, *, user_id: int) -> tuple[str, str, int]: ...
+
+    def decode_token(self, token: str, *, expected_type: str) -> dict: ...
+
+
+# ════════════════════════════════════════════════════════════════════════
+# 应用服务
+# ════════════════════════════════════════════════════════════════════════
 
 
 class AuthAppService:
-    def __init__(self, session: AsyncSession) -> None:
-        self.session = session
-        self.users: UserRepository = UserRepoImpl(session)
-        self.roles: RoleRepository = RoleRepoImpl(session)
-        self.perms: PermissionRepository = PermissionRepoImpl(session)
-        self.refresh: RefreshTokenRepository = RefreshTokenRepoImpl(session)
+    """认证授权应用服务（DDD 风格：所有依赖由构造函数注入）
+
+    依赖：
+    - users / roles / perms / refresh：仓储接口（domain）
+    - hasher / captcha / email_verify / jwt：port 接口（application）
+    """
+
+    def __init__(
+        self,
+        *,
+        users: UserRepository,
+        roles: RoleRepository,
+        perms: PermissionRepository,
+        refresh: RefreshTokenRepository,
+        hasher: PasswordHasherPort,
+        captcha: CaptchaPort,
+        email_verify: EmailVerificationPort,
+        jwt: JwtPort,
+    ) -> None:
+        self.users = users
+        self.roles = roles
+        self.perms = perms
+        self.refresh = refresh
+        self.hasher = hasher
+        self.captcha = captcha
+        self.email_verify = email_verify
+        self.jwt = jwt
+
+    # ── 邮箱验证码 ──────────────────────────────────────────────────
+
+    async def send_verification_code(
+        self,
+        *,
+        email: str,
+        purpose: str = "register",
+        ip: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        captcha_id: str,
+        captcha_code: str,
+    ) -> dict:
+        """发送邮箱验证码（限流 + 写 Redis + 发邮件）。
+
+        - 注册场景:邮箱已被注册 → 抛 UserAlreadyExistsError(避免泄漏注册状态)
+        - 改密场景:邮箱未注册 → 抛 UserNotFoundError(用户应能感知"邮箱未注册")
+        - 图形验证码:必传,失败抛 AuthError → 400
+        """
+        await self._verify_captcha(captcha_id, captcha_code)
+
+        if purpose == "register" and await self.users.find_by_email(email):
+            raise UserAlreadyExistsError(field="邮箱", value=email)
+        if purpose == "reset_password" and not await self.users.find_by_email(email):
+            raise UserNotFoundError(email)
+        return await self.email_verify.send(
+            email=email,
+            purpose=purpose,
+            ip=ip,
+            user_agent=user_agent,
+        )
+
+    # ── 内部:必传图形验证码校验 ─────────────────────────────────────
+
+    async def _verify_captcha(self, captcha_id: str, captcha_code: str) -> None:
+        """强制要求前端传 captcha_id + code,任一为空或校验失败都抛 AuthError。"""
+        if not captcha_id or not captcha_code:
+            from domain.entitys.auth.entity import AuthError
+            raise AuthError(message="图形验证码不能为空", code="CAPTCHA_REQUIRED")
+        ok, err = await self.captcha.verify(captcha_id, captcha_code)
+        if not ok:
+            from domain.entitys.auth.entity import AuthError
+            raise AuthError(message=err, code="CAPTCHA_INVALID")
 
     # ── 注册 ─────────────────────────────────────────────────────────
 
@@ -62,32 +171,37 @@ class AuthAppService:
         self,
         *,
         email: str,
-        username: str,
         password: str,
+        code: str,
         nickname: Optional[str] = None,
     ) -> User:
         """注册新用户。
 
-        - email / username 必须未占用
+        - 必须先通过 /auth/send-verification-code 拿到邮箱验证码
+        - email 必须未占用
         - 自动绑定 'member' 角色(由 UserRepoImpl.create 完成)
+        - nickname 可选,空时回退为 email 本地部分
+        - 通过邮箱验证码注册 = 邮箱已验证(is_verified=True)
         """
+        # 1. 校验邮箱验证码(失败抛 EmailCodeInvalidError → DomainError → 400)
+        await self.email_verify.verify(email=email, purpose="register", input_code=code)
+
+        # 2. 邮箱占用校验
         if await self.users.find_by_email(email):
             raise UserAlreadyExistsError(field="邮箱", value=email)
-        if await self.users.find_by_username(username):
-            raise UserAlreadyExistsError(field="用户名", value=username)
 
+        # 3. 默认昵称 = email 本地部分
+        fallback_nick = email.split("@", 1)[0] if "@" in email else email
         new_user = User(
             id=0,
             email=email,
-            username=username,
-            password_hash=hash_password(password),
-            nickname=nickname or username,
+            password_hash=self.hasher.hash(password),
+            nickname=nickname or fallback_nick,
             is_active=True,
-            is_verified=False,
+            is_verified=True,
             roles=[],
         )
-        created = await self.users.create(new_user)
-        return created
+        return await self.users.create(new_user)
 
     # ── 登录 ─────────────────────────────────────────────────────────
 
@@ -98,39 +212,42 @@ class AuthAppService:
         password: str,
         user_agent: Optional[str] = None,
         ip: Optional[str] = None,
+        captcha_id: str,
+        captcha_code: str,
     ) -> dict:
-        """邮箱 + 密码登录。返回完整登录响应 dict。"""
+        """邮箱 + 密码登录。返回完整登录响应 dict。
+
+        图形验证码:必传,失败抛 AuthError → 400。
+        """
+        await self._verify_captcha(captcha_id, captcha_code)
+
         user = await self.users.find_by_email(email)
-        # 即使用户不存在,也走一遍 bcrypt(避免时序攻击暴露"用户存在与否")
+        # 即使用户不存在,也走一遍 hash(避免时序攻击暴露"用户存在与否")
         if not user:
-            hash_password(password)
+            self.hasher.hash(password)
             raise InvalidCredentialsError()
 
-        if not verify_password(password, user.password_hash):
+        if not self.hasher.verify(password, user.password_hash):
             raise InvalidCredentialsError()
         if not user.is_active:
             raise UserInactiveError()
 
         # 加载角色 + 权限
         role_codes = [r.code for r in user.roles]
-        perm_codes = await self._get_user_permissions(user)
+        perm_codes = await self.users.list_permission_codes_by_user(user.id)
 
         # 签发 token 对
-        access_token, access_exp = create_access_token(
+        access_token, _access_exp = self.jwt.create_access_token(
             user_id=user.id,
-            username=user.username,
             email=user.email,
             roles=role_codes,
             permissions=perm_codes,
         )
-        refresh_token, jti, refresh_exp = create_refresh_token(user_id=user.id)
+        refresh_token, jti, _new_refresh_exp = self.jwt.create_refresh_token(user_id=user.id)
         await self.refresh.save(
             user_id=user.id,
             jti=jti,
-            token_hash=hashlib.sha256(refresh_token.encode("utf-8")).hexdigest(),
-            expires_at=refresh_exp.replace(tzinfo=None),
-            user_agent=user_agent,
-            ip=ip,
+            expires_in_seconds=self.jwt.refresh_expire_seconds,
         )
 
         user.record_login(ip)
@@ -141,7 +258,7 @@ class AuthAppService:
             "access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "Bearer",
-            "expires_in": ACCESS_TOKEN_EXPIRE_SECONDS,
+            "expires_in": self.jwt.access_expire_seconds,
             "user_info": self._user_to_dict(user, role_codes, perm_codes),
         }
 
@@ -150,69 +267,63 @@ class AuthAppService:
     async def refresh_token(self, refresh_token: str) -> dict:
         """refresh rotation: 撤销旧 jti,签发新一对 token。
 
-        - jti 必须存在
-        - 未撤销
-        - 未过期
-        - 旧 token 已被使用(reuse detection): 撤销该用户全部 token
+        Redis 版流程:
+        1. 验 JWT 签名 / 类型 / 是否过期
+        2. 查 Redis 黑名单:已撤销 → 抛错(reuse detection:撤销该用户所有)
+        3. 撤销旧 jti(写黑名单,TTL 用 claims['exp'] 算剩余有效期)
+        4. 签发新一对 + 把新 jti 登记到 user_refresh_tokens:{user_id}
         """
         try:
-            claims = decode_token(refresh_token, expected_type="refresh")
+            claims = self.jwt.decode_token(refresh_token, expected_type="refresh")
         except pyjwt.ExpiredSignatureError:
             raise TokenInvalidError("已过期")
         except pyjwt.InvalidTokenError as e:
             raise TokenInvalidError(str(e))
 
-        jti = claims["jti"]
+        old_jti = claims["jti"]
         sub = int(claims["sub"])
+        old_exp_ts = int(claims["exp"])
+        now_ts = int(datetime.now(tz=timezone.utc).timestamp())
+        old_remaining = max(1, old_exp_ts - now_ts)   # 剩余秒数,至少 1 秒保底
 
-        record = await self.refresh.find_by_jti(jti)
-        if not record:
-            raise TokenInvalidError("jti 不存在")
-        # 校验 token_hash
-        if record["token_hash"] != hashlib.sha256(refresh_token.encode("utf-8")).hexdigest():
-            raise TokenInvalidError("token hash 不匹配")
-        if record["revoked_at"] is not None:
-            # 已被撤销 → 可能被盗用,撤销该用户所有 refresh token
+        # 1. 黑名单检查(reuse detection)
+        if not await self.refresh.is_active(old_jti):
+            # 旧 token 已被使用或被撤销 → 一键踢出该用户全部 token
             await self.refresh.revoke_all_for_user(sub)
             raise TokenInvalidError("refresh token 已被撤销,全设备下线")
-        # expires_at 比较(naive datetime)
-        if record["expires_at"] < datetime.utcnow():
-            raise TokenInvalidError("已过期")
 
         user = await self.users.find_by_id(sub)
         if not user or not user.is_active:
+            await self.refresh.revoke_all_for_user(sub)
             raise UserInactiveError()
 
-        role_codes = [r.code for r in user.roles]
-        perm_codes = await self._get_user_permissions(user)
+        # 2. 撤销旧 jti(写黑名单,TTL 与剩余有效期一致)
+        await self.refresh.revoke(old_jti, expires_in_seconds=old_remaining)
 
-        new_access, access_exp = create_access_token(
+        # 3. 签发新 token 对
+        role_codes = [r.code for r in user.roles]
+        perm_codes = await self.users.list_permission_codes_by_user(user.id)
+        new_access, _access_exp = self.jwt.create_access_token(
             user_id=user.id,
-            username=user.username,
             email=user.email,
             roles=role_codes,
             permissions=perm_codes,
         )
-        new_refresh, new_jti, new_exp = create_refresh_token(user_id=user.id)
+        new_refresh, new_jti, _new_exp = self.jwt.create_refresh_token(user_id=user.id)
         await self.refresh.save(
             user_id=user.id,
             jti=new_jti,
-            token_hash=hashlib.sha256(new_refresh.encode("utf-8")).hexdigest(),
-            expires_at=new_exp.replace(tzinfo=None),
-            user_agent=None,
-            ip=None,
+            expires_in_seconds=self.jwt.refresh_expire_seconds,
         )
-        # 撤销旧 jti
-        await self.refresh.revoke(jti, replaced_by_jti=new_jti)
 
         return {
             "access_token": new_access,
             "refresh_token": new_refresh,
             "token_type": "Bearer",
-            "expires_in": ACCESS_TOKEN_EXPIRE_SECONDS,
+            "expires_in": self.jwt.access_expire_seconds,
         }
 
-    # ── logout ───────────────────────────────────────────────────────
+    # ── logout ─────────────────────────────────────────────────────────
 
     async def logout(self, user_id: int) -> None:
         """登出:撤销该用户所有未撤销的 refresh token。"""
@@ -223,7 +334,7 @@ class AuthAppService:
     async def parse_access_token(self, token: str) -> dict:
         """解码 access token claims。"""
         try:
-            return decode_token(token, expected_type="access")
+            return self.jwt.decode_token(token, expected_type="access")
         except pyjwt.ExpiredSignatureError:
             raise TokenInvalidError("access token 已过期")
         except pyjwt.InvalidTokenError as e:
@@ -248,7 +359,7 @@ class AuthAppService:
         items = []
         for u in users:
             role_codes = [r.code for r in u.roles]
-            perm_codes = await self._get_user_permissions(u)
+            perm_codes = await self.users.list_permission_codes_by_user(u.id)
             items.append(self._user_to_dict(u, role_codes, perm_codes))
         return items, total
 
@@ -257,7 +368,7 @@ class AuthAppService:
         if not user:
             raise UserNotFoundError(str(user_id))
         role_codes = [r.code for r in user.roles]
-        perm_codes = await self._get_user_permissions(user)
+        perm_codes = await self.users.list_permission_codes_by_user(user_id)
         return self._user_to_dict(user, role_codes, perm_codes)
 
     # ── 写操作 ──────────────────────────────────────────────────────
@@ -268,15 +379,31 @@ class AuthAppService:
             raise UserNotFoundError(str(user_id))
         user.is_active = is_active
         updated = await self.users.update(user)
+        # 禁用账户 → 撤销该用户全部 refresh token(Redis)
+        if not is_active:
+            await self.refresh.revoke_all_for_user(user_id)
         return {"id": updated.id, "is_active": updated.is_active}
 
     async def reset_user_password(self, user_id: int, new_password: str) -> None:
         user = await self.users.find_by_id(user_id)
         if not user:
             raise UserNotFoundError(str(user_id))
-        user.password_hash = hash_password(new_password)
+        user.password_hash = self.hasher.hash(new_password)
         await self.users.update(user)
         # 强制重登:撤销该用户全部 refresh token
+        await self.refresh.revoke_all_for_user(user_id)
+
+    async def change_password(
+        self, user_id: int, old_password: str, new_password: str
+    ) -> None:
+        """用户自助改密:校验旧密码 → 写入新密码 → 撤销该用户全部 refresh token。"""
+        user = await self.users.find_by_id(user_id)
+        if not user:
+            raise UserNotFoundError(str(user_id))
+        if not self.hasher.verify(old_password, user.password_hash):
+            raise InvalidCredentialsError()
+        user.password_hash = self.hasher.hash(new_password)
+        await self.users.update(user)
         await self.refresh.revoke_all_for_user(user_id)
 
     async def assign_role(self, user_id: int, role_id: int) -> None:
@@ -299,27 +426,13 @@ class AuthAppService:
     async def list_permissions(self) -> list[Permission]:
         return await self.perms.list_permissions()
 
-    # ── 内部:通过 user 的角色聚合权限码 ─────────────────────────────
-
-    async def _get_user_permissions(self, user: User) -> list[str]:
-        if not user.roles:
-            return []
-        role_ids = [r.id for r in user.roles]
-        stmt = (
-            select(PermissionDB.code)
-            .join(RolePermissionDB, RolePermissionDB.permission_id == PermissionDB.id)
-            .where(RolePermissionDB.role_id.in_(role_ids))
-            .distinct()
-        )
-        rows = (await self.session.execute(stmt)).scalars().all()
-        return list(rows)
+    # ── 序列化 ──────────────────────────────────────────────────────
 
     @staticmethod
     def _user_to_dict(user: User, role_codes: list[str], perm_codes: list[str]) -> dict:
         return {
             "id": user.id,
             "email": user.email,
-            "username": user.username,
             "nickname": user.nickname,
             "avatar_url": user.avatar_url,
             "is_active": user.is_active,

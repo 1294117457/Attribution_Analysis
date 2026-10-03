@@ -7,6 +7,7 @@
 仓储：`backend/src/infrastructure/persistence/repositories/auth_repository.py`
 依赖（路由）：`backend/src/route/api/v1/deps_auth.py`（`require_role` / `require_permission`）
 前端：`frontend/src/stores/auth.ts`（`hasRole` / `hasPermission` / `isAdmin`）
+前端页面：`frontend/src/views/auth/AccountPage.vue`（账户/角色/权限 三 Tab）
 
 最后更新：2026-10-02
 
@@ -15,6 +16,8 @@
 ## 1. 现状一句话
 
 3 张核心表 + 2 张关联表，共 **6 张 `sys_*` 表**；3 个内置角色 (`admin` / `member` / `viewer`，`admin` 不可删)，**16 个内置权限**，命名规范 `{资源}:{操作}`（`stock:read` / `kline:write` / `user:write` 等）。后端路由粒度三档：仅登录 / `require_role` / `require_permission`（推荐）；前端用 Pinia `authStore.hasRole/hasPermission` 控制菜单和按钮可见性。**当前阶段**：初始 admin 账户绑 `admin` 角色，新注册用户自动绑 `member` 角色，viewer 角色可由 admin 手动分配，业务路由（stock / pool / kline / collect / concept）保持公开。
+
+> **2026-10-02 改造**:去除 `sys_users.username` 字段,统一以 `email` 作为唯一标识。`AccountPage` 表格中"用户名"列已更名为"账号 / 邮箱",展示 `row.email`。
 
 ## 2. 模型关系图
 
@@ -88,8 +91,6 @@ erDiagram
 ## 4. 权限（16 个内置，按 `资源:操作` 命名）
 
 | code | resource | action | name | admin | member | viewer |
-
-| code | resource | action | name | admin | member | viewer |
 |---|---|---|---|---|---|---|
 | `stock:read` | stock | read | 查看股票 | ✓ | ✓ | ✓ |
 | `stock:write` | stock | write | 编辑股票 | ✓ | — | — |
@@ -136,7 +137,7 @@ erDiagram
 
 | 路由模块 | 操作的 Depends |
 |---|---|
-| `route/api/v1/auth.py` | `me` / `logout` 需 `get_current_user_id`；其他公开 |
+| `route/api/v1/auth.py` | `me` / `logout` / `change-password` 需 `get_current_user_id`；其他公开 |
 | `route/api/v1/user.py` | 列表读类 `user:read`；其余写类 `user:write`（`assign_role` 还需 `role:write`） |
 | `route/api/v1/role.py` | `role:read` |
 | `route/api/v1/permission.py` | `role:read` |
@@ -167,9 +168,11 @@ erDiagram
 | `authStore.hasRole(code)` | `(code: string) => boolean` | 拥有某角色 |
 | `authStore.hasPermission(code)` | `(code: string) => boolean` | 拥有某权限 |
 | `authStore.login(email, password)` | `(email, password) => Promise<void>` | 调 `/auth/login`，写 store + localStorage |
+| `authStore.register(payload)` | `(payload) => Promise<void>` | 调 `/auth/register` |
 | `authStore.logout()` | `() => Promise<void>` | 调 `/auth/logout`，清 store + localStorage，跳 `/login` |
 | `authStore.fetchMe()` | `() => Promise<void>` | 调 `/auth/me`，刷新 `userInfo` |
 | `authStore.refreshTokens()` | `() => Promise<boolean>` | 调 `/auth/refresh`，替换 store + localStorage |
+| `authStore.bootstrap()` | `() => Promise<void>` | 启动时：有 token 但无 userInfo 时拉一次 |
 
 ### 7.2 LeftBar.vue（菜单显隐）
 
@@ -190,37 +193,51 @@ const menuItems = computed<MenuItem[]>(() => {
 
 > "账户管理"菜单仅 admin 可见（同时存"列表 / 角色 / 权限 / 用户启用禁用 / 重置密码 / 分配角色" 等操作均需 `user:*` / `role:*` 权限）。
 
-### 7.3 TopBar.vue（动态用户信息 + 登出）
+### 7.3 TopBar.vue（动态用户信息 + 登出 + 自助改密）
 
 ```vue
 <span class="user-name">{{ authStore.userInfo?.nickname || authStore.userInfo?.username || '未登录' }}</span>
+<el-tag v-if="authStore.isAdmin" type="danger" size="small">ADMIN</el-tag>
 ```
 
-登出走 `authStore.logout()`。
+下拉菜单：`邮箱（disabled） / 修改密码 / 退出登录`。
 
-### 7.4 路由守卫（`router/index.ts`）
+### 7.4 路由守卫（`router/index.ts` + `router/home.ts`）
 
 ```typescript
-router.beforeEach(async (to, from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore()
-  // 已登录但 userInfo 为空 → 拉一次（页面刷新后）
-  if (authStore.isLoggedIn && !authStore.userInfo) {
-    try { await authStore.fetchMe() } catch { authStore.clear() }
-  }
   const isPublic = to.path === '/login'
-  if (!authStore.isLoggedIn && !isPublic)      next('/login')
-  else if (authStore.isLoggedIn && isPublic)   next('/home/index')
-  else                                          next()
+
+  // 启动 / F5 后 token 还在但 userInfo 已清 → 拉一次
+  if (authStore.isLoggedIn && !authStore.userInfo) {
+    try { await authStore.bootstrap() } catch { authStore.clear() }
+  }
+
+  if (!authStore.isLoggedIn && !isPublic) {
+    next({ path: '/login', query: { redirect: to.fullPath } })
+    return
+  }
+  if (authStore.isLoggedIn && isPublic) {
+    next('/home/index')
+    return
+  }
+  // 路由级 admin 拦截（/home/account 等）
+  if (to.meta?.requiresAdmin && !authStore.isAdmin) {
+    next('/home/index')
+    return
+  }
+  next()
 })
 ```
 
-> 401 已在 axios 拦截器处理（自动 refresh + 重放），路由守卫不重复处理。
+> 401 已在 axios 拦截器处理（单飞 refresh + 重放），路由守卫不重复处理。
 
-### 7.5 axios 拦截器（`utils/request.ts`）
+### 7.5 axios 拦截器（`common/utils/http.ts`）
 
 请求拦截：注入 `access_token`（明文）。
 响应拦截：
-1. 收到 401 → 用 `refresh_token` 调 `/auth/refresh` 换新
+1. 收到 401（且非 `/auth/login|register|refresh`）→ 用 `refresh_token` 调 `/auth/refresh` 换新（**单飞**：并发 401 挂起，复用同一次 refresh 结果）
 2. 成功 → 替换 localStorage + Pinia store，重放原请求
 3. 失败 → 清 token + 跳 `/login`
 
@@ -228,11 +245,15 @@ router.beforeEach(async (to, from, next) => {
 
 | Tab | 内容 | 接口 |
 |---|---|---|
-| 账户数据 | 用户表格（搜索 / 启用禁用 / 重置密码 / 分配角色）| `/users/` + `/users/{id}/status` + `/users/{id}/reset-password` + `/users/{id}/roles(+DELETE)` |
+| 账户数据 | 用户表格（搜索 / 启用禁用 / 重置密码 / 分配角色 / 解除角色）| `/users/` + `/users/{id}/status` + `/users/{id}/reset-password` + `/users/{id}/roles(+DELETE)` |
 | 角色 | 角色列表（admin / member / viewer，只读） | `/roles/` |
-| 权限 | 权限列表（按 `resource` 分组，只读） | `/permissions/` |
+| 权限 | 权限列表（按 `resource` 分组折叠，只读） | `/permissions/` |
 
 > 进入账户管理需 `user:read`；编辑账户/分配角色需 `user:write`（`assign_role` 同时要求 `role:write`）。角色 Tab 与权限 Tab 当前只读，不支持后台增删。
+
+### 7.7 ChangePasswordPage.vue（自助改密）
+
+`/home/change-password`（TopBar 下拉菜单跳转）→ 表单校验旧密码 → `POST /auth/change-password` → 成功后自动 `authStore.logout()` + 跳 `/login`。
 
 ## 8. 业务流程：分配角色 / 重置密码 / 启用禁用
 
@@ -269,7 +290,7 @@ sequenceDiagram
 
 | 类 / 模块 | 路径 | 说明 |
 |---|---|---|
-| `AuthAppService` | `application/service/auth_app_service.py` | 业务编排：`register` / `login` / `refresh_token` / `logout` / `list_users` / `update_user_status` / `reset_user_password` / `assign_role` / `remove_role` / `_get_user_permissions` |
+| `AuthAppService` | `application/service/auth_app_service.py` | 业务编排：`register` / `login` / `refresh_token` / `logout` / `change_password` / `list_users` / `update_user_status` / `reset_user_password` / `assign_role` / `remove_role` / `_get_user_permissions` |
 | `User / Role / Permission` | `domain/auth/entity.py` | 聚合根 + 值对象 |
 | `UserRepo / RoleRepo / PermissionRepo / RefreshTokenRepo` | `domain/auth/repository.py` | 仓储接口（DDD 解耦） |
 | `UserDB / RoleDB / PermissionDB` | `infrastructure/persistence/models/user.py` | ORM（`UserDB`） |
@@ -277,11 +298,14 @@ sequenceDiagram
 | `RefreshTokenDB` | `infrastructure/persistence/models/refresh_token.py` | ORM |
 | `auth_repository.py` | `infrastructure/persistence/repositories/auth_repository.py` | 4 个仓储实现 |
 | `deps_auth.py` | `route/api/v1/deps_auth.py` | `get_current_user_id` / `get_current_user` / `require_role` / `require_permission` |
-| `useAuthStore` | `frontend/src/stores/auth.ts` | Pinia 状态：`isLoggedIn` / `userInfo` / `isAdmin` / `hasRole` / `hasPermission` |
+| `useAuthStore` | `frontend/src/stores/auth.ts` | Pinia 状态：`isLoggedIn` / `isAdmin` / `userInfo` / `hasRole` / `hasPermission` |
+| `views/auth/api.ts` | `frontend/src/views/auth/api.ts` | auth + users + roles + permissions TS 类型与请求封装 |
 | `LeftBar.vue` | `layouts/components/LeftBar.vue` | 菜单项 + admin 显示账户管理 |
-| `TopBar.vue` | `layouts/components/TopBar.vue` | 动态用户信息 + 登出 |
-| `AccountPage.vue` | `views/auth/AccountPage.vue` | 账户/角色 Tab |
+| `TopBar.vue` | `layouts/components/TopBar.vue` | 动态用户信息 + admin 标 + 用户菜单（改密 / 登出） |
+| `AccountPage.vue` | `views/auth/AccountPage.vue` | 账户/角色/权限 三 Tab |
 | `LoginPage.vue` | `views/auth/LoginPage.vue` | 登录 + 注册 Tab |
+| `ChangePasswordPage.vue` | `views/auth/ChangePasswordPage.vue` | 自助改密 |
+| `http.ts` | `common/utils/http.ts` | axios 实例 + 401 单飞 refresh + 重放 |
 
 ## 10. 关键决策 FAQ
 
@@ -293,6 +317,7 @@ sequenceDiagram
 | 是否需要 `role:write` 作为独立权限？ | 是，为了防止"可改角色"的人意外变更"可被改用户"的权限：`assign_role` 同时要求 `user:write` + `role:write`。 |
 | 什么场景可以用 `require_role`？ | admin-only 场景，与角色名称强绑定。粒度需求仍使用 `require_permission`（推荐）。 |
 | 禁用 / 重置密码 / 登出与 RBAC 的耦合？ | 三者都会撤销该用户所有未撤销的 refresh token，强制重新登录；后端再次下发 access_token 时重新聚合 `roles + permissions`，前端 store 同步刷新。被禁用用户登录接口直接抛 `USER_INACTIVE`。 |
+| 401 单飞刷新如何实现？ | 第一次 401 触发 `doRefresh()`，后续并发 401 挂起在 `refreshSubscribers` 队列；refresh 完成后统一 resolve，重放原请求。 |
 
 ## 11. 详细文档索引
 
@@ -303,8 +328,8 @@ sequenceDiagram
 | [`02-后端-安全基础设施.md`](../dev/step3/01登录鉴权/02-后端-安全基础设施.md) | RSA 密钥 + JWT 签发验证 + bcrypt |
 | [`03-后端-领域层.md`](../dev/step3/01登录鉴权/03-后端-领域层.md) | User / Role / Permission 实体 + 仓储接口 |
 | [`04-后端-基础设施层.md`](../dev/step3/01登录鉴权/04-后端-基础设施层.md) | 3 个 ORM 模型 + 4 个仓储实现 |
-| [`05-后端-应用服务层.md`](../dev/step3/01登录鉴权/05-后端-应用服务层.md) | 业务规则 + register/login/refresh/logout + `_get_user_permissions` |
-| [`06-后端-路由层.md`](../dev/step3/01登录鉴权/06-后端-路由层.md) | 12 个接口 + 4 个 Depends + DTO |
+| [`05-后端-应用服务层.md`](../dev/step3/01登录鉴权/05-后端-应用服务层.md) | 业务规则 + register/login/refresh/logout/change_password + `_get_user_permissions` |
+| [`06-后端-路由层.md`](../dev/step3/01登录鉴权/06-后端-路由层.md) | 13 个接口 + 4 个 Depends + DTO |
 | [`07-前端-基础设施.md`](../dev/step3/01登录鉴权/07-前端-基础设施.md) | axios 拦截器 + API 封装 + Pinia store |
 | [`08-前端-登录页.md`](../dev/step3/01登录鉴权/08-前端-登录页.md) | 登录 + 注册 单页面（Tab 切换） |
 | [`09-前端-账户管理页.md`](../dev/step3/01登录鉴权/09-前端-账户管理页.md) | 3 个 Tab：账户/角色/权限 |
@@ -316,4 +341,4 @@ sequenceDiagram
 
 ## 12. 一句话
 
-> RBAC 以 6 张表 + 3 角色 + 16 权限为骨架，后端 `dependencies=Depends(require_xxx)` 按 `资源:操作` 粒度控制接口，前端用 `authStore.isAdmin / hasRole / hasPermission` 控制菜单和按钮可见性；业务路由当前阶段保持公开，后续按需逐步收紧。
+> RBAC 以 6 张表 + 3 角色 + 16 权限为骨架，后端 `dependencies=Depends(require_xxx)` 按 `资源:操作` 粒度控制接口，前端用 `authStore.isAdmin / hasRole / hasPermission` 控制菜单和按钮可见性；`AccountPage` 三 Tab 把 13 个接口串成 admin 视角的"账户运营台"，`LoginPage + ChangePasswordPage` 覆盖注册 / 自助改密端到端流程。业务路由当前阶段保持公开，后续按需逐步收紧。

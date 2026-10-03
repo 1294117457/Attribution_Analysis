@@ -61,10 +61,13 @@ import {
   Folder,
   Odometer,
   Upload,
+  UserFilled,
 } from '@element-plus/icons-vue'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 const collapsed = ref(false)
 
 const activePath = computed(() => route.path)
@@ -72,16 +75,22 @@ const activePath = computed(() => route.path)
 interface MenuItem {
   path: string
   title: string
-  icon: string
+  icon: unknown
   children?: MenuItem[]
 }
 
-const menuItems: MenuItem[] = [
-  { path: '/home/index',      title: '数据大盘', icon: Odometer },
-  { path: '/home/stock-panel', title: '股票信息', icon: DataLine },
-  { path: '/home/pool',       title: '操作池',   icon: Folder },
-  { path: '/home/collect-manage', title: '采集管理', icon: Upload },
-]
+const menuItems = computed<MenuItem[]>(() => {
+  const items: MenuItem[] = [
+    { path: '/home/index', title: '数据大盘', icon: Odometer },
+    { path: '/home/stock-panel', title: '股票信息', icon: DataLine },
+    { path: '/home/pool', title: '操作池', icon: Folder },
+    { path: '/home/collect-manage', title: '采集管理', icon: Upload },
+  ]
+  if (authStore.isAdmin) {
+    items.push({ path: '/home/account', title: '账户管理', icon: UserFilled })
+  }
+  return items
+})
 
 function toggle() {
   collapsed.value = !collapsed.value

@@ -7,15 +7,14 @@
 - 元数据查询（枚举值）
 
 面板列表面板（分页 + 4 表快照 + 池信息）已迁移至 application.service.panel_app_service.StockPanelAppService。
-"""
 
+DDD 改造（2026-10-03）：构造改为依赖注入，只接收 Repository / fetcher port，不再持有 AsyncSession。
+"""
 from __future__ import annotations
 
 import asyncio
 import logging
 from typing import Optional
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from route.dto.request.stock import (
     StockDeleteResponse,
@@ -26,21 +25,18 @@ from route.dto.request.stock import (
     StockUpdateRequest,
     SyncStockResponse,
 )
-from domain.entitys.stock_info.entity import StockNotFoundError
-from domain.entitys.stock_info.entity import StockInfo
-from domain.entitys.stock_info.repository import StockInfoRepository
 from application.port.collector_port import CollectParams, StockBasicFetcher
-from infrastructure.persistence.repositories.stock_repository import StockRepoImpl
+from domain.entitys.stock_info.entity import StockInfo, StockNotFoundError
+from domain.entitys.stock_info.repository import StockInfoRepository
 
 logger = logging.getLogger(__name__)
 
 
 class StockAppService:
-    """股票应用服务"""
+    """股票应用服务（依赖注入：只接 Repository / fetcher port）"""
 
-    def __init__(self, session: AsyncSession):
-        self._session = session
-        self._repo: StockInfoRepository = StockRepoImpl(session)
+    def __init__(self, repo: StockInfoRepository) -> None:
+        self._repo = repo
 
     # ── 查询用例 ────────────────────────────────────────────
 
