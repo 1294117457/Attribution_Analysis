@@ -330,6 +330,7 @@ async def _migrate_auth_system(conn) -> None:
         return
 
     files = [
+        "001_add_role_perm_unique.sql",
         "002_auth_system.sql",
         "003_drop_username.sql",
         "005_drop_redis_replaced_tables.sql",
@@ -381,48 +382,89 @@ async def _migrate_auth_system(conn) -> None:
 async def _ensure_initial_admin(conn) -> None:
     """首次启动时创建初始 admin 用户
     email=admin@local / password=admin123,
-    并绑定 admin 角色。仅 sys_users 为空时执行。
+    并绑定 admin 角色。
+
+    重启行为:
+    - sys_users 为空 → INSERT 新账号
+    - sys_users 不为空但无 admin@local → 跳过
+    - admin@local 存在但密码不匹配(开发期间偶发,例如 bcrypt 升级) →
+      用 ENV 变量 ATTR_REBUILD_ADMIN_HASH=true(默认) 强制重置 hash;
+      生产环境可设 false 关闭
     """
     import bcrypt as _bcrypt
+    import os
     from sqlalchemy import text
 
+    target_email = "admin@local"
+    target_password = b"admin123"
+    rebuild = os.getenv("ATTR_REBUILD_ADMIN_HASH", "true").lower() != "false"
+
     try:
-        count = (await conn.execute(text("SELECT COUNT(*) FROM sys_users"))).scalar()
+        existing = (await conn.execute(
+            text("SELECT id, password_hash FROM sys_users WHERE email = :e"),
+            {"e": target_email},
+        )).first()
     except Exception as e:
         logging.warning("查询 sys_users 失败,跳过 admin 初始化: %s", e)
         return
-    if count and count > 0:
-        return
 
-    h = _bcrypt.hashpw(b"admin123", _bcrypt.gensalt(rounds=12)).decode("utf-8")
-    try:
-        admin_id = (
+    new_hash = _bcrypt.hashpw(target_password, _bcrypt.gensalt(rounds=12)).decode("utf-8")
+
+    if existing is None:
+        # INSERT
+        try:
+            admin_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO sys_users (email, password_hash, nickname, "
+                        "is_active, is_verified) VALUES "
+                        "(:e, :h, '系统管理员', TRUE, TRUE) RETURNING id"
+                    ),
+                    {"e": target_email, "h": new_hash},
+                )
+            ).scalar()
             await conn.execute(
                 text(
-                    "INSERT INTO sys_users (email, password_hash, nickname, "
-                    "is_active, is_verified) VALUES "
-                    "('admin@local', :h, '系统管理员', TRUE, TRUE) RETURNING id"
+                    "INSERT INTO sys_user_roles (user_id, role_id) "
+                    "VALUES (:u, (SELECT id FROM sys_roles WHERE code = 'admin'))"
                 ),
-                {"h": h},
+                {"u": admin_id},
             )
-        ).scalar()
-        await conn.execute(
-            text(
-                "INSERT INTO sys_user_roles (user_id, role_id) "
-                "VALUES (:u, (SELECT id FROM sys_roles WHERE code = 'admin'))"
-            ),
-            {"u": admin_id},
-        )
+            logging.warning(
+                "=" * 70 + "\n"
+                "  初始 admin 账号已创建!\n"
+                "    email    : %s\n"
+                "    password : admin123\n"
+                "  [WARNING]  请登录后第一时间修改!\n" + "=" * 70,
+                target_email,
+            )
+        except Exception as e:
+            logging.error("创建初始 admin 失败: %s", e)
+        return
+
+    # 已存在 — 校验 hash
+    try:
+        ok = _bcrypt.checkpw(target_password, existing.password_hash.encode("utf-8"))
+    except Exception:
+        ok = False
+    if ok:
+        logging.info("admin@local hash 校验通过,无需重置")
+        return
+
+    # hash 不匹配
+    if not rebuild:
         logging.warning(
-            "=" * 70 + "\n"
-            "  初始 admin 账号已创建!\n"
-            "    email    : admin@local\n"
-            "    password : admin123\n"
-            "  [WARNING]  请登录后第一时间修改!\n" +
-            "=" * 70
+            "admin@local hash 校验失败,但 ATTR_REBUILD_ADMIN_HASH=false 跳过重置。"
+            "请手动: UPDATE sys_users SET password_hash='%s' WHERE email='%s'",
+            new_hash, target_email,
         )
-    except Exception as e:
-        logging.error("创建初始 admin 失败: %s", e)
+        return
+
+    logging.warning("admin@local hash 校验失败,自动重置为 admin123 (ATTR_REBUILD_ADMIN_HASH=true)")
+    await conn.execute(
+        text("UPDATE sys_users SET password_hash = :h WHERE id = :i"),
+        {"h": new_hash, "i": existing.id},
+    )
 
 
 def create_app() -> FastAPI:
