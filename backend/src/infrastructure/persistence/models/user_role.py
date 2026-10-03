@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, func
+from sqlalchemy import DateTime, ForeignKey, Integer, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from infrastructure.persistence.base import Base
@@ -14,7 +14,8 @@ class UserRoleDB(Base):
 
     __tablename__ = "sys_user_roles"
     __table_args__ = (
-        # 唯一约束在 SQL 中显式声明;ORM 这里仅声明主键
+        # 唯一约束 — 让 SQL 中 ON CONFLICT (user_id, role_id) DO NOTHING 能命中
+        UniqueConstraint("user_id", "role_id", name="uq_sys_user_roles_user_role"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -56,6 +57,11 @@ class RolePermissionDB(Base):
     """角色-权限关联表 - sys_role_permissions"""
 
     __tablename__ = "sys_role_permissions"
+    __table_args__ = (
+        # 唯一约束 — 让 002_auth_system.sql 的 ON CONFLICT (role_id, permission_id) DO NOTHING 能命中
+        # 修复：之前缺此约束导致 002_auth_system.sql 的子句 #15/#16/#17 全部 ON CONFLICT 失败
+        UniqueConstraint("role_id", "permission_id", name="uq_sys_role_permissions_role_perm"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     role_id: Mapped[int] = mapped_column(

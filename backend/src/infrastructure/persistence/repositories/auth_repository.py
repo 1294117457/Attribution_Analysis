@@ -145,6 +145,10 @@ class UserRepoImpl(UserRepository):
         db.last_login_at = user.last_login_at
         db.last_login_ip = user.last_login_ip
         await self.session.flush()
+        # updated_at 由 DB 端 onupdate=func.now() 维护,flush 后该字段处于
+        # expired 状态;若在 await 之后再读取会触发 lazy-load → MissingGreenlet。
+        # 显式 refresh 一次以加载最新值。
+        await self.session.refresh(db, attribute_names=["updated_at"])
         roles = await _load_roles_for_user(self.session, db.id)
         return _user_to_vo(db, roles)
 
