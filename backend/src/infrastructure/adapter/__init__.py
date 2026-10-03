@@ -8,7 +8,9 @@
 - DailyBasicFetcher    — 日频估值采集协议
 - ConceptFetcher       — 概念板块采集协议（Adata · 同花顺实现）
 - get_registry         — 获取全局注册中心
-- setup_default_registry — 启动时注册默认数据源
+
+注：setup_default_registry 已迁移到 `infrastructure.config.di`，
+避免本包对 application.port.registry 产生循环依赖。
 
 路由层使用示例：
     from infrastructure.adapter import KlineFetcher, get_registry
@@ -28,10 +30,7 @@ from application.port.collector_port import (
     MinuteKlineFetcher,
     StockBasicFetcher,
 )
-from application.port.registry import (
-    get_registry,
-    setup_default_registry,
-)
+from application.port.registry import get_registry
 
 __all__ = [
     "CollectParams",
@@ -41,5 +40,4 @@ __all__ = [
     "DailyBasicFetcher",
     "ConceptFetcher",
     "get_registry",
-    "setup_default_registry",
 ]

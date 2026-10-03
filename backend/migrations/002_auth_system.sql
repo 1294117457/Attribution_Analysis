@@ -9,7 +9,6 @@
 CREATE TABLE IF NOT EXISTS sys_users (
     id              SERIAL PRIMARY KEY,
     email           VARCHAR(128) NOT NULL UNIQUE,
-    username        VARCHAR(64)  NOT NULL UNIQUE,
     password_hash   VARCHAR(128) NOT NULL,
     nickname        VARCHAR(64),
     avatar_url      VARCHAR(256),
@@ -22,7 +21,6 @@ CREATE TABLE IF NOT EXISTS sys_users (
 );
 
 CREATE INDEX IF NOT EXISTS ix_sys_users_email        ON sys_users (email);
-CREATE INDEX IF NOT EXISTS ix_sys_users_username     ON sys_users (username);
 CREATE INDEX IF NOT EXISTS ix_sys_users_is_active    ON sys_users (is_active);
 
 -- ── 2. sys_roles ────────────────────────────────────────────────────────────
@@ -73,27 +71,6 @@ CREATE TABLE IF NOT EXISTS sys_role_permissions (
 
 CREATE INDEX IF NOT EXISTS ix_sys_role_permissions_role_id       ON sys_role_permissions (role_id);
 CREATE INDEX IF NOT EXISTS ix_sys_role_permissions_permission_id ON sys_role_permissions (permission_id);
-
--- ── 6. sys_refresh_tokens ──────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS sys_refresh_tokens (
-    id              SERIAL PRIMARY KEY,
-    user_id         INTEGER NOT NULL REFERENCES sys_users(id) ON DELETE CASCADE,
-    jti             VARCHAR(64) NOT NULL UNIQUE,
-    token_hash      VARCHAR(128) NOT NULL,
-    expires_at      TIMESTAMP NOT NULL,
-    revoked_at      TIMESTAMP,
-    replaced_by_jti VARCHAR(64),
-    user_agent      VARCHAR(256),
-    ip              VARCHAR(64),
-    created_at      TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS ix_sys_refresh_tokens_user_id  ON sys_refresh_tokens (user_id);
-CREATE INDEX IF NOT EXISTS ix_sys_refresh_tokens_expires  ON sys_refresh_tokens (expires_at);
-
--- =============================================================================
--- 初始数据：3 个内置角色 + 16 个内置权限 + 默认角色-权限绑定
--- =============================================================================
 
 -- 内置角色
 INSERT INTO sys_roles (code, name, description, is_system, sort_order) VALUES

@@ -6,10 +6,10 @@
 - registry：实时接口注册中心（main.py lifespan 初始化）
 - concept_minute / stock_minute_kline：两个内置实现
 
-交易时段相关领域规则（is_trading_time / ttl_for / market_now）已迁移到 domain.market，
-本包提供兼容 shim（从 realtime.base 仍可导入）。
+交易时段相关领域规则（is_trading_time / ttl_for / market_now）位于 `domain.service.market_session`。
 """
-from infrastructure.adapter.realtime.base import BaseRealtimeQuery, is_trading_time, ttl_for
+from domain.service.market_session import is_trading_time, ttl_for
+from infrastructure.adapter.realtime.base import BaseRealtimeQuery
 from infrastructure.adapter.realtime.concept_minute import ConceptMinuteQuery
 from infrastructure.adapter.realtime.framework import (
     RealtimeQueryError,
@@ -31,7 +31,7 @@ __all__ = [
     # 注册表
     "get_realtime_registry",
     "setup_realtime_registry",
-    # 领域规则（兼容 shim）
+    # 领域规则（来自 domain.service.market_session）
     "is_trading_time",
     "ttl_for",
     # 实现

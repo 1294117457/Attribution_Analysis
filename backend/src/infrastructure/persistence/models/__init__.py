@@ -43,4 +43,3 @@ from infrastructure.persistence.models.user_role import (               # noqa: 
     UserRoleDB,
     RolePermissionDB,
 )
-from infrastructure.persistence.models.refresh_token import RefreshTokenDB  # noqa: F401

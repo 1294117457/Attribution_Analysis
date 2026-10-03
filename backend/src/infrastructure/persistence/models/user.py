@@ -18,13 +18,18 @@ if TYPE_CHECKING:
 
 
 class UserDB(Base):
-    """用户表 - sys_users"""
+    """用户表 - sys_users
+
+    2026-10-02 改造:去除 username 字段,统一用 email 作为登录与展示凭据。
+    nickname 仍保留,作为用户自选的展示名(可空,空时回退到 email 本地部分)。
+    """
 
     __tablename__ = "sys_users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
-    username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    # username 列已废弃:DB 层仍保留(nullable)以兼容老数据,代码层不再读写
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     nickname: Mapped[str | None] = mapped_column(String(64), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(256), nullable=True)

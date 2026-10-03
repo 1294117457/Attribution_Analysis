@@ -1,31 +1,29 @@
 """认证授权 - 仓储实现(infra 层)
 
 4 个 Repo 实现:
-- UserRepoImpl        :  CRUD + 角色绑定
-- RoleRepoImpl        :  CRUD
-- PermissionRepoImpl :  只读
-- RefreshTokenRepoImpl:  refresh token 持久化(SHA-256 哈希)
+- UserRepoImpl        :  CRUD + 角色绑定(仍走 DB)
+- RoleRepoImpl        :  CRUD(DB)
+- PermissionRepoImpl  :  只读(DB)
+- RefreshTokenRepoImpl:  refresh token 持久化(Redis) — 不再依赖 DB
 
 均为 async,接受 AsyncSession。UserRepoImpl.create 完成后会自动绑定 'member' 角色。
 """
 from __future__ import annotations
 
-import hashlib
-from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import delete, select, update as sa_update, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from domain.auth.entity import Permission, Role, User
-from domain.auth.repository import (
+from domain.entitys.auth.entity import Permission, Role, User
+from domain.entitys.auth.repository import (
     PermissionRepository,
     RefreshTokenRepository,
     RoleRepository,
     UserRepository,
 )
-from infrastructure.persistence.models.refresh_token import RefreshTokenDB
+from infrastructure.adapter.cache.redis_cache import RedisCache, get_cache
 from infrastructure.persistence.models.user import PermissionDB, RoleDB, UserDB
 from infrastructure.persistence.models.user_role import RolePermissionDB, UserRoleDB
 
@@ -61,7 +59,6 @@ def _user_to_vo(db: UserDB, roles: list[Role]) -> User:
     return User(
         id=db.id,
         email=db.email,
-        username=db.username,
         password_hash=db.password_hash,
         nickname=db.nickname,
         avatar_url=db.avatar_url,
@@ -110,18 +107,9 @@ class UserRepoImpl(UserRepository):
         roles = await _load_roles_for_user(self.session, db.id)
         return _user_to_vo(db, roles)
 
-    async def find_by_username(self, username: str) -> Optional[User]:
-        stmt = select(UserDB).where(UserDB.username == username)
-        db = (await self.session.execute(stmt)).scalars().first()
-        if not db:
-            return None
-        roles = await _load_roles_for_user(self.session, db.id)
-        return _user_to_vo(db, roles)
-
     async def create(self, user: User) -> User:
         db = UserDB(
             email=user.email,
-            username=user.username,
             password_hash=user.password_hash,
             nickname=user.nickname,
             avatar_url=user.avatar_url,
@@ -174,14 +162,10 @@ class UserRepoImpl(UserRepository):
         if keyword:
             like = f"%{keyword}%"
             stmt = stmt.where(
-                (UserDB.email.ilike(like))
-                | (UserDB.username.ilike(like))
-                | (UserDB.nickname.ilike(like))
+                (UserDB.email.ilike(like)) | (UserDB.nickname.ilike(like))
             )
             count_stmt = count_stmt.where(
-                (UserDB.email.ilike(like))
-                | (UserDB.username.ilike(like))
-                | (UserDB.nickname.ilike(like))
+                (UserDB.email.ilike(like)) | (UserDB.nickname.ilike(like))
             )
         if is_active is not None:
             stmt = stmt.where(UserDB.is_active == is_active)
@@ -228,6 +212,25 @@ class UserRepoImpl(UserRepository):
         )
         await self.session.execute(stmt)
         await self.session.flush()
+
+    async def list_permission_codes_by_user(self, user_id: int) -> list[str]:
+        """通过用户聚合的角色 join 出全部权限码（DDD.md §2.2 / §4）
+
+        原实现位于 `AuthAppService._get_user_permissions`（AppService 直接 ORM join），
+        现下沉到仓储实现，AppService 不再持有 session / ORM 模型。
+        """
+        stmt = (
+            select(PermissionDB.code)
+            .join(UserRoleDB, UserRoleDB.user_id == user_id)
+            .join(
+                RolePermissionDB,
+                RolePermissionDB.role_id == UserRoleDB.role_id,
+            )
+            .where(PermissionDB.id == RolePermissionDB.permission_id)
+            .distinct()
+        )
+        rows = (await self.session.execute(stmt)).scalars().all()
+        return list(rows)
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -304,70 +307,57 @@ class PermissionRepoImpl(PermissionRepository):
 
 
 # ════════════════════════════════════════════════════════════════════════
-# RefreshToken
+# RefreshToken(Redis 实现)
 # ════════════════════════════════════════════════════════════════════════
 
 
 class RefreshTokenRepoImpl(RefreshTokenRepository):
-    def __init__(self, session: AsyncSession) -> None:
-        self.session = session
+    """Refresh token 仓储(纯 Redis,无 DB 依赖)。
 
-    @staticmethod
-    def _hash_token(token: str) -> str:
-        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+    数据结构:
+    - revoked:{jti}                string "1",TTL = refresh 剩余有效期
+    - user_refresh_tokens:{user_id}  set of jti,TTL = 7 天(同步 refresh 期限)
+
+    接口约束:
+    - 不再保存 token_hash / expires_at / user_agent / ip
+      这些信息已经在 JWT claims 里,落库意义不大
+    """
+
+    # 集合 key 的 TTL 兜底(7 天),保证过期集合自动释放
+    _SET_TTL_SECONDS = 7 * 24 * 60 * 60
+
+    def __init__(self, session: Optional[AsyncSession] = None) -> None:
+        """为兼容旧的调用方 `RefreshTokenRepoImpl(session)` 保留 session 形参。
+
+        注意:本类已切到 Redis,**不依赖**传入的 session(仅留签名兼容)。
+        """
+        self._legacy_session = session
 
     async def save(
         self,
         *,
         user_id: int,
         jti: str,
-        token_hash: str,
-        expires_at: datetime,
-        user_agent: Optional[str],
-        ip: Optional[str],
+        expires_in_seconds: int,
     ) -> None:
-        db = RefreshTokenDB(
-            user_id=user_id,
-            jti=jti,
-            token_hash=token_hash,
-            expires_at=expires_at,
-            user_agent=user_agent,
-            ip=ip,
-        )
-        self.session.add(db)
-        await self.session.flush()
+        """登记新 refresh token:把 jti 加入用户的活跃 set。"""
+        cache: RedisCache = await get_cache()
+        set_key = f"user_refresh_tokens:{user_id}"
+        await cache.sadd(set_key, jti)
+        # 集合 TTL 与 refresh 期限一致
+        await cache.expire(set_key, expires_in_seconds)
 
-    async def find_by_jti(self, jti: str) -> Optional[dict]:
-        stmt = select(RefreshTokenDB).where(RefreshTokenDB.jti == jti)
-        db = (await self.session.execute(stmt)).scalars().first()
-        if not db:
-            return None
-        return {
-            "id": db.id,
-            "user_id": db.user_id,
-            "jti": db.jti,
-            "token_hash": db.token_hash,
-            "expires_at": db.expires_at,
-            "revoked_at": db.revoked_at,
-            "replaced_by_jti": db.replaced_by_jti,
-        }
+    async def is_active(self, jti: str) -> bool:
+        """未撤销 → True。已撤销 / key 不存在 → False。"""
+        cache: RedisCache = await get_cache()
+        return not await cache.is_refresh_token_revoked(jti)
 
-    async def revoke(self, jti: str, replaced_by_jti: Optional[str] = None) -> None:
-        stmt = (
-            sa_update(RefreshTokenDB)
-            .where(RefreshTokenDB.jti == jti)
-            .where(RefreshTokenDB.revoked_at.is_(None))
-            .values(revoked_at=datetime.now(), replaced_by_jti=replaced_by_jti)
-        )
-        await self.session.execute(stmt)
-        await self.session.flush()
+    async def revoke(self, jti: str, expires_in_seconds: int) -> None:
+        """撤销该 jti(写黑名单)。"""
+        cache: RedisCache = await get_cache()
+        await cache.revoke_refresh_token(jti, ttl_seconds=expires_in_seconds)
 
-    async def revoke_all_for_user(self, user_id: int) -> None:
-        stmt = (
-            sa_update(RefreshTokenDB)
-            .where(RefreshTokenDB.user_id == user_id)
-            .where(RefreshTokenDB.revoked_at.is_(None))
-            .values(revoked_at=datetime.now())
-        )
-        await self.session.execute(stmt)
-        await self.session.flush()
+    async def revoke_all_for_user(self, user_id: int) -> int:
+        """撤销该用户所有活跃 refresh token(改密 / 封号场景)。"""
+        cache: RedisCache = await get_cache()
+        return await cache.revoke_all_user_refresh_tokens(user_id)
