@@ -86,19 +86,12 @@ class CollectScheduler:
         return datetime.now(self._tz).weekday() < 5
 
     async def _fire_plan(self, task_type: str) -> None:
-        from application.service.collect_app_service import CollectAppService, TaskConflict
-        from infrastructure.persistence.connection import AsyncSessionLocal
-        from infrastructure.persistence.repositories.collect_config_repository import CollectConfigRepoImpl
+        from application.service import CollectManageService, TaskConflict
+        from infrastructure.config.di import get_collect_manage_service
 
-        async with AsyncSessionLocal() as session:
-            plan = await CollectConfigRepoImpl(session).get_plan(task_type)
-        if plan is None or not plan.enabled:
-            return
-        if plan.trading_day_only and not self._is_trading_day():
-            logger.info("采集方案 %s：非交易日跳过", task_type)
-            return
+        svc = get_collect_manage_service()
         try:
-            sub = await CollectAppService().submit(task_type, None, trigger="schedule")
+            sub = await svc.submit(task_type, None, trigger="schedule")
             logger.info("采集方案 %s 定时触发: task_id=%d", task_type, sub.task_id)
         except TaskConflict as e:
             logger.info("采集方案 %s 定时触发跳过: %s", task_type, e)
@@ -106,12 +99,10 @@ class CollectScheduler:
             logger.exception("采集方案 %s 定时触发失败", task_type)
 
     async def _fire_group(self, group_id: int) -> None:
-        from application.service.collect_app_service import CollectAppService, spawn
-        from infrastructure.persistence.connection import AsyncSessionLocal
-        from infrastructure.persistence.repositories.collect_config_repository import CollectConfigRepoImpl
+        from application.service import CollectManageService
+        from infrastructure.config.di import get_collect_manage_service
 
-        async with AsyncSessionLocal() as session:
-            group = await CollectConfigRepoImpl(session).get_group(group_id)
+        svc = get_collect_manage_service()
         if group is None or not group.enabled:
             return
         if group.trading_day_only and not self._is_trading_day():
@@ -119,7 +110,8 @@ class CollectScheduler:
             return
         try:
             # 放进托管集合，关闭时由 cancel_background 统一取消；await 使 max_instances=1 生效
-            await spawn(CollectAppService().run_group(group_id, trigger="schedule"))
+            from application.service import spawn
+            await spawn(svc.run_group(group_id, trigger="schedule"))
         except Exception:
             logger.exception("任务组 %d 定时执行失败", group_id)
 

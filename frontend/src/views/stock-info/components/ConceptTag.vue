@@ -33,6 +33,10 @@
         [`color-${snapshotColor}`]: !!snapshot && !snapshot.stale,
         'is-stale': !!snapshot?.stale,
       }"
+      :data-concept-id="concept.concept_id"
+      :data-index-code="(concept as any).index_code || ''"
+      :data-concept-code="(concept as any).concept_code || ''"
+      :data-concept-name="concept.name"
       @mouseenter="hovered = true"
       @mouseleave="hovered = false"
       @click.stop="$emit('click', concept)"

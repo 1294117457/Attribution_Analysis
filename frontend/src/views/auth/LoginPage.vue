@@ -246,10 +246,20 @@ async function handleLogin() {
     const redirect = (router.currentRoute.value.query.redirect as string) || '/home/index'
     router.push(redirect)
   } catch (e: any) {
-    // 登录失败(密码错 / 验证码错 / 账号禁用):后端会回 400,刷新图形验证码
+    // 方案A:统一友好提示,后端 message 优先,否则兜底
+    // 安全考虑:不区分"账号不存在" vs "密码错",避免账号枚举
+    // 账号禁用由后端单独抛 UserInactiveError → 走独立文案
+    const backendMsg = e?.response?.data?.message as string | undefined
+    const status = e?.response?.status
+    const msg =
+      backendMsg ||
+      (status === 401 ? '邮箱或密码错误，或图形验证码错误，请重试'
+       : status === 403 ? '账号已被禁用，请联系管理员'
+       : '登录失败，请重试')
+    ElMessage.error(msg)
+    // 刷新图形验证码,避免用户重复操作同一张失效的码
     loginCaptchaError.value = true
     loginCaptchaRef.value?.refresh()
-    console.warn('login failed', e)
   } finally {
     loginLoading.value = false
   }
@@ -361,10 +371,13 @@ async function handleSendCode() {
     ElMessage.success('验证码已发送,请查收邮箱')
     startCooldown(60)
   } catch (e: any) {
+    // 方案A:统一友好提示
+    const backendMsg = e?.response?.data?.message as string | undefined
+    const msg = backendMsg || '验证码发送失败，请重试'
+    ElMessage.error(msg)
     // 图形验证码错 / 限流 / 邮箱占用:刷新图形验证码
     sendCaptchaError.value = true
     sendCaptchaRef.value?.refresh()
-    console.warn('send code failed', e)
   } finally {
     sendingCode.value = false
   }
@@ -394,8 +407,11 @@ async function handleRegister() {
     loginForm.email = registeredEmail
     await nextTick()
     loginCaptchaRef.value?.refresh()
-  } catch (e) {
-    console.warn('register failed', e)
+  } catch (e: any) {
+    // 方案A:统一友好提示
+    const backendMsg = e?.response?.data?.message as string | undefined
+    const msg = backendMsg || '注册失败，请重试'
+    ElMessage.error(msg)
   } finally {
     registerLoading.value = false
   }

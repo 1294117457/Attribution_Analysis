@@ -1,26 +1,19 @@
-"""StockPanel 面板列表路由
+"""股票面板列表路由（业务模块：stock-info/）
 
-GET /api/v1/stock-panel/  分页 + 多维筛选 + 4 表快照 + 池信息
-
-替代原 GET /api/v1/stocks/ 的富字段查询职责（list_with_kline_stats_paginated）。
+GET /api/v1/stock-panel/  分页 + 多维筛选 + 4 表快照 + 池信息 + 概念
 """
-
 from __future__ import annotations
 
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
-from route.dto.response.panel import StockPanelListVO, StockPanelQueryRequest
-from application.service.panel_app_service import StockPanelAppService
-from infrastructure.config.di import get_panel_app_service
+from application.service import StockInfoService
+from infrastructure.config.di import get_stock_info_service
 from route.api import _response as R
+from route.dto.response.panel import StockPanelQueryRequest
 
 router = APIRouter(prefix="/stock-panel", tags=["面板"])
-
-
-# DDD 改造：DI 工厂移到 infrastructure/config/di.py
-# 现在通过 get_panel_app_service 注入 ConceptBriefService（domain）
 
 
 @router.get(
@@ -41,40 +34,18 @@ async def query_panels(
     ),
     with_concepts: bool = Query(
         False,
-        description=(
-            "是否附带所属概念板块（简略版 ConceptBriefVO，详情抽屉预热用）"
-            "；数据来自概念成分股采集任务"
-        ),
+        description="是否附带所属概念板块（简略版 ConceptBriefVO，详情抽屉预热用）",
     ),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=500, description="每页条数"),
-    service: StockPanelAppService = Depends(get_panel_app_service),
+    service: StockInfoService = Depends(get_stock_info_service),
 ):
-    """分页 + 多维筛选 + K线统计 + 最新估值的股票列表（StockPanel.vue 主列表用）
-
-    若 with_pools=true，响应 items[].pools 字段会附带每只股票所属的操作池，
-    无需前端逐条调用 /pools/by-symbol/{symbol}，避免 N+1 问题。
-
-    若 with_concepts=true，
-    响应 items[].concepts 字段会附带每只股票所属的概念板块简略列表，
-    供详情抽屉预热使用。
-
-    字段命名与前端 PaginatedResponse<StockInfo> 1:1 对齐：
-    items / total / page / page_size / pages
-    """
+    """分页 + 多维筛选 + K线统计 + 最新估值的股票列表（StockPanel.vue 主列表用）"""
     request = StockPanelQueryRequest(
-        q=q,
-        industry=industry,
-        market=market,
-        exchange=exchange,
-        is_hs=is_hs,
-        list_status=list_status,
-        exclude_st=exclude_st,
-        min_total_mv=min_total_mv,
-        with_pools=with_pools,
-        with_concepts=with_concepts,
-        page=page,
-        page_size=page_size,
+        q=q, industry=industry, market=market, exchange=exchange,
+        is_hs=is_hs, list_status=list_status, exclude_st=exclude_st,
+        min_total_mv=min_total_mv, with_pools=with_pools,
+        with_concepts=with_concepts, page=page, page_size=page_size,
     )
     response = await service.query_panels(request)
     return R.ok(response.model_dump())

@@ -58,9 +58,10 @@ class OperationDispatcher:
                     )
                     await op_session.commit()
 
-                    from application.service.collect_app_service import CollectAppService
+                    from application.service import CollectManageService
+                    from infrastructure.config.di import get_collect_manage_service
 
-                    collect = CollectAppService()
+                    collect = get_collect_manage_service()
                     done = 0
                     failed = 0
                     saved_total = 0

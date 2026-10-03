@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timezone
+from dataclasses import dataclass
 from typing import Iterable, Optional
 
 from sqlalchemy import and_, delete, func, select, text, update
@@ -25,6 +26,9 @@ from infrastructure.persistence.models.concept import (
     ConceptMemberDB,
     ConceptsDB,
 )
+from infrastructure.persistence.models.pool import StockPoolDB, StockPoolMemberDB
+from infrastructure.persistence.models.stock_info import StockInfoDB
+from infrastructure.persistence.models.fin_daily_basic import FinDailyBasicDB
 from route.dto.request.concept import ConceptIndexTHBO, ConceptListBO
 
 logger = logging.getLogger(__name__)
@@ -421,3 +425,257 @@ class ConceptRepoImpl:
 
 
 ConceptRepoImpl.__implements_protocol__ = ConceptRepository
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  概念大盘 v2（01 概念大盘页 · 纯追加，文件末尾）
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class _ConceptBoardRow:
+    """概念大盘行（仓储私有 VO，不进 domain/vo/）
+
+    用 dataclass 而非 ORM row 是因为实时字段（price / pct_change 等）
+    由调用方补齐；这里只承载 DB 字段。
+    """
+    concept_id: int
+    index_code: str
+    name: str
+    source: str
+    concept_type: str
+    description: Optional[str]
+    stock_count: int
+    is_active: bool
+
+
+async def _list_board_rows_impl(
+    self,
+    type_filter: Optional[str] = None,
+    sort_by: str = "pct_change",
+    order: str = "desc",
+    page: int = 1,
+    page_size: int = 50,
+) -> tuple[list[_ConceptBoardRow], int]:
+    """按 type 筛选 + 排序 + 分页
+
+    排序映射：
+    - pct_change：实时字段，DB 没有；用 stock_count 兜底排序，
+      service 端补行情后做内存重排
+    - stock_count：stock_count DESC/ASC
+    - name：name ASC/DESC
+    """
+    stmt = select(
+        ConceptsDB.id,
+        ConceptsDB.index_code,
+        ConceptsDB.name,
+        ConceptsDB.source,
+        ConceptsDB.concept_type,
+        ConceptsDB.description,
+        ConceptsDB.stock_count,
+        ConceptsDB.is_active,
+    ).where(ConceptsDB.is_active == True)  # noqa: E712
+    if type_filter and type_filter != "all":
+        stmt = stmt.where(ConceptsDB.concept_type == type_filter)
+
+    sort_col_map = {
+        "pct_change": ConceptsDB.stock_count,
+        "stock_count": ConceptsDB.stock_count,
+        "name": ConceptsDB.name,
+    }
+    sort_col = sort_col_map.get(sort_by, ConceptsDB.stock_count)
+    stmt = stmt.order_by(sort_col.desc() if order == "desc" else sort_col.asc())
+
+    total = await self._session.scalar(
+        select(func.count()).select_from(stmt.subquery())
+    )
+    stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+    result = await self._session.execute(stmt)
+    rows = result.all()
+
+    return [
+        _ConceptBoardRow(
+            concept_id=r.id,
+            index_code=r.index_code,
+            name=r.name,
+            source=r.source.value if hasattr(r.source, "value") else r.source,
+            concept_type=(
+                r.concept_type.value
+                if hasattr(r.concept_type, "value")
+                else r.concept_type
+            ),
+            description=r.description,
+            stock_count=r.stock_count,
+            is_active=r.is_active,
+        )
+        for r in rows
+    ], int(total or 0)
+
+
+async def _list_members_by_concept_impl(
+    self,
+    concept_id: int,
+    sort_by: str = "pct_change",
+    order: str = "desc",
+    page: int = 1,
+    page_size: int = 50,
+) -> tuple[list[dict], int]:
+    """单概念成分股：stock_concept_members ⨝ stock_infos ⨝ fin_daily_basics 最新一行
+
+    返回 dict 列表（路由层组装为 ConceptMemberItemVO）。
+    """
+    # 1) 子查询：每只股票 fin_daily_basics 最新一行
+    latest_fdb = (
+        select(
+            FinDailyBasicDB.symbol,
+            func.max(FinDailyBasicDB.trade_date).label("max_date"),
+        )
+        .group_by(FinDailyBasicDB.symbol)
+        .subquery()
+    )
+
+    # 2) 主查询
+    stmt = (
+        select(
+            StockInfoDB.symbol,
+            StockInfoDB.name,
+            StockInfoDB.industry,
+            StockInfoDB.market,
+            FinDailyBasicDB.close.label("latest_close"),
+            FinDailyBasicDB.total_mv,
+            FinDailyBasicDB.pe_ttm,
+        )
+        .select_from(ConceptMemberDB)
+        .join(StockInfoDB, ConceptMemberDB.symbol == StockInfoDB.symbol)
+        .outerjoin(latest_fdb, latest_fdb.c.symbol == StockInfoDB.symbol)
+        .outerjoin(
+            FinDailyBasicDB,
+            and_(
+                FinDailyBasicDB.symbol == latest_fdb.c.symbol,
+                FinDailyBasicDB.trade_date == latest_fdb.c.max_date,
+            ),
+        )
+        .where(ConceptMemberDB.concept_id == concept_id)
+    )
+
+    # 3) 排序（pct_change 用 latest_close 兜底）
+    sort_col_map = {
+        "pct_change": FinDailyBasicDB.close,
+        "latest_close": FinDailyBasicDB.close,
+        "total_mv": FinDailyBasicDB.total_mv,
+        "name": StockInfoDB.name,
+    }
+    sort_col = sort_col_map.get(sort_by, FinDailyBasicDB.close)
+    stmt = stmt.order_by(
+        sort_col.desc().nulls_last() if order == "desc"
+        else sort_col.asc().nulls_first()
+    )
+
+    # 4) 分页 + 返回 dict
+    total = await self._session.scalar(
+        select(func.count()).select_from(stmt.subquery())
+    )
+    stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+    result = await self._session.execute(stmt)
+    rows = result.mappings().all()
+    return [dict(r) for r in rows], int(total or 0)
+
+
+async def _list_membership_by_symbols_impl(
+    self, symbols: list[str]
+) -> dict[str, list[dict]]:
+    """批量查询股票所属池（避免 N+1）—— 用于概念成分股页 with_pools=True
+
+    返回 dict[symbol, [{pool_id, name, pool_type, joined_at}, ...]]
+    joined_at 用 StockPoolMemberDB.added_at（在结果 dict 内重命名）。
+    """
+    if not symbols:
+        return {}
+    stmt = (
+        select(
+            StockPoolMemberDB.symbol,
+            StockPoolMemberDB.pool_id,
+            StockPoolDB.name.label("pool_name"),
+            StockPoolDB.pool_type,
+            StockPoolMemberDB.added_at,
+        )
+        .join(StockPoolDB, StockPoolMemberDB.pool_id == StockPoolDB.id)
+        .where(
+            and_(
+                StockPoolMemberDB.symbol.in_(symbols),
+                StockPoolDB.is_archived == False,  # noqa: E712
+            )
+        )
+    )
+    rows = (await self._session.execute(stmt)).mappings().all()
+    out: dict[str, list[dict]] = {s: [] for s in symbols}
+    for r in rows:
+        d = dict(r)
+        # 字段重命名：added_at -> joined_at（与 PoolMembershipVO 一致）
+        d["joined_at"] = d.pop("added_at")
+        d["name"] = d.pop("pool_name")
+        out[d.pop("symbol")].append(d)
+    return out
+
+
+# 挂载到 ConceptRepoImpl（动态方法注入，**不修改原类**）
+ConceptRepoImpl.list_board_rows = _list_board_rows_impl
+ConceptRepoImpl.list_members_by_concept = _list_members_by_concept_impl
+ConceptRepoImpl.list_membership_by_symbols = _list_membership_by_symbols_impl
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  概念 K 线（concept-board 用）
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+async def _get_concept_by_index_code_impl(
+    self, index_code: str
+) -> Optional[Concept]:
+    stmt = select(ConceptsDB).where(ConceptsDB.index_code == index_code)
+    row = (await self._session.execute(stmt)).scalar_one_or_none()
+    return self._to_entity(row) if row else None
+
+
+async def _list_concept_kline_impl(
+    self,
+    index_code: str,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    limit: int = 250,
+) -> list[dict]:
+    """概念指数日 K（concept_index_ths），按日期升序
+
+    返回 [{date(YYYY-MM-DD), open, high, low, close, volume, amount, change_pct}, ...]
+    """
+    from infrastructure.persistence.models.concept import ConceptIndexTHDB
+
+    stmt = select(
+        ConceptIndexTHDB.trade_date,
+        ConceptIndexTHDB.open,
+        ConceptIndexTHDB.high,
+        ConceptIndexTHDB.low,
+        ConceptIndexTHDB.close,
+        ConceptIndexTHDB.volume,
+        ConceptIndexTHDB.amount,
+        ConceptIndexTHDB.change_pct,
+    ).where(ConceptIndexTHDB.index_code == index_code)
+    if start_date is not None:
+        stmt = stmt.where(ConceptIndexTHDB.trade_date >= start_date)
+    if end_date is not None:
+        stmt = stmt.where(ConceptIndexTHDB.trade_date <= end_date)
+    stmt = stmt.order_by(ConceptIndexTHDB.trade_date.desc()).limit(limit)
+    rows = (await self._session.execute(stmt)).all()
+    # 反转成升序
+    out: list[dict] = []
+    for r in reversed(rows):
+        out.append({
+            "date": r.trade_date.isoformat() if hasattr(r.trade_date, "isoformat") else str(r.trade_date),
+            "open": r.open, "high": r.high, "low": r.low, "close": r.close,
+            "volume": r.volume, "amount": r.amount,
+            "change_pct": r.change_pct,
+        })
+    return out
+
+
+ConceptRepoImpl.get_concept_by_index_code = _get_concept_by_index_code_impl
+ConceptRepoImpl.list_concept_kline = _list_concept_kline_impl

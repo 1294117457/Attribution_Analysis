@@ -12,11 +12,9 @@ from typing import Callable
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from application.service.auth_app_service import AuthAppService
-from infrastructure.config.di import get_db
-
+from application.service import AuthService
+from infrastructure.config.di import get_auth_service
 
 security = HTTPBearer(auto_error=False)
 
@@ -24,7 +22,7 @@ security = HTTPBearer(auto_error=False)
 async def get_current_user_id(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
-    session: AsyncSession = Depends(get_db),
+    svc: AuthService = Depends(get_auth_service),
 ) -> int:
     """解析 Bearer access token,返回 user_id;将 claims 写入 request.state。"""
     if credentials is None or not credentials.credentials:
@@ -34,7 +32,6 @@ async def get_current_user_id(
             headers={"WWW-Authenticate": "Bearer"},
         )
     token = credentials.credentials
-    svc = AuthAppService(session)
     try:
         claims = await svc.parse_access_token(token)
     except Exception as e:
@@ -44,7 +41,6 @@ async def get_current_user_id(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 写入 request.state,后续日志 / 中间件可用
     request.state.token_claims = claims
     request.state.user_id = int(claims["sub"])
     return int(claims["sub"])
@@ -52,10 +48,9 @@ async def get_current_user_id(
 
 async def get_current_user(
     user_id: int = Depends(get_current_user_id),
-    session: AsyncSession = Depends(get_db),
+    svc: AuthService = Depends(get_auth_service),
 ) -> dict:
     """返回完整 user dict(由应用服务组装,含 roles + permissions)。"""
-    svc = AuthAppService(session)
     return await svc.get_user_info(user_id)
 
 

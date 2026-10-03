@@ -1,12 +1,10 @@
 """认证授权 - 应用服务
 
-AuthAppService 是用户登录、注册、刷新令牌、登出、用户列表/角色管理等的统一入口。
+业务模块：auth/（前端 LoginPage / ChangePasswordPage / AccountPage）
 
-DDD 改造（2026-10-03）：
-- 不再持有 AsyncSession / ORM 模型：只接收已注入的 Repository（DDD.md §2.2、§4）
-- 不再 import `infrastructure.*`：基础设施适配通过 DI 在构造时注入
-- 所有权限 join 下沉到 `UserRepository.list_permission_codes_by_user`
-- 密码 hash / verify、captcha、email verification、JWT 由 port 注入
+依赖全部通过构造注入（DDD.md §4）：
+- users / roles / perms / refresh：仓储接口（domain）
+- hasher / captcha / email_verify / jwt：port 接口（application，由 infrastructure 实现）
 """
 from __future__ import annotations
 
@@ -93,13 +91,8 @@ class JwtPort(Protocol):
 # ════════════════════════════════════════════════════════════════════════
 
 
-class AuthAppService:
-    """认证授权应用服务（DDD 风格：所有依赖由构造函数注入）
-
-    依赖：
-    - users / roles / perms / refresh：仓储接口（domain）
-    - hasher / captcha / email_verify / jwt：port 接口（application）
-    """
+class AuthService:
+    """认证授权应用服务（依赖注入：所有依赖由构造函数注入）"""
 
     def __init__(
         self,
@@ -153,8 +146,6 @@ class AuthAppService:
             user_agent=user_agent,
         )
 
-    # ── 内部:必传图形验证码校验 ─────────────────────────────────────
-
     async def _verify_captcha(self, captcha_id: str, captcha_code: str) -> None:
         """强制要求前端传 captcha_id + code,任一为空或校验失败都抛 AuthError。"""
         if not captcha_id or not captcha_code:
@@ -183,14 +174,11 @@ class AuthAppService:
         - nickname 可选,空时回退为 email 本地部分
         - 通过邮箱验证码注册 = 邮箱已验证(is_verified=True)
         """
-        # 1. 校验邮箱验证码(失败抛 EmailCodeInvalidError → DomainError → 400)
         await self.email_verify.verify(email=email, purpose="register", input_code=code)
 
-        # 2. 邮箱占用校验
         if await self.users.find_by_email(email):
             raise UserAlreadyExistsError(field="邮箱", value=email)
 
-        # 3. 默认昵称 = email 本地部分
         fallback_nick = email.split("@", 1)[0] if "@" in email else email
         new_user = User(
             id=0,
@@ -232,11 +220,9 @@ class AuthAppService:
         if not user.is_active:
             raise UserInactiveError()
 
-        # 加载角色 + 权限
         role_codes = [r.code for r in user.roles]
         perm_codes = await self.users.list_permission_codes_by_user(user.id)
 
-        # 签发 token 对
         access_token, _access_exp = self.jwt.create_access_token(
             user_id=user.id,
             email=user.email,
@@ -265,14 +251,7 @@ class AuthAppService:
     # ── refresh ───────────────────────────────────────────────────────
 
     async def refresh_token(self, refresh_token: str) -> dict:
-        """refresh rotation: 撤销旧 jti,签发新一对 token。
-
-        Redis 版流程:
-        1. 验 JWT 签名 / 类型 / 是否过期
-        2. 查 Redis 黑名单:已撤销 → 抛错(reuse detection:撤销该用户所有)
-        3. 撤销旧 jti(写黑名单,TTL 用 claims['exp'] 算剩余有效期)
-        4. 签发新一对 + 把新 jti 登记到 user_refresh_tokens:{user_id}
-        """
+        """refresh rotation: 撤销旧 jti,签发新一对 token。"""
         try:
             claims = self.jwt.decode_token(refresh_token, expected_type="refresh")
         except pyjwt.ExpiredSignatureError:
@@ -284,11 +263,9 @@ class AuthAppService:
         sub = int(claims["sub"])
         old_exp_ts = int(claims["exp"])
         now_ts = int(datetime.now(tz=timezone.utc).timestamp())
-        old_remaining = max(1, old_exp_ts - now_ts)   # 剩余秒数,至少 1 秒保底
+        old_remaining = max(1, old_exp_ts - now_ts)
 
-        # 1. 黑名单检查(reuse detection)
         if not await self.refresh.is_active(old_jti):
-            # 旧 token 已被使用或被撤销 → 一键踢出该用户全部 token
             await self.refresh.revoke_all_for_user(sub)
             raise TokenInvalidError("refresh token 已被撤销,全设备下线")
 
@@ -297,10 +274,8 @@ class AuthAppService:
             await self.refresh.revoke_all_for_user(sub)
             raise UserInactiveError()
 
-        # 2. 撤销旧 jti(写黑名单,TTL 与剩余有效期一致)
         await self.refresh.revoke(old_jti, expires_in_seconds=old_remaining)
 
-        # 3. 签发新 token 对
         role_codes = [r.code for r in user.roles]
         perm_codes = await self.users.list_permission_codes_by_user(user.id)
         new_access, _access_exp = self.jwt.create_access_token(
@@ -379,7 +354,6 @@ class AuthAppService:
             raise UserNotFoundError(str(user_id))
         user.is_active = is_active
         updated = await self.users.update(user)
-        # 禁用账户 → 撤销该用户全部 refresh token(Redis)
         if not is_active:
             await self.refresh.revoke_all_for_user(user_id)
         return {"id": updated.id, "is_active": updated.is_active}
@@ -390,7 +364,6 @@ class AuthAppService:
             raise UserNotFoundError(str(user_id))
         user.password_hash = self.hasher.hash(new_password)
         await self.users.update(user)
-        # 强制重登:撤销该用户全部 refresh token
         await self.refresh.revoke_all_for_user(user_id)
 
     async def change_password(

@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request, status
 
-from application.service.auth_app_service import AuthAppService
-from infrastructure.config.di import get_auth_app_service
+from application.service import AuthService
+from infrastructure.config.di import get_auth_service
 from infrastructure.security.captcha import Captcha
 from route.api import _response as R
 from route.api.v1.deps_auth import get_current_user_id
@@ -41,7 +41,7 @@ router = APIRouter(prefix="/auth", tags=["认证"])
 async def register(
     req: RegisterRequest,
     request: Request,
-    svc: AuthAppService = Depends(get_auth_app_service),
+    svc: AuthService = Depends(get_auth_service),
 ):
     """公开端点:邮箱 + 密码 + 邮箱验证码 + 可选昵称
 
@@ -71,7 +71,7 @@ async def register(
 async def send_verification_code(
     req: SendVerificationCodeRequest,
     request: Request,
-    svc: AuthAppService = Depends(get_auth_app_service),
+    svc: AuthService = Depends(get_auth_service),
 ):
     """公开端点:发送 6 位数字验证码到邮箱。
 
@@ -99,7 +99,7 @@ async def send_verification_code(
 async def login(
     req: LoginRequest,
     request: Request,
-    svc: AuthAppService = Depends(get_auth_app_service),
+    svc: AuthService = Depends(get_auth_service),
 ):
     """返回双 token + user_info。
 
@@ -128,7 +128,7 @@ async def login(
 @router.post("/refresh", summary="刷新 token（rotation）")
 async def refresh(
     req: RefreshTokenRequest,
-    svc: AuthAppService = Depends(get_auth_app_service),
+    svc: AuthService = Depends(get_auth_service),
 ):
     """旧 refresh_token 一次性使用,失败不重试。"""
     data = await svc.refresh_token(req.refresh_token)
@@ -143,7 +143,7 @@ async def refresh(
 @router.post("/logout", summary="登出")
 async def logout(
     user_id: int = Depends(get_current_user_id),
-    svc: AuthAppService = Depends(get_auth_app_service),
+    svc: AuthService = Depends(get_auth_service),
 ):
     """撤销该用户全部未撤销的 refresh token(access token 短效,自然到期)。"""
     await svc.logout(user_id)
@@ -171,7 +171,7 @@ async def generate_captcha():
 async def change_password(
     req: ChangePasswordRequest,
     user_id: int = Depends(get_current_user_id),
-    svc: AuthAppService = Depends(get_auth_app_service),
+    svc: AuthService = Depends(get_auth_service),
 ):
     """修改成功后撤销该用户全部 refresh token,前端需引导用户重新登录。"""
     await svc.change_password(user_id, req.old_password, req.new_password)
@@ -181,7 +181,7 @@ async def change_password(
 @router.get("/me", summary="当前登录用户信息")
 async def me(
     user_id: int = Depends(get_current_user_id),
-    svc: AuthAppService = Depends(get_auth_app_service),
+    svc: AuthService = Depends(get_auth_service),
 ):
     info = await svc.get_user_info(user_id)
     return R.ok(info)

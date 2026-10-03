@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from application.service.auth_app_service import AuthAppService
-from infrastructure.config.di import get_auth_app_service
+from application.service import AuthService
+from infrastructure.config.di import get_auth_service
 from route.api import _response as R
 from route.api.v1.deps_auth import require_permission
 
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/permissions", tags=["权限管理"])
 @router.get("/", summary="权限列表（全部）")
 async def list_permissions(
     _user=Depends(require_permission("role:read")),
-    svc: AuthAppService = Depends(get_auth_app_service),
+    svc: AuthService = Depends(get_auth_service),
 ):
     perms = await svc.list_permissions()
     items = [

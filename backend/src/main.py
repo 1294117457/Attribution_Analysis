@@ -67,7 +67,7 @@ from infrastructure.persistence.models import (                                 
     UserRoleDB,                                                          # noqa: F401
     RolePermissionDB,                                                    # noqa: F401
 )
-from application.service.collect_app_service import cancel_background
+from application.service import cancel_background
 from infrastructure.adapter.scheduler.collect_scheduler import (
     start_collect_scheduler,
     stop_collect_scheduler,

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from application.service.auth_app_service import (
+from application.service.auth_service import (
     CaptchaPort,
     EmailVerificationPort,
     JwtPort,
