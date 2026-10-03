@@ -780,3 +780,121 @@ export const getConceptQuotes = (
       params: { codes: indexCodes.join(',') },
     })
     .then(unwrap)
+
+// ═══════════════════════════════════════════════════════════════════════
+//  🆕 概念指数日 K + 当日分时（stock_info 详情抽屉概念 Tab 展开用）
+//  配套设计文档：docs/dev/step3/04概念看板/stock_info详情中的概念.md
+// ═══════════════════════════════════════════════════════════════════════
+
+/** 概念指数日 K 单根 K 线（与概念大盘侧对齐） */
+export interface ConceptKlineBar {
+  date: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  amount: number | null
+  change_pct: number | null
+  color: 'up' | 'down' | 'flat'
+}
+
+/** 概念指数实时快照（与 getConceptKline 一起返回） */
+export interface ConceptRealtime {
+  index_code: string
+  concept_name: string
+  price: number | null
+  prev_close: number | null
+  change: number | null
+  pct_change: number | null
+  color: 'up' | 'down' | 'flat'
+  trade_time: string | null
+  captured_at: string | null
+  stale: boolean
+}
+
+/** 概念指数元信息（用于卡片 header） */
+export interface ConceptKlineMeta {
+  concept_id: number | null
+  index_code: string
+  name: string
+  concept_type: string | null
+  concept_type_label?: string | null
+  stock_count: number | null
+  description: string | null
+  source: string | null
+}
+
+/** 概念指数日 K 响应（K 线 + 实时 + 元信息） */
+export interface ConceptKlineResponse {
+  kline: ConceptKlineBar[]
+  realtime: ConceptRealtime | null
+  meta: ConceptKlineMeta | null
+  data_range: {
+    start: string | null
+    end: string | null
+    bars_count: number
+  }
+}
+
+/** GET /api/v1/concepts/{index_code}/kline  概念指数日 K + 实时快照
+ *  - days: 取多少根（默认 250）
+ *  - 实时通过 RealtimeQueryFramework.concept_minute（15s 缓存）
+ *  - 数据源不可用时降级为最近一日收盘（realtime.stale=true）
+ *
+ * 注：本接口与 concept-board/api.ts 中 getConceptKline 同源；
+ *     在 stock-info 页独立定义一份以避免跨目录依赖。 */
+export const getConceptKline = (params: {
+  index_code: string
+  days?: number
+  start_date?: string
+  end_date?: string
+}): Promise<ConceptKlineResponse> =>
+  http
+    .get<ConceptKlineResponse>(`/concepts/${params.index_code}/kline`, {
+      params: {
+        days: params.days ?? 250,
+        start_date: params.start_date,
+        end_date: params.end_date,
+      },
+    })
+    .then(unwrap)
+
+// ── 概念当日分时（241 点） ─────────────────────────────────────
+
+/** 概念分时单点（同花顺 9:30~15:00 每分钟 1 点） */
+export interface ConceptMinutePoint {
+  trade_time: string
+  price: number
+  avg_price: number | null
+  volume: number | null
+  amount: number | null
+  change_pct: number | null
+}
+
+/** 概念当日分时完整响应
+ *  - pre_close: 昨收（= 9:30 开盘前的昨日收盘价）
+ *  - price / change / change_pct: 取最后一点
+ *  - stale: 数据源失败时为 true（同时 points 为空）
+ *  - cached: 命中 15s 缓存时为 true */
+export interface ConceptMinuteResponse {
+  index_code: string
+  trade_date: string | null
+  pre_close: number | null
+  price: number | null
+  change: number | null
+  change_pct: number | null
+  trade_time: string | null
+  points: ConceptMinutePoint[]
+  stale: boolean
+  cached: boolean
+  fetched_at: string | null
+}
+
+/** GET /api/v1/concepts/{index_code}/minute  概念当日分时
+ *  - 实时接口 concept_minute（15s 缓存，adata 同花顺）
+ *  - 失败时 points=[] 且 stale=true（前端应进入空态）
+ *
+ * 配套设计文档：docs/dev/step3/04概念看板/stock_info详情中的概念.md §3.2 */
+export const getConceptMinute = (index_code: string): Promise<ConceptMinuteResponse> =>
+  http.get<ConceptMinuteResponse>(`/concepts/${index_code}/minute`).then(unwrap)

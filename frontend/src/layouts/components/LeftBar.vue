@@ -62,6 +62,7 @@ import {
   Odometer,
   Upload,
   UserFilled,
+  DataAnalysis,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -89,6 +90,15 @@ const menuItems = computed<MenuItem[]>(() => {
   if (authStore.isAdmin) {
     items.push({ path: '/home/account', title: '账户管理', icon: UserFilled })
   }
+  // ── v2 新增：实验性子菜单组，挂在最末尾（不动原 4 个菜单项）──
+  items.push({
+    path: '/home/experimental',
+    title: '实验性',
+    icon: DataAnalysis,
+    children: [
+      { path: '/home/concepts', title: '概念大盘', icon: DataLine },
+    ],
+  })
   return items
 })
 

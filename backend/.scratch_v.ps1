@@ -1,0 +1,1 @@
+Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" | Where-Object { $_.CommandLine -like '*uvicorn*' } | Select-Object ProcessId, @{N='Cmd';E={$_.CommandLine.Substring(0, [Math]::Min($_.CommandLine.Length, 100))}} | Format-Table -AutoSize

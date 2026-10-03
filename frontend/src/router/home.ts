@@ -68,6 +68,17 @@ const homeRoutes: RouteRecordRaw = {
       component: () => import('@/views/auth/ChangePasswordPage.vue'),
       meta: { title: '修改密码', icon: 'lock', hidden: true, requiresAuth: true },
     },
+
+    // ════════════════════════════════════════════════════════════════
+    //  概念大盘 v2（01 概念大盘页 · 纯追加，挂在末尾的「实验性」菜单组下）
+    // ════════════════════════════════════════════════════════════════
+    {
+      // 实验性：概念大盘
+      path: 'concepts',
+      name: 'ConceptBoard',
+      component: () => import('@/views/concept-board/ConceptBoard.vue'),
+      meta: { title: '概念大盘', icon: 'data-line' },
+    },
   ],
 }
 
