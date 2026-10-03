@@ -34,7 +34,6 @@ def _now() -> datetime:
 def create_access_token(
     *,
     user_id: int,
-    username: str,
     email: str,
     roles: list[str],
     permissions: list[str],
@@ -51,7 +50,6 @@ def create_access_token(
         "nbf": int(now.timestamp()),
         "exp": int(expires_at.timestamp()),
         "jti": uuid.uuid4().hex,
-        "username": username,
         "email": email,
         "roles": roles,
         "permissions": permissions,

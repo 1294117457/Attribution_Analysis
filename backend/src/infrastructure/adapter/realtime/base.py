@@ -4,20 +4,15 @@
 缓存 / 单飞 / 限流 / 降级 / 统计由 infrastructure.adapter.realtime.framework.RealtimeQueryFramework 统一处理，
 子类只描述「缓存键、怎么取、失败怎么降级」。
 
-交易时段相关领域规则（is_trading_time / ttl_for / market_now）已迁移到 domain.market，
-本模块保留旧名作为兼容 shim，业务代码请直接 from domain.market import ...。
+交易时段相关领域规则位于 `domain.service.market_session`（DDD.md §3.2 — 跨聚合根领域服务）。
+本模块只负责实时接口基类，不再 re-export 领域符号。
 
 配套设计文档：docs/dev/step2/04采集管理优化/06实时数据接口.md §3
 """
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Optional
-
-# 领域规则重导出（向后兼容旧 import 路径）
-from domain.market import is_trading_time as is_trading_time  # noqa: F401
-from domain.market import market_now as market_now  # noqa: F401
-from domain.market import ttl_for as ttl_for  # noqa: F401
+from typing import Any, ClassVar
 
 
 class BaseRealtimeQuery(ABC):
@@ -62,9 +57,4 @@ class BaseRealtimeQuery(ABC):
         return None
 
 
-__all__ = [
-    "BaseRealtimeQuery",
-    "is_trading_time",
-    "market_now",
-    "ttl_for",
-]
+__all__ = ["BaseRealtimeQuery"]

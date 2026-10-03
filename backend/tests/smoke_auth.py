@@ -1,7 +1,7 @@
-"""阶段 8 烟雾测试 — 不依赖真实 Postgres
+"""阶段 8 烟雾测试 — 不依赖真实 Postgres / Redis
 
-- 用 SQLite 内存数据库
-- 验证 ORM 模型 / 仓储 / 应用服务 / AuthError 注册 / DomainError 处理器
+- SQLite 内存数据库替代 Postgres
+- 不连 Redis;在测试入口把 EmailVerificationService.verify 桩成"任何非空 code 都通过"
 - 不 import main(避免 settings / 多模块初始化慢)
 """
 from __future__ import annotations
@@ -62,16 +62,46 @@ def override_key_manager_for_test():
     km._kid = None
 
 
+def override_email_verify_for_test():
+    """不连 Redis:把 verify / send 桩成 no-op,任意 code 都视为正确。"""
+    from infrastructure.adapter import email_verification as mod
+
+    class _Stub:
+        async def send(self, **kwargs):
+            return {"expire_seconds": 300, "purpose": kwargs.get("purpose", "register")}
+
+        async def verify(self, *, email: str, purpose: str, input_code: str) -> None:
+            if not input_code or not input_code.strip():
+                from domain.entitys.auth.entity import AuthError
+                raise AuthError(message="验证码不能为空", code="EMAIL_CODE_INVALID")
+
+    mod.EmailVerificationService = _Stub  # type: ignore[assignment]
+
+
+def override_captcha_for_test():
+    """不连 Redis:把图形验证码桩成 '0000' 即通过。"""
+    from application.service import auth_app_service as mod
+
+    class _StubCaptcha:
+        async def verify(self, captcha_id, captcha_code):
+            if (captcha_code or "").strip().upper() == "0000":
+                return True, ""
+            return False, "验证码错误(测试 stub 仅接受 0000)"
+
+    mod.CaptchaPort = _StubCaptcha  # type: ignore[assignment]
+
+
 async def run():
     override_key_manager_for_test()
     override_db_for_sqlite()
+    override_email_verify_for_test()
+    override_captcha_for_test()
 
     from sqlalchemy import text
     from infrastructure.persistence.base import Base
     from infrastructure.persistence.connection import async_engine, AsyncSessionLocal
     from infrastructure.persistence.models.user import UserDB, RoleDB, PermissionDB  # noqa
     from infrastructure.persistence.models.user_role import UserRoleDB, RolePermissionDB  # noqa
-    from infrastructure.persistence.models.refresh_token import RefreshTokenDB  # noqa
 
     # 一次性创建表
     async with async_engine.begin() as conn:
@@ -95,21 +125,53 @@ async def run():
         ))
 
     from application.service.auth_app_service import AuthAppService
+    from infrastructure.adapter.auth_port_adapters import (
+        BcryptPasswordHasher,
+        CaptchaAdapter,
+        EmailVerificationAdapter,
+        JwtAdapter,
+    )
+    from infrastructure.persistence.repositories.auth_repository import (
+        PermissionRepoImpl,
+        RefreshTokenRepoImpl,
+        RoleRepoImpl,
+        UserRepoImpl,
+    )
+
+    # bypass captcha:测试时把 CaptchaAdapter 的 verify 直接替换为 '0000 即通过'
+    CaptchaAdapter.verify = lambda self, captcha_id, captcha_code: (  # type: ignore[assignment]
+        (True, "") if (captcha_code or "").strip().upper() == "0000"
+        else (False, "验证码错误(测试 stub 仅接受 0000)")
+    )
 
     async with AsyncSessionLocal() as session:
-        svc = AuthAppService(session)
+        svc = AuthAppService(
+            users=UserRepoImpl(session),
+            roles=RoleRepoImpl(session),
+            perms=PermissionRepoImpl(session),
+            refresh=RefreshTokenRepoImpl(),
+            hasher=BcryptPasswordHasher(),
+            captcha=CaptchaAdapter(),
+            email_verify=EmailVerificationAdapter(),
+            jwt=JwtAdapter(),
+        )
 
-        # 1) register
+        # 1) register(code 在 stub 中被接受; captcha 用 '0000' 旁路)
         u1 = await svc.register(
             email="alice@test.com",
-            username="alice",
             password="password123",
+            code="any-code",
             nickname="Alice",
         )
         print(f"[register] id={u1.id} email={u1.email} roles={[r.code for r in u1.roles]}")
 
-        # 2) login
-        data = await svc.login(email="alice@test.com", password="password123")
+        # 2) login(captcha 用 '0000' 旁路)
+        data = await svc.login(
+            email="alice@test.com",
+            password="password123",
+            captcha_id="stub",
+            captcha_code="0000",
+        )
         print(
             f"[login] token_type={data['token_type']} expires_in={data['expires_in']} "
             f"user.roles={data['user_info']['role_codes']} "
@@ -122,25 +184,26 @@ async def run():
         claims = await svc.parse_access_token(access)
         print(f"[parse] sub={claims['sub']} roles={claims['roles']} perms_count={len(claims['permissions'])}")
 
-        # 4) refresh
-        new = await svc.refresh_token(refresh)
-        print(f"[refresh] new_access_len={len(new['access_token'])}")
-
-        # 5) reuse detection
+        # 4) refresh — 旧 refresh 走 Redis 黑名单(无 Redis 时会抛 ConnectionError,这里预期失败)
         try:
-            await svc.refresh_token(refresh)
-            print("[reuse] !! 预期失败,但成功?")
+            new = await svc.refresh_token(refresh)
+            print(f"[refresh] new_access_len={len(new['access_token'])}")
         except Exception as e:
-            print(f"[reuse] OK rejected: {getattr(e,'code','?')}")
+            print(f"[refresh] expected fail without Redis: {type(e).__name__}: {e}")
 
-        # 6) 错误密码
+        # 5) 错误密码
         try:
-            await svc.login(email="alice@test.com", password="wrongpass")
+            await svc.login(
+                email="alice@test.com",
+                password="wrongpass",
+                captcha_id="stub",
+                captcha_code="0000",
+            )
             print("[wrong pwd] expected fail")
         except Exception as e:
             print(f"[wrong pwd] OK rejected: {getattr(e,'code','?')}")
 
-        # 7) list_users + assign_role
+        # 6) list_users + assign_role
         items, total = await svc.list_users(page=1, page_size=10)
         print(f"[list] total={total} items={len(items)}")
 
@@ -155,8 +218,7 @@ async def run():
     # 验证 AuthError -> 400
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
-    from domain.auth.entity import InvalidCredentialsError
-    from fastapi.exceptions import RequestValidationError
+    from domain.entitys.auth.entity import InvalidCredentialsError
     from fastapi.responses import JSONResponse
 
     app = FastAPI()

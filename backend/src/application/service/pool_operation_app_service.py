@@ -1,41 +1,44 @@
-"""池操作应用服务"""
+"""池操作应用服务
 
+DDD 改造（2026-10-03）：构造改为依赖注入，只接收 Repository / port，
+不再持有 AsyncSession，也不再直接 import `infrastructure.*`（DDD.md §4）。
+"""
 from __future__ import annotations
 
 import logging
-from typing import Optional
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from route.dto.request.pool_operation import (
     PoolKlineCollectRequest,
-    PoolOperationListRequest,
-    PoolOperationVO,
-    PoolOperationListResponse,
     PoolOperationCreateResponse,
+    PoolOperationListRequest,
+    PoolOperationListResponse,
     PoolOperationProgressVO,
+    PoolOperationVO,
 )
+from application.port.operation_dispatcher_port import OperationDispatcherPort
+from domain.base import DomainError
 from domain.entitys.stock_pool.entity import (
     PoolNotFoundError,
     PoolOperationConflictError,
     PoolOperationNotFoundError,
 )
-from domain.entitys.stock_pool.repository import StockPoolRepository, PoolOperationRepository
-from infrastructure.persistence.repositories.pool_repository import StockPoolRepoImpl
-from infrastructure.persistence.repositories.pool_operation_repository import PoolOperationRepoImpl
-from infrastructure.adapter.scheduler.operation_dispatcher import OperationDispatcher
+from domain.entitys.stock_pool.repository import PoolOperationRepository, StockPoolRepository
 
 logger = logging.getLogger(__name__)
 
 
 class PoolOperationAppService:
-    """池操作应用服务"""
+    """池操作应用服务（依赖注入）"""
 
-    def __init__(self, session: AsyncSession):
-        self._session = session
-        self._pool_repo: StockPoolRepository = StockPoolRepoImpl(session)
-        self._op_repo: PoolOperationRepository = PoolOperationRepoImpl(session)
-        self._dispatcher = OperationDispatcher()
+    def __init__(
+        self,
+        pool_repo: StockPoolRepository,
+        op_repo: PoolOperationRepository,
+        dispatcher: OperationDispatcherPort,
+    ) -> None:
+        self._pool_repo = pool_repo
+        self._op_repo = op_repo
+        self._dispatcher = dispatcher
 
     async def create_kline_collect_operation(
         self, request: PoolKlineCollectRequest
@@ -174,7 +177,6 @@ class PoolOperationAppService:
             raise PoolOperationNotFoundError(op_id)
 
         if op["status"] not in ("pending", "running"):
-            from domain.base import DomainError
             raise DomainError("该操作无法取消", "CANNOT_CANCEL")
 
         await self._dispatcher.cancel_operation(op_id)

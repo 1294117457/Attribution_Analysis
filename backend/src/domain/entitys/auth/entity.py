@@ -1,7 +1,7 @@
-"""认证授权 - 领域实体 / 值对象 / 领域事件 / 异常
+"""认证授权实体 / 值对象 / 领域事件 / 异常 — 聚合根
 
-User 是聚合根; Role / Permission 是值对象(只读/unchanged)。
-AuthError 子类继承 DomainError,由 main.py 的统一 DomainError 处理器捕获为 400。
+User 是聚合根；Role / Permission 是值对象（只读/unchanged）。
+AuthError 子类继承 DomainError，由 main.py 的统一 DomainError 处理器捕获为 400。
 """
 from __future__ import annotations
 
@@ -55,9 +55,11 @@ class Permission(ValueObject):
 class User(AggregateRoot):
     """用户聚合根
 
-    - 持有 roles(值对象集合)
+    - 持有 roles（值对象集合）
     - can_login / has_role / validate_password 等业务方法
-    - 不在 __init__ 中校验密码(允许已存在但 is_active=false 的用户不参与登录)
+    - 不在 __init__ 中校验密码（允许已存在但 is_active=false 的用户不参与登录）
+
+    2026-10-02 改造：去除 username 字段，仅以 email 作为唯一业务标识。
     """
 
     def __init__(
@@ -65,7 +67,6 @@ class User(AggregateRoot):
         *,
         id: int,
         email: str,
-        username: str,
         password_hash: str,
         nickname: Optional[str] = None,
         avatar_url: Optional[str] = None,
@@ -80,7 +81,6 @@ class User(AggregateRoot):
         super().__init__()
         self.id = id
         self.email = email
-        self.username = username
         self.password_hash = password_hash
         self.nickname = nickname
         self.avatar_url = avatar_url
@@ -99,19 +99,19 @@ class User(AggregateRoot):
 
     def has_permission(self, perm_code: str) -> bool:
         # 直接判定：实际权限从应用服务 join 后注入；
-        # 领域层不依赖 SQLAlchemy,这里仅按"用户聚合持有权限"语义保留接口备用
+        # 领域层不依赖 SQLAlchemy，这里仅按"用户聚合持有权限"语义保留接口备用
         return False
 
     def can_login(self) -> bool:
-        """用户是否可登录(is_active=True 且至少有 1 个角色)。"""
+        """用户是否可登录（is_active=True 且至少有 1 个角色）。"""
         return self.is_active and len(self.roles) > 0
 
     def validate_password(self, plain: str, hasher) -> bool:
-        """校验密码(明文 vs 存储的 hash)。"""
+        """校验密码（明文 vs 存储的 hash）。"""
         return hasher(plain, self.password_hash)
 
     def record_login(self, ip: Optional[str]) -> None:
-        """记录登录时间和 IP,发布领域事件。"""
+        """记录登录时间和 IP，发布领域事件。"""
         now = datetime.now()
         self.last_login_at = now
         self.last_login_ip = ip

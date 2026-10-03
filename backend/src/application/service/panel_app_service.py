@@ -9,14 +9,12 @@
 - 通过注入 ConceptBriefService（domain）做"主概念"摘要排序，构造 ConceptMainVO + overflow
 
 DDD 改造：
-- 不再依赖 application.service.concept_app_service（跨应用服务依赖）
-- 改注入 domain.concept.service.ConceptBriefService（领域服务）
+- 不再持有 AsyncSession，也不再 import `infrastructure.persistence.*`
+- 依赖 Repository / 领域服务 / RealtimeQueryPort（实现位于 infrastructure.adapter.realtime.framework）
 """
 from __future__ import annotations
 
 from typing import Optional
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from route.dto.response.panel import (
     StockPanelItemVO,
@@ -24,14 +22,12 @@ from route.dto.response.panel import (
     StockPanelQueryRequest,
 )
 from route.dto.response.pool import PoolMembershipVO
-from domain.service import ConceptBriefService
+from application.port.realtime_query_port import RealtimeQueryPort
+from domain.entitys.concept.repository import ConceptRepository
 from domain.entitys.concept.vo import ConceptBriefVO, ConceptMainVO
 from domain.entitys.panel.repository import StockPanelComposeRepository
 from domain.entitys.panel.vo import StockPanelRow
-from infrastructure.persistence.repositories.concept_repository import ConceptRepoImpl
-from infrastructure.persistence.repositories.panel_compose_repository import (
-    StockPanelComposeRepoImpl,
-)
+from domain.service import ConceptBriefService
 
 
 # 列表行内"主概念"列展示上限（可被外部覆盖）
@@ -42,28 +38,27 @@ class StockPanelAppService:
     """列表面板应用服务
 
     依赖（构造注入）：
-    - session:         AsyncSession（数据库会话）
-    - concept_repo:    ConceptRepository（领域接口）
-    - brief_service:   ConceptBriefService（领域服务，做主概念排序）
-    - top_k:           主概念展示上限
+    - panel_repo:   StockPanelComposeRepository（领域接口 — 实现由 DI 注入）
+    - concept_repo: ConceptRepository（领域接口 — 实现由 DI 注入）
+    - brief_service: ConceptBriefService（领域服务，做主概念排序）
+    - realtime:     RealtimeQueryPort（可选，列表不强依赖）
+    - top_k:        主概念展示上限
     """
 
     def __init__(
         self,
-        session: AsyncSession,
-        concept_repo: Optional[ConceptRepoImpl] = None,
-        brief_service: Optional[ConceptBriefService] = None,
+        *,
+        panel_repo: StockPanelComposeRepository,
+        concept_repo: ConceptRepository,
+        brief_service: ConceptBriefService,
+        realtime: Optional[RealtimeQueryPort] = None,
         top_k: int = DEFAULT_MAIN_CONCEPT_TOP_K,
     ):
-        self._session = session
-        self._concept_repo = concept_repo or ConceptRepoImpl(session)
-        self._brief_service = brief_service or ConceptBriefService(top_k=top_k)
+        self._repo = panel_repo
+        self._concept_repo = concept_repo
+        self._brief_service = brief_service
         self._top_k = top_k
-
-        self._repo: StockPanelComposeRepository = StockPanelComposeRepoImpl(
-            session,
-            concept_repo=self._concept_repo,
-        )
+        self._realtime = realtime
 
     async def query_panels(
         self, req: StockPanelQueryRequest

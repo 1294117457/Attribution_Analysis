@@ -5,7 +5,7 @@
 业务侧的"什么时候调、调什么参数"仍由 application/service/*_app_service.py 编排。
 
 Redis 键：
-- 缓存  rt:{name}:{cache_key}          JSON {data, fetched_at}，TTL 来自 domain.market.MarketSessionService
+- 缓存  rt:{name}:{cache_key}          JSON {data, fetched_at}，TTL 来自 domain.service.market_session
 - 单飞  rt:lock:{name}:{cache_key}     SET NX EX 5
 - 统计  rt:stats:{name}:{yyyymmdd}     HASH，保留 7 天
 
@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass
 from datetime import timedelta
 from typing import Any, Optional
 
-from domain.market import market_now, ttl_for
+from domain.service.market_session import market_now, ttl_for
 from infrastructure.adapter.cache.redis_client import get_redis
 from infrastructure.adapter.realtime.base import BaseRealtimeQuery
 from infrastructure.adapter.realtime.registry import get_realtime_registry

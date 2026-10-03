@@ -20,7 +20,7 @@ from datetime import timedelta
 from typing import Any, Awaitable, Callable, Optional
 
 from application.port.collector_port import ConceptFetcher
-from domain.concept.collection_policy import ConceptCollectionPolicy
+from domain.service.concept_collection_policy import ConceptCollectionPolicy
 from infrastructure.adapter import get_registry
 from infrastructure.adapter.scheduler.collect.base import (
     BaseCollectTask,

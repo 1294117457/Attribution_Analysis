@@ -54,6 +54,27 @@ class Settings(BaseSettings):
     # API 版本
     API_V1_PREFIX: str = "/api/v1"
 
+    # ── 邮件 SMTP(用于邮箱验证码) ──
+    # 通过 .env 配置: SMTP_HOST / SMTP_PORT / SMTP_USERNAME / SMTP_PASSWORD
+    # SMTP_PASSWORD 推荐使用 QQ 邮箱「授权码」,不是登录密码
+    SMTP_HOST: str = "smtp.qq.com"
+    SMTP_PORT: int = 465
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""                # 留空则取 SMTP_USERNAME
+    SMTP_USE_SSL: bool = True         # 465 → SSL; 587 → STARTTLS
+    SMTP_SUBJECT_PREFIX: str = "[归因分析]"
+
+    # 验证码策略
+    VERIFICATION_CODE_LENGTH: int = 6
+    VERIFICATION_CODE_TTL_SECONDS: int = 5 * 60         # 5 分钟
+    VERIFICATION_CODE_RL_1M: int = 1                    # 1 分钟最多 1 次
+    VERIFICATION_CODE_RL_1H: int = 5                    # 1 小时最多 5 次
+
+    # 业务"系统账号":不受 1 小时最多 5 次的限制(方便压测与运营)
+    # 用英文逗号分隔的用户名列表
+    SYSTEM_ACCOUNTS: str = ""
+
 
 _settings: Settings | None = None
 _lock = threading.Lock()

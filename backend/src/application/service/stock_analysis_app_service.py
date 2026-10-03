@@ -8,15 +8,13 @@
 
 对应路由：GET /stocks/{symbol}/analysis?days=365
 
-构造：依赖注入接收 Repository 与可选的 SignalDetector 实例。
+DDD 改造（2026-10-03）：构造改为依赖注入，只接收 Repository，不再持有 AsyncSession，
+也不再 import `infrastructure.*`（DDD.md §4）。
 """
-
 from __future__ import annotations
 
 from datetime import date, timedelta
 from typing import Optional
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from route.dto.response.stock_analysis import (
     KlineWithIndicatorVO,
@@ -25,27 +23,24 @@ from route.dto.response.stock_analysis import (
     StockInfoVO,
     TechnicalSummaryVO,
 )
-from domain.entitys.stock_info.entity import StockNotFoundError
-from domain.entitys.kline.entity import KlineDataError
-from domain.service.signal_detector import SignalDetector
-from domain.entitys.kline.entity import Kline
+from domain.entitys.kline.entity import Kline, KlineDataError
+from domain.entitys.kline.repository import KlineRepository
 from domain.entitys.kline.vo import StockCode
-from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl
-from infrastructure.persistence.repositories.pool_repository import StockPoolRepoImpl
-from infrastructure.persistence.repositories.stock_repository import StockRepoImpl
+from domain.entitys.stock_info.entity import StockNotFoundError
+from domain.entitys.stock_info.repository import StockInfoRepository
+from domain.entitys.stock_pool.repository import StockPoolRepository
+from domain.service.signal_detector import SignalDetector
 
 
 class StockAnalysisAppService:
-    """AI 归因分析入口服务
-
-    DDD 改造：构造改为依赖注入（接收 Repository）
-    """
+    """AI 归因分析入口服务（依赖注入：只接 Repository / 领域服务）"""
 
     def __init__(
         self,
-        stock_repo,
-        kline_repo,
-        pool_repo,
+        *,
+        stock_repo: StockInfoRepository,
+        kline_repo: KlineRepository,
+        pool_repo: StockPoolRepository,
         signal: Optional[SignalDetector] = None,
     ):
         self._stock_repo = stock_repo

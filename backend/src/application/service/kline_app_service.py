@@ -10,6 +10,8 @@
 本服务的 collect() 用于业务路由同步触发（pool_collect 单只股票等）。
 
 应用层不包含业务逻辑，业务逻辑在领域层（指标 → IndicatorCalculator）。
+
+DDD 改造（2026-10-03）：构造改为依赖注入，只接收 Repository / fetcher port / 领域服务。
 """
 
 from __future__ import annotations
@@ -32,14 +34,13 @@ from route.dto.response.kline import (
     KlineListResponse,
     KlineStatsResponse,
 )
-from domain.entitys.kline.entity import CollectionError, KlineNotFoundError
-from application.port.collector_port import CollectParams, KlineFetcher
-from domain.entitys.kline.entity import Kline
+from domain.entitys.kline.entity import CollectionError, Kline, KlineNotFoundError
 from domain.entitys.kline.repository import KlineRepository
-from domain.service import IndicatorCalculator
 from domain.entitys.kline.vo import StockCode
 from domain.entitys.stock_info.entity import StockInfo
 from domain.entitys.stock_info.repository import StockInfoRepository
+from domain.service import IndicatorCalculator
+from application.port.collector_port import CollectParams, KlineFetcher
 
 
 # 指标最大窗口：MA60 / BOLL20 / KDJ9 → 取 60 天作安全边界
@@ -47,13 +48,7 @@ INDICATOR_WINDOW = 60
 
 
 class KlineAppService:
-    """K线应用服务
-
-    方案 A 实施要点：
-    - K 线采集后立即调用 IndicatorCalculator 计算指标
-    - 指标与 K 线一同 UPSERT 到 daily_klines（一次写入）
-    - 提供 recalculate(symbol) 用于每日增量重算最近 N 天
-    """
+    """K线应用服务（依赖注入）"""
 
     def __init__(
         self,
@@ -61,33 +56,9 @@ class KlineAppService:
         stock_repo: StockInfoRepository,
         indicator_calc: Optional[IndicatorCalculator] = None,
     ):
-        """依赖注入构造（DDD 改造）：
-        - 不再自己 new KlineRepoImpl(session)，由调用方注入
-        - session 不再由 service 持有（事务边界由 route 层管理）
-        """
         self._kline_repo = kline_repo
         self._stock_repo = stock_repo
         self._calc = indicator_calc or IndicatorCalculator()
-
-    @classmethod
-    def from_session(
-        cls,
-        session,
-        indicator_calc: Optional[IndicatorCalculator] = None,
-    ) -> "KlineAppService":
-        """工厂方法：从 session 构造（每个事务一个新实例）
-
-        适用场景：scheduler 子任务（已持有 AsyncSessionLocal，但未走 route Depends），
-        以及 tests/conftest.py 中 fixture 直接构造。
-        """
-        from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl
-        from infrastructure.persistence.repositories.stock_repository import StockRepoImpl
-
-        return cls(
-            kline_repo=KlineRepoImpl(session),
-            stock_repo=StockRepoImpl(session),
-            indicator_calc=indicator_calc,
-        )
 
     # ── 采集用例 ────────────────────────────────────────────
 
@@ -299,7 +270,7 @@ class KlineAppService:
         for sym in symbols:
             try:
                 results[sym] = await self.recalculate(sym, days=days)
-            except Exception as e:
+            except Exception:
                 results[sym] = -1
         return results
 

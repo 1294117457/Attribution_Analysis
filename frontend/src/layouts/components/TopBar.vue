@@ -8,32 +8,87 @@
 
     <!-- 右侧信息 -->
     <div class="topbar-right">
-      <el-dropdown trigger="click">
-        <div class="user-info">
-          <div class="user-avatar">管</div>
-          <span class="user-name">管理员</span>
-          <el-icon class="user-arrow"><ArrowDown /></el-icon>
-        </div>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item>个人设置</el-dropdown-item>
-            <el-dropdown-item divided>退出登录</el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown>
+      <template v-if="authStore.isLoggedIn">
+        <el-dropdown trigger="click" @command="onCommand">
+          <div class="user-info">
+            <div class="user-avatar">{{ avatarText }}</div>
+            <span class="user-name">
+              {{ authStore.userInfo?.nickname || authStore.userInfo?.email || '未登录' }}
+            </span>
+            <el-tag
+              v-if="authStore.isAdmin"
+              type="danger"
+              size="small"
+              effect="dark"
+              class="admin-badge"
+            >
+              ADMIN
+            </el-tag>
+            <el-icon class="user-arrow"><ArrowDown /></el-icon>
+          </div>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item disabled>
+                {{ authStore.userInfo?.email }}
+              </el-dropdown-item>
+              <el-dropdown-item command="change-password" :icon="Lock">
+                修改密码
+              </el-dropdown-item>
+              <el-dropdown-item command="logout" :icon="SwitchButton" divided>
+                退出登录
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </template>
+      <template v-else>
+        <el-button type="primary" size="small" @click="router.push('/login')">
+          登录
+        </el-button>
+      </template>
     </div>
   </header>
 </template>
 
 <script setup lang="ts">
-import { ArrowDown } from '@element-plus/icons-vue'
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
+import { ArrowDown, Lock, SwitchButton } from '@element-plus/icons-vue'
+import { useAuthStore } from '@/stores/auth'
+
+const router = useRouter()
+const authStore = useAuthStore()
+
+  const avatarText = computed(() => {
+    const name =
+      authStore.userInfo?.nickname ||
+      authStore.userInfo?.email ||
+      '?'
+    return name.charAt(0).toUpperCase()
+  })
+
+async function onCommand(cmd: string) {
+  if (cmd === 'logout') {
+    try {
+      await ElMessageBox.confirm('确认退出登录?', '提示', { type: 'warning' })
+    } catch {
+      return
+    }
+    await authStore.logout()
+    ElMessageBox.close()
+    router.push('/login')
+  } else if (cmd === 'change-password') {
+    router.push('/home/change-password')
+  }
+}
 </script>
 
 <style scoped>
 .topbar {
   height: var(--topbar-height);
   background: var(--color-admin-surface);
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  box-shadow: 0 1px 4px rgba(15, 21, 41, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -96,6 +151,11 @@ import { ArrowDown } from '@element-plus/icons-vue'
   font-size: 13px;
   color: #374151;
   font-weight: 500;
+}
+
+.admin-badge {
+  font-weight: 700;
+  letter-spacing: 0.4px;
 }
 
 .user-arrow {

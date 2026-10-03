@@ -1,7 +1,11 @@
-"""通用分页响应容器（跨模块复用）
+"""通用分页结果容器（应用层契约）
 
 字段命名与前端 PaginatedResponse<T> 对齐：
 items / total / page / page_size / pages
+
+按 DDD.md §2.3：「application 层只暴露与领域/用例相关的协议和数据容器，
+不依赖任何具体框架/传输层」。Page[T] 是应用层对"分页结果"的统一抽象，
+可被 route 层直接复用序列化（因 Pydantic 本身只描述 schema，与 HTTP 无关）。
 """
 
 from __future__ import annotations
@@ -45,3 +49,5 @@ class Page(BaseModel, Generic[T]):
             page_size=page_size,
             pages=pages,
         )
+
+__all__ = ["Page"]

@@ -1,13 +1,14 @@
-"""数据源注册中心
+"""数据源注册中心（application 层抽象）
 
 集中管理「协议类型 → 采集器实例/工厂」的映射关系。
 
-设计约束：
-- 启动期（lifespan）一次性注册，运行期只读——因此不需要写锁
-- create() 返回工厂函数而非实例，由调用方决定何时创建
-- 对外暴露的数据结构仅为 Protocol → instance / factory 的映射，不暴露具体类名
-"""
+设计约束（DDD.md §2.2 / §4）：
+- application 层只持有抽象协议 + 注册中心，不依赖任何具体 SDK
+- 不在本文件 import `infrastructure.*` 或 `route.*` —— 具体实现由 lifespan / DI 注入
+- 仅暴露「按协议注册 / 获取实例」两个动作
 
+实际实例注入由 `infrastructure.config.di.setup_default_registry(...)` 完成。
+"""
 from __future__ import annotations
 
 import logging
@@ -30,39 +31,24 @@ P = TypeVar("P")
 
 
 class FetcherRegistry:
-    """数据源注册中心
-
-    集中管理「协议类型 → 采集器实例/工厂」的映射关系。
-    """
+    """数据源注册中心 — 协议 → 实例/工厂的映射"""
 
     def __init__(self) -> None:
-        # _providers: Protocol type → singleton instance
         self._providers: dict[type, object] = {}
-        # _factories: Protocol type → factory callable
         self._factories: dict[type, Callable[[], object]] = {}
         self._lock = threading.Lock()
 
     # ── 注册（启动期调用）─────────────────────────────────
 
     def register_instance(self, protocol: type[P], instance: P) -> None:
-        """注册单例实例（适用于无状态或内部已做池化的采集器）
-
-        Args:
-            protocol: 协议类型（如 KlineFetcher）
-            instance: 满足该协议的具体实例
-        """
+        """注册单例实例（适用于无状态或内部已做池化的采集器）"""
         validate_protocol_implementation(instance, protocol)
         with self._lock:
             self._providers[protocol] = instance
         logger.info("注册单例: %s ← %s", protocol.__name__, type(instance).__name__)
 
     def register_factory(self, protocol: type[P], factory: Callable[[], P]) -> None:
-        """注册工厂函数（适用于有状态或需并发隔离的采集器）
-
-        Args:
-            protocol: 协议类型
-            factory: 返回满足协议的实例的可调用对象（无参数）
-        """
+        """注册工厂函数（适用于有状态或需并发隔离的采集器）"""
         with self._lock:
             self._factories[protocol] = factory
         logger.info("注册工厂: %s", protocol.__name__)
@@ -70,11 +56,7 @@ class FetcherRegistry:
     # ── 查询（运行期调用）─────────────────────────────────
 
     def get(self, protocol: type[P]) -> P:
-        """获取已注册的单例实例
-
-        Raises:
-            KeyError: 未注册该协议的实现
-        """
+        """获取已注册的单例实例；未注册则抛 KeyError"""
         if protocol not in self._providers:
             raise KeyError(
                 f"未注册 {protocol.__name__} 的单例实例，"
@@ -83,16 +65,9 @@ class FetcherRegistry:
         return self._providers[protocol]  # type: ignore[return-value]
 
     def create(self, protocol: type[P]) -> P:
-        """创建新实例（供并发池使用）
-
-        必须先调用 register_factory() 注册工厂，否则降级取单例。
-
-        Raises:
-            KeyError: 未注册该协议的工厂，且无单例可降级
-        """
+        """创建新实例（供并发池使用）；未注册工厂则降级取单例"""
         if protocol in self._factories:
             return self._factories[protocol]()  # type: ignore[return-value]
-        # 降级：从 providers 取单例（要求实现类无状态或内部已做池化）
         if protocol in self._providers:
             logger.debug("工厂未注册，降级取单例: %s", protocol.__name__)
             return self._providers[protocol]  # type: ignore[return-value]
@@ -126,66 +101,15 @@ def get_registry() -> FetcherRegistry:
     return _registry
 
 
-def setup_default_registry() -> FetcherRegistry:
-    """应用启动时调用：注册默认数据源
+# ── 协议类型 re-export（方便 DI / 外部 import）─────────────────
 
-    在 main.py 的 lifespan 中调用。
-
-    注册策略说明：
-    - TushareFetcher：无状态（内部持有一个 pro_api 实例，requests.Session 线程安全），
-      适合单例注册；但在 collect_task.py 的高并发池场景下，每次 create() 会拿到同一实例，
-      若 Tushare 有连接数限制应改用 register_factory()
-    - PytdxFetcher：内部维护 TCP 连接（有状态），适合 register_factory() 每次创建新连接；
-      但分钟K线是透传不落库、QPS 低，用 register_instance() 单例也可接受
-
-    调用示例（main.py lifespan）：
-        from application.port.registry import setup_default_registry
-        setup_default_registry()
-    """
-    reg = get_registry()
-
-    # ── KlineFetcher ─────────────────────────────────────
-    # 路由层单例（低并发）
-    from infrastructure.adapter.fetcher.tushare import TushareFetcher
-    from route.dto.request.kline import KlineBO
-
-    tushare_singleton = TushareFetcher(KlineBO)
-    reg.register_instance(KlineFetcher, tushare_singleton)
-
-    # 后台并发池工厂（高并发，每 worker 新实例）
-    # 当前 TushareFetcher 内部 pro_api 线程安全，单例够用；
-    # 若后续出现连接数瓶颈，改为 factory 模式
-    reg.register_factory(KlineFetcher, lambda: TushareFetcher(KlineBO))
-
-    # ── StockBasicFetcher ─────────────────────────────────
-    # 与 KlineFetcher 共用同一 TushareFetcher 实例（source_name = "Tushare"）
-    reg.register_instance(StockBasicFetcher, tushare_singleton)
-    reg.register_factory(StockBasicFetcher, lambda: TushareFetcher(KlineBO))
-
-    # ── DailyBasicFetcher ─────────────────────────────────
-    reg.register_instance(DailyBasicFetcher, tushare_singleton)
-    reg.register_factory(DailyBasicFetcher, lambda: TushareFetcher(KlineBO))
-
-    # ── FinReportFetcher（利润表 income）──────────────────
-    reg.register_instance(FinReportFetcher, tushare_singleton)
-
-    # ── MinuteKlineFetcher ────────────────────────────────
-    # PytdxFetcher 有状态（维护 TCP 连接），单例复用连接
-    # 若未来需要并发隔离分钟K线采集，可改为 register_factory(PytdxFetcher)
-    from infrastructure.adapter.fetcher.pytdx import PytdxFetcher
-
-    pytdx_fetcher = PytdxFetcher()
-    reg.register_instance(MinuteKlineFetcher, pytdx_fetcher)
-    reg.register_factory(MinuteKlineFetcher, PytdxFetcher)
-
-    # ── ConceptFetcher（adata · 同花顺，概念数据唯一来源）──────────
-    # adata 未安装时降级为无该能力（概念接口返回 503）
-    try:
-        from infrastructure.adapter.fetcher.adata import AdataConceptFetcher
-
-        reg.register_instance(ConceptFetcher, AdataConceptFetcher())
-        reg.register_factory(ConceptFetcher, AdataConceptFetcher)
-    except Exception as e:
-        logger.warning("ConceptFetcher (Adata) 未注册: %s", e)
-
-    return reg
+__all__ = [
+    "FetcherRegistry",
+    "get_registry",
+    "KlineFetcher",
+    "MinuteKlineFetcher",
+    "StockBasicFetcher",
+    "DailyBasicFetcher",
+    "FinReportFetcher",
+    "ConceptFetcher",
+]
