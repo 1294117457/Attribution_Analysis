@@ -22,11 +22,9 @@ from typing import Any, Optional
 from sqlalchemy import select
 
 from route.dto.request.kline import KlineCollectRequest
-from application.service.kline_app_service import KlineAppService
 from application.port.collector_port import KlineFetcher, RateLimitError
 from domain.entitys.kline.entity import CollectionError
 from infrastructure.adapter import get_registry
-from infrastructure.config.di import build_kline_app_service
 from infrastructure.config.settings import get_settings
 from infrastructure.persistence.connection import AsyncSessionLocal
 from infrastructure.persistence.models.stock_info import StockInfoDB
@@ -94,9 +92,10 @@ class DailyKlineCollectTask(BaseCollectTask):
     async def _collect_symbol(
         self, symbol: str, params: dict, fetcher: KlineFetcher,
     ) -> UnitResult:
+        from infrastructure.config.di import build_stock_info_service
         async with AsyncSessionLocal() as session:
             try:
-                svc = build_kline_app_service(session)
+                svc = build_stock_info_service(session)
                 resp = await asyncio.wait_for(
                     svc.collect(build_request(symbol, params), fetcher),
                     timeout=UNIT_TIMEOUT,
