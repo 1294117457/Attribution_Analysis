@@ -7,4 +7,6 @@ psycopg2-binary==2.9.10
 tushare==1.4.3
 tdxpy>=0.2.5
 adata==2.9.5     # 概念数据（同花顺）
+bcrypt>=4.1       # 密码 hash（C 扩展）
+cryptography>=42  # pyjwt[crypto] 的底层依赖（C 扩展）
 
