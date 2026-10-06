@@ -86,7 +86,10 @@ class CollectTaskRegistry:
         self._handlers: dict[str, BaseCollectTask] = {}
 
     def register(self, task_type: str, handler: BaseCollectTask) -> None:
-        """注册一个 task_type → handler 映射"""
+        """注册一个 task_type → handler 映射
+
+        启动期校验：handler 的 facet 必须在预设中（避免 typo 静默被 catalog 跳过）
+        """
         if task_type in self._handlers:
             raise ValueError(f"task_type {task_type} 已注册")
         if not handler.name:
@@ -96,6 +99,12 @@ class CollectTaskRegistry:
         if handler.name != task_type:
             raise ValueError(
                 f"handler.name={handler.name} 与 task_type={task_type} 不一致"
+            )
+        if handler.facet and handler.facet not in _FACET_BY_KEY:
+            valid = list(_FACET_BY_KEY.keys())
+            raise ValueError(
+                f"{type(handler).__name__}.facet={handler.facet!r} 不在预设中，"
+                f"请改成 {valid} 之一"
             )
         self._handlers[task_type] = handler
         logger.info("注册采集任务: %s → %s", task_type, type(handler).__name__)

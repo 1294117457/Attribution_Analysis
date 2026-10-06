@@ -29,6 +29,9 @@ async def query_panels(
     list_status: Optional[str] = Query("L", description="上市状态 L/D/P/全部"),
     exclude_st: Optional[bool] = Query(None, description="排除 ST / 仅 ST"),
     min_total_mv: Optional[float] = Query(None, ge=0, description="最低总市值(万元)"),
+    concept_id: Optional[int] = Query(
+        None, ge=1, description="概念板块 ID（按成分股过滤，EXISTS 子查询）",
+    ),
     with_pools: bool = Query(
         False, description="是否附带所属操作池（避免 N+1 反向查询）",
     ),
@@ -44,7 +47,8 @@ async def query_panels(
     request = StockPanelQueryRequest(
         q=q, industry=industry, market=market, exchange=exchange,
         is_hs=is_hs, list_status=list_status, exclude_st=exclude_st,
-        min_total_mv=min_total_mv, with_pools=with_pools,
+        min_total_mv=min_total_mv, concept_id=concept_id,
+        with_pools=with_pools,
         with_concepts=with_concepts, page=page, page_size=page_size,
     )
     response = await service.query_panels(request)

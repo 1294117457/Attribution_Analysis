@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from application.service import (
     CollectManageService,
+    PlanNotFound,
     TaskConflict,
     UnknownTaskType,
     task_to_dict,
@@ -28,7 +29,7 @@ from infrastructure.adapter.scheduler.collect import (
 from infrastructure.config.di import get_collect_manage_service, get_db
 from infrastructure.persistence.models.sys_collect_task import SysCollectTaskDB
 from route.api import _response as R
-from route.dto.request.collect import CollectGroupSaveRequest, CollectPlanSaveRequest
+from route.dto.request.collect import CollectPlanSaveRequest
 from route.dto.response.collect import (
     CollectCatalogResponse,
     FacetGroupResponse,
@@ -133,77 +134,79 @@ async def create_task(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-@router.get("/plans", summary="所有采集接口的采集方案（未配置返回默认值）")
+@router.get("/fetchers", summary="采集接口元数据列表（方案编排的接口选择器数据源）")
+async def list_fetchers(svc: CollectManageService = Depends(get_collect_manage_service)):
+    return R.ok(await svc.list_fetchers())
+
+
+# ── 采集方案 /collect/plans ────────────────────────────────────────────
+
+
+@router.get("/plans", summary="采集方案列表")
 async def list_plans(svc: CollectManageService = Depends(get_collect_manage_service)):
     return R.ok(await svc.list_plans())
 
 
-@router.get("/plans/{task_type}", summary="单个采集接口的采集方案")
+@router.get("/plans/{plan_id}", summary="采集方案详情")
 async def get_plan(
-    task_type: str,
+    plan_id: int,
     svc: CollectManageService = Depends(get_collect_manage_service),
 ):
-    return R.ok(await svc.get_plan(task_type))
+    try:
+        return R.ok(await svc.get_plan(plan_id))
+    except ValueError as e:
+        return R.err(str(e), 404)
 
 
-@router.put("/plans/{task_type}", summary="保存采集方案（同步刷新定时 job）")
-async def save_plan(
-    task_type: str, body: CollectPlanSaveRequest,
+@router.post("/plans", summary="新建采集方案（同步刷新定时 job）")
+async def create_plan(
+    body: CollectPlanSaveRequest,
     svc: CollectManageService = Depends(get_collect_manage_service),
 ):
-    return R.ok(await svc.save_plan(task_type, **body.model_dump()))
+    try:
+        return R.ok(await svc.create_plan(body.model_dump()))
+    except ValueError as e:
+        return R.err(str(e), 400)
 
 
-@router.post("/plans/{task_type}/run", summary="按采集方案参数立即执行一次")
-async def run_plan(
-    task_type: str,
+@router.put("/plans/{plan_id}", summary="更新采集方案（同步刷新定时 job）")
+async def update_plan(
+    plan_id: int, body: CollectPlanSaveRequest,
     svc: CollectManageService = Depends(get_collect_manage_service),
 ):
-    return await _submit(task_type, None, svc)
+    try:
+        return R.ok(await svc.update_plan(plan_id, body.model_dump()))
+    except PlanNotFound as e:
+        return R.err(str(e), 404)
+    except ValueError as e:
+        return R.err(str(e), 400)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 采集任务组 /collect/groups
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-@router.get("/groups", summary="任务组列表")
-async def list_groups(svc: CollectManageService = Depends(get_collect_manage_service)):
-    return R.ok(await svc.list_groups())
-
-
-@router.post("/groups", summary="新建任务组")
-async def create_group(
-    body: CollectGroupSaveRequest,
+@router.delete("/plans/{plan_id}", summary="删除采集方案（方案项一并删除）")
+async def delete_plan(
+    plan_id: int,
     svc: CollectManageService = Depends(get_collect_manage_service),
 ):
-    return R.ok(await svc.create_group(body.model_dump()))
-
-
-@router.put("/groups/{group_id}", summary="修改任务组")
-async def update_group(
-    group_id: int, body: CollectGroupSaveRequest,
-    svc: CollectManageService = Depends(get_collect_manage_service),
-):
-    return R.ok(await svc.update_group(group_id, body.model_dump()))
-
-
-@router.delete("/groups/{group_id}", summary="删除任务组")
-async def delete_group(
-    group_id: int,
-    svc: CollectManageService = Depends(get_collect_manage_service),
-):
-    await svc.delete_group(group_id)
+    try:
+        await svc.delete_plan(plan_id)
+    except PlanNotFound as e:
+        return R.err(str(e), 404)
     return R.no_content("已删除")
 
 
-@router.post("/groups/{group_id}/run", summary="立即执行任务组（后台按顺序执行）")
-async def run_group(
-    group_id: int,
+@router.post("/plans/{plan_id}/run", summary="立即执行一次采集方案")
+async def run_plan(
+    plan_id: int,
     svc: CollectManageService = Depends(get_collect_manage_service),
 ):
-    info = await svc.start_group(group_id, trigger="manual")
-    return R.ok({**info, "message": f"已启动任务组「{info['name']}」，共 {len(info['items'])} 项"})
+    try:
+        info = await svc.start_plan(plan_id, trigger="manual")
+    except ValueError as e:
+        return R.err(str(e), 400)
+    return R.ok({
+        **info,
+        "message": f"已启动采集方案「{info['name']}」，共 {len(info['items'])} 项",
+    })
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -215,7 +218,7 @@ async def run_group(
 async def list_tasks(
     task_type: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
-    group_run_id: Optional[int] = Query(None, description="只看某次任务组执行的各项"),
+    plan_run_id: Optional[int] = Query(None, description="只看某次采集方案执行的各项"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -228,9 +231,9 @@ async def list_tasks(
     if status:
         stmt = stmt.where(SysCollectTaskDB.status == status)
         count_stmt = count_stmt.where(SysCollectTaskDB.status == status)
-    if group_run_id is not None:
-        stmt = stmt.where(SysCollectTaskDB.group_run_id == group_run_id)
-        count_stmt = count_stmt.where(SysCollectTaskDB.group_run_id == group_run_id)
+    if plan_run_id is not None:
+        stmt = stmt.where(SysCollectTaskDB.plan_run_id == plan_run_id)
+        count_stmt = count_stmt.where(SysCollectTaskDB.plan_run_id == plan_run_id)
     total = (await db.execute(count_stmt)).scalar_one()
     rows = (
         (await db.execute(
@@ -304,3 +307,21 @@ async def cancel_task(
         return R.ok({"message": "任务已强制取消", "forced": True})
 
     return R.ok({"message": "已发送取消信号（如任务已挂起，请使用强制取消）"})
+
+
+@router.post("/tasks/{task_id}/retry", summary="重跑失败任务")
+async def retry_failed_task(
+    task_id: int,
+    svc: CollectManageService = Depends(get_collect_manage_service),
+):
+    """重跑一个失败 / 已取消的任务：保留原 task_type 与 params，新开 task_id"""
+    try:
+        sub = await svc.retry_failed(task_id)
+    except ValueError as e:
+        return R.ok({"message": str(e)})
+    return R.ok({
+        "task_id": sub.task_id,
+        "task_type": sub.task_type,
+        "total_count": sub.total_count,
+        "message": f"已重跑（来自 #{task_id}），共 {sub.total_count} 个单元",
+    })

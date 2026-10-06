@@ -22,10 +22,10 @@
 
     <el-tabs v-model="pageTab" class="page-tabs">
       <el-tab-pane label="采集接口" name="tasks" />
-      <el-tab-pane label="任务组" name="groups" />
+      <el-tab-pane label="采集方案" name="plans" />
     </el-tabs>
 
-    <CollectGroups v-if="pageTab === 'groups'" :ready-tasks="readyTasks" />
+    <PlanList v-if="pageTab === 'plans'" />
 
     <div v-show="pageTab === 'tasks'" class="layout-body">
       <!-- ═══ 左：目录树 ═══ -->
@@ -86,11 +86,15 @@
                 :class="{ active: activeTaskType === t.task_type, planned: t.status === 'planned' }"
                 @click="switchTask(t.task_type)"
               >
-                <el-tooltip :content="t.description" placement="right" :show-after="300">
-                  <span class="task-btn-inner">
-                    <span class="task-btn-label">{{ t.label }}</span>
-                    <el-tag v-if="t.kind === 'realtime'" size="small" type="danger" effect="plain" class="ml-1">实时</el-tag>
-                    <el-tag v-if="t.status === 'planned'" size="small" type="info" class="ml-1">待实现</el-tag>
+                <el-tooltip :content="tooltipText(t)" placement="right" :show-after="300" popper-class="task-tip">
+                  <span class="task-btn-body">
+                    <span class="task-btn-inner">
+                      <span class="task-btn-label">{{ t.label }}</span>
+                      <el-tag v-if="t.kind === 'realtime'" size="small" type="danger" effect="plain" class="ml-1">实时</el-tag>
+                      <el-tag v-if="t.status === 'planned'" size="small" type="info" class="ml-1">待实现</el-tag>
+                      <code class="task-btn-type">{{ t.task_type }}</code>
+                    </span>
+                    <span v-if="t.description" class="task-btn-desc">{{ t.description }}</span>
                   </span>
                 </el-tooltip>
               </button>
@@ -147,13 +151,6 @@
               @update:state="filterState = $event"
               @startWithDates="onStartWithDates"
             />
-
-            <PlanCard
-              :task-type="activeTaskType"
-              :task-def="currentTaskDef"
-              :running="startingTasks.has(activeTaskType)"
-              @run="onRunPlan"
-            />
           </header>
 
           <!-- 任务列表 -->
@@ -197,7 +194,7 @@
               </template>
             </el-table-column>
 
-            <el-table-column label="状态" width="130">
+            <el-table-column label="状态" width="160">
               <template #default="{ row }">
                 <div class="status-cell">
                   <el-tag :type="statusColor(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
@@ -209,6 +206,14 @@
                     class="cancel-inline-btn"
                     @click.stop="handleCancel(row)"
                   >取消</el-button>
+                  <el-button
+                    v-else-if="row.status === 'failed' || row.status === 'cancelled'"
+                    type="primary"
+                    text
+                    size="small"
+                    :loading="retryingIds.has(row.id)"
+                    @click.stop="handleRetry(row)"
+                  >重跑</el-button>
                 </div>
               </template>
             </el-table-column>
@@ -217,8 +222,8 @@
                 <el-tag size="small" effect="plain" :type="row.trigger_type === 'schedule' ? 'warning' : 'info'">
                   {{ row.trigger_type === 'schedule' ? '定时' : '手动' }}
                 </el-tag>
-                <el-tooltip v-if="row.group_run_id" :content="`任务组执行 #${row.group_run_id}`" placement="top">
-                  <el-tag size="small" effect="plain" type="success" class="ml-1">组</el-tag>
+                <el-tooltip v-if="row.plan_run_id" :content="`采集方案执行 #${row.plan_run_id}`" placement="top">
+                  <el-tag size="small" effect="plain" type="success" class="ml-1">方案</el-tag>
                 </el-tooltip>
               </template>
             </el-table-column>
@@ -303,10 +308,9 @@ import {
 import PageWrapper from '@/components/PageWrapper.vue'
 import QuickStartBar from './QuickStartBar.vue'
 import AdvancedFilters, { countActiveFilters } from './AdvancedFilters.vue'
-import PlanCard from './PlanCard.vue'
-import CollectGroups from './CollectGroups.vue'
+import PlanList from './PlanList.vue'
 import RealtimePanel from './RealtimePanel.vue'
-import { runPlan, type CollectTask, type TaskDef } from './api'
+import type { CollectTask, TaskDef } from './api'
 
 import { useCatalog } from './composables/useCatalog'
 import { useCollectTasks } from './composables/useCollectTasks'
@@ -348,15 +352,8 @@ function toggleCollapsed(key: string) {
   localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...next]))
 }
 
-// ── 页面标签：采集接口 / 任务组 ──────────────────────────────
-const pageTab = ref<'tasks' | 'groups'>('tasks')
-
-// 任务组只能选批量接口（实时接口不建任务）
-const readyTasks = computed<TaskDef[]>(() =>
-  catalog.value
-    .flatMap((f) => Object.values(f.sub_groups).flat())
-    .filter((t) => t.status === 'ready' && t.kind !== 'realtime'),
-)
+// ── 页面标签：采集接口 / 采集方案 ──────────────────────────
+const pageTab = ref<'tasks' | 'plans'>('tasks')
 
 // ── 当前选中 task_type ────────────────────────────────────────
 const activeTaskType = ref<string>('daily_kline')
@@ -367,6 +364,22 @@ function switchTask(taskType: string) {
   if (activeTaskType.value === taskType) return
   activeTaskType.value = taskType
   // useCollectTasks 通过 watch 自动重新加载
+}
+
+/** 左树按钮的 hover 提示：描述 + 默认参数（描述已内联显示，tooltip 补充参数细节） */
+function tooltipText(t: TaskDef): string {
+  const lines: string[] = []
+  if (t.description) lines.push(t.description)
+  const keys = Object.keys(t.default_params || {})
+  if (keys.length) {
+    const kv = keys
+      .map((k) => `${k}=${JSON.stringify(t.default_params[k])}`)
+      .join(', ')
+    lines.push(`默认参数：${kv}`)
+  }
+  if (t.supports_run_one) lines.push('支持单只/单日同步采集（业务接口复用）')
+  if (t.kind === 'realtime' && t.source_label) lines.push(`数据源：${t.source_label}`)
+  return lines.join('\n') || t.label
 }
 
 // ── 任务列表 / 进度轮询 / 操作 ──────────────────────────────
@@ -381,6 +394,8 @@ const {
   startingTasks,
   startTask,
   handleCancel,
+  handleRetry,
+  retryingIds,
   onPageChange,
   onPageSizeChange,
 } = useCollectTasks(() => activeTaskType.value)
@@ -410,11 +425,6 @@ function onQuickStart(taskType: string, params: Record<string, any>) {
     return
   }
   startTask(taskType, params)
-}
-
-function onRunPlan() {
-  const taskType = activeTaskType.value
-  startTask(taskType, undefined, () => runPlan(taskType))
 }
 
 function onStartWithDates(params: { start_date: string; end_date: string }) {
@@ -518,7 +528,7 @@ function _unused_router_push() {
 
 /* ── 左树 ── */
 .catalog-tree {
-  width: 240px;
+  width: 300px;
   flex-shrink: 0;
   background: #f8fafc;
   border-radius: 8px;
@@ -632,8 +642,54 @@ function _unused_router_push() {
   width: 100%;
 }
 
+/* tooltip 只能挂一个根节点，内层 + 描述都塞这里 */
+.task-btn-body {
+  display: block;
+  width: 100%;
+}
+
 .task-btn-label {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* task_type：等宽小字，作为「可复制的接口标识」 */
+.task-btn-type {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: #94a3b8;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.task-btn.active .task-btn-type {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* 描述：常驻第二行（不再只靠 hover tooltip） */
+.task-btn-desc {
+  display: -webkit-box;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #94a3b8;
+  /* 统一裁成两行，避免长描述把左树撑得过高 */
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.task-btn.active .task-btn-desc {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.task-btn.planned .task-btn-desc {
+  font-style: normal;
 }
 
 /* ── 右主区 ── */
@@ -736,5 +792,14 @@ function _unused_router_push() {
   text-align: center;
   color: #94a3b8;
   font-size: 13px;
+}
+
+/* ── 左树 tooltip：让 \n 生效（Scoped 下需 :global） ── */
+:global(.task-tip) {
+  max-width: 340px;
+}
+:global(.task-tip .el-popper__content) {
+  line-height: 1.7;
+  white-space: pre-line;
 }
 </style>
