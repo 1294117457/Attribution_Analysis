@@ -17,8 +17,8 @@ import {
   listTasks,
   getTaskProgress,
   cancelTask,
+  retryTask,
   type CollectTask,
-  type CreateTaskResult,
   type TaskProgress,
 } from '../api'
 
@@ -87,16 +87,11 @@ export function useCollectTasks(currentTaskType: () => string) {
   }
 
   // ── 启动任务 ────────────────────────────────────────────
-  /** creator 默认 createTask；按方案执行时传 runPlan（响应形状相同） */
-  async function startTask(
-    taskType: string,
-    params?: Record<string, any>,
-    creator: () => Promise<CreateTaskResult> = () => createTask({ task_type: taskType, params }),
-  ) {
+  async function startTask(taskType: string, params?: Record<string, any>) {
     console.log(LOG_PREFIX, 'startTask', taskType, params)
     startingTasks.add(taskType)
     try {
-      const res = await creator()
+      const res = await createTask({ task_type: taskType, params })
       console.log(LOG_PREFIX, 'createTask response:', res)
       if (res.task_id) {
         ElMessage.success(res.message || '任务已创建')
@@ -116,6 +111,39 @@ export function useCollectTasks(currentTaskType: () => string) {
       ElMessage.error('创建任务失败: ' + (e as Error).message)
     } finally {
       startingTasks.delete(taskType)
+    }
+  }
+
+  // ── 重跑失败任务 ────────────────────────────────────────
+  const retryingIds = reactive<Set<number>>(new Set())
+
+  async function handleRetry(row: CollectTask) {
+    try {
+      await ElMessageBox({
+        title: '重跑任务',
+        message: `将基于「#${row.id} ${row.task_type}」的原始 params 创建新任务，原始任务记录保留。`,
+        showCancelButton: true,
+        confirmButtonText: '确认重跑',
+        type: 'info',
+      })
+    } catch {
+      return
+    }
+    retryingIds.add(row.id)
+    try {
+      const res = await retryTask(row.id)
+      if (res.task_id) {
+        ElMessage.success(res.message || `已重跑: 新任务 #${res.task_id}`)
+        watchingIds.add(res.task_id)
+        if (!pollTimer) startPolling()
+        await loadTasks()
+      } else {
+        ElMessage.warning(res.message || '重跑失败')
+      }
+    } catch (e) {
+      ElMessage.error('重跑失败: ' + (e as Error).message)
+    } finally {
+      retryingIds.delete(row.id)
     }
   }
 
@@ -251,6 +279,8 @@ export function useCollectTasks(currentTaskType: () => string) {
     loadTasks,
     startTask,
     handleCancel,
+    handleRetry,
+    retryingIds,
     onPageChange,
     onPageSizeChange,
     // 进度

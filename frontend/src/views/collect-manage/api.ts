@@ -21,8 +21,8 @@ export interface CollectTask {
   finished_at: string | null
   duration_ms: number | null
   message: string | null
-  /** 同一次任务组执行的各项共享（= 该次第一项的 task_id） */
-  group_run_id: number | null
+  /** 同一次采集方案执行的各项共享（= 该次第一项的 task_id） */
+  plan_run_id: number | null
   created_at: string
 }
 
@@ -99,7 +99,7 @@ export const createTask = (body: { task_type: string; params?: Record<string, an
 export const listTasks = (params?: {
   task_type?: string
   status?: string
-  group_run_id?: number
+  plan_run_id?: number
   page?: number
   page_size?: number
 }) => http.get<ApiResponse<TaskPage>>('/collect/tasks', { params }).then(unwrap)
@@ -114,86 +114,126 @@ export const cancelTask = (taskId: number, force = false) =>
     })
     .then(unwrap)
 
+/** 重跑失败 / 已取消任务（保留原 task_type + params，新开 task_id） */
+export const retryTask = (taskId: number) =>
+  http
+    .post<ApiResponse<CreateTaskResult>>(`/collect/tasks/${taskId}/retry`)
+    .then(unwrap)
+
 // ───────────────────────────────────────────────────────────────────────────
-// 采集方案（每个 task_type 一条：默认参数 + 定时 + 启停）
-//   参数优先级：手动传入 > 方案 params > default_params
+// 采集接口元数据（代码的 DB 镜像；方案编排的接口选择器数据源）
 // ───────────────────────────────────────────────────────────────────────────
 
-export interface CollectPlan {
+export type FetcherKind = 'batch' | 'realtime'
+export type FetcherStatus = 'ready' | 'planned' | 'orphan'
+
+export interface CollectFetcher {
   task_type: string
   label: string
-  status: 'ready' | 'planned'
-  /** false = 尚未保存过方案，字段为默认值 */
-  configured: boolean
-  enabled: boolean
-  cron: string | null
-  params: Record<string, any>
-  trading_day_only: boolean
+  facet: string
+  sub_facet: string
+  description: string
+  kind: FetcherKind
+  status: FetcherStatus
   default_params: Record<string, any>
+  supports_run_one: boolean
+  sort_order: number
+}
+
+export const listFetchers = () =>
+  http.get<ApiResponse<CollectFetcher[]>>('/collect/fetchers').then(unwrap)
+
+// ───────────────────────────────────────────────────────────────────────────
+// 采集方案（触发配置 + 接口编排）
+//   一个方案 = 若干个采集接口（M:N），按 items 顺序串行执行
+//   参数优先级：手动传入 > 方案项 params > default_params
+// ───────────────────────────────────────────────────────────────────────────
+
+/** None = 仅手动（不注册定时 job） */
+export type ScheduleType = 'time' | 'interval' | null
+
+export interface CollectPlanItem {
+  id: number
+  task_type: string
+  label: string
+  params: Record<string, any>
+  enabled: boolean
+  sort_order: number
+}
+
+export interface CollectPlan {
+  id: number
+  name: string
+  enabled: boolean
+  schedule_type: ScheduleType
+  times: string[]
+  interval_seconds: number | null
+  stop_on_fail: boolean
+  items: CollectPlanItem[]
   last_run_at: string | null
   last_task_id: number | null
-  next_run_at: string | null
-  updated_at: string | null
-}
-
-export interface CollectPlanSave {
-  enabled: boolean
-  cron: string | null
-  params: Record<string, any>
-  trading_day_only: boolean
-}
-
-export const listPlans = () => http.get<ApiResponse<CollectPlan[]>>('/collect/plans').then(unwrap)
-
-export const getPlan = (taskType: string) =>
-  http.get<ApiResponse<CollectPlan>>(`/collect/plans/${taskType}`).then(unwrap)
-
-export const savePlan = (taskType: string, body: CollectPlanSave) =>
-  http.put<ApiResponse<CollectPlan>>(`/collect/plans/${taskType}`, body).then(unwrap)
-
-/** 按方案参数立即执行一次（返回同 createTask：成功有 task_id，冲突只有 message） */
-export const runPlan = (taskType: string) =>
-  http.post<ApiResponse<CreateTaskResult>>(`/collect/plans/${taskType}/run`).then(unwrap)
-
-// ───────────────────────────────────────────────────────────────────────────
-// 采集任务组（按 items 顺序串行执行多个接口）
-// ───────────────────────────────────────────────────────────────────────────
-
-export interface CollectGroupItem {
-  task_type: string
-  params: Record<string, any>
-}
-
-export interface CollectGroupSave {
-  name: string
-  items: CollectGroupItem[]
-  enabled: boolean
-  cron: string | null
-  trading_day_only: boolean
-  stop_on_fail: boolean
-}
-
-export interface CollectGroup extends CollectGroupSave {
-  id: number
-  last_run_at: string | null
-  last_group_run_id: number | null
   next_run_at: string | null
   created_at: string | null
   updated_at: string | null
 }
 
-export const listGroups = () => http.get<ApiResponse<CollectGroup[]>>('/collect/groups').then(unwrap)
+export interface CollectPlanItemSave {
+  task_type: string
+  params: Record<string, any>
+  enabled: boolean
+}
 
-export const createGroup = (body: CollectGroupSave) =>
-  http.post<ApiResponse<CollectGroup>>('/collect/groups', body).then(unwrap)
+export interface CollectPlanSave {
+  name: string
+  enabled: boolean
+  schedule_type: ScheduleType
+  times: string[]
+  interval_seconds: number | null
+  stop_on_fail: boolean
+  items: CollectPlanItemSave[]
+}
 
-export const updateGroup = (id: number, body: CollectGroupSave) =>
-  http.put<ApiResponse<CollectGroup>>(`/collect/groups/${id}`, body).then(unwrap)
+export const listPlans = () => http.get<ApiResponse<CollectPlan[]>>('/collect/plans').then(unwrap)
 
-export const deleteGroup = (id: number) => http.delete(`/collect/groups/${id}`).then(unwrap)
+export const getPlan = (planId: number) =>
+  http.get<ApiResponse<CollectPlan>>(`/collect/plans/${planId}`).then(unwrap)
 
-export const runGroup = (id: number) =>
-  http.post<ApiResponse<CollectGroup & { message: string }>>(`/collect/groups/${id}/run`).then(unwrap)
+export const createPlan = (body: CollectPlanSave) =>
+  http.post<ApiResponse<CollectPlan>>('/collect/plans', body).then(unwrap)
+
+export const updatePlan = (planId: number, body: CollectPlanSave) =>
+  http.put<ApiResponse<CollectPlan>>(`/collect/plans/${planId}`, body).then(unwrap)
+
+export const deletePlan = (planId: number) =>
+  http.delete<ApiResponse<null>>(`/collect/plans/${planId}`).then(unwrap)
+
+/** 立即执行一次方案（后台按 items 顺序跑） */
+export const runPlan = (planId: number) =>
+  http.post<ApiResponse<CollectPlan & { message: string }>>(`/collect/plans/${planId}/run`).then(unwrap)
+
+// ───────────────────────────────────────────────────────────────────────────
+// 触发方式展示文案
+// ───────────────────────────────────────────────────────────────────────────
+
+/** 固定频率的秒数 → 人类可读（用于列表 / 卡片展示） */
+export function formatInterval(seconds: number | null | undefined): string {
+  if (!seconds || seconds <= 0) return '-'
+  if (seconds < 60) return `${seconds} 秒`
+  if (seconds < 3600) {
+    const m = seconds / 60
+    return Number.isInteger(m) ? `${m} 分钟` : `${m.toFixed(1)} 分钟`
+  }
+  const h = seconds / 3600
+  return Number.isInteger(h) ? `${h} 小时` : `${h.toFixed(1)} 小时`
+}
+
+export function scheduleLabel(plan: Pick<CollectPlan, 'schedule_type' | 'times' | 'interval_seconds'>): string {
+  if (!plan.schedule_type) return '仅手动'
+  if (plan.schedule_type === 'time') {
+    return plan.times.length > 0 ? `每日 ${plan.times.join(' / ')}` : '仅手动'
+  }
+  return `每 ${formatInterval(plan.interval_seconds)}`
+}
 
 // ───────────────────────────────────────────────────────────────────────────
 // 实时接口（不建任务，结果只进 Redis；采集管理用于试查和看调用统计）
@@ -228,21 +268,3 @@ export const getRealtimeStats = (name: string, days = 1) =>
   http
     .get<ApiResponse<RealtimeStats[]>>(`/collect/realtime/${name}/stats`, { params: { days } })
     .then(unwrap)
-
-// ───────────────────────────────────────────────────────────────────────────
-// cron 预设（5 段：分 时 日 月 周；时区 Asia/Shanghai）
-// ───────────────────────────────────────────────────────────────────────────
-
-export const CRON_PRESETS: { label: string; value: string }[] = [
-  { label: '工作日 09:00', value: '0 9 * * 1-5' },
-  { label: '工作日 15:30（收盘后）', value: '30 15 * * 1-5' },
-  { label: '工作日 17:00', value: '0 17 * * 1-5' },
-  { label: '工作日 20:00', value: '0 20 * * 1-5' },
-  { label: '交易时段每 30 分钟', value: '*/30 9-15 * * 1-5' },
-  { label: '每周六 02:00', value: '0 2 * * 6' },
-]
-
-export function cronLabel(cron: string | null | undefined): string {
-  if (!cron) return '仅手动'
-  return CRON_PRESETS.find((p) => p.value === cron)?.label ?? cron
-}

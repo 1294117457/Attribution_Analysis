@@ -78,6 +78,58 @@ const BUTTONS_BY_TASK: Record<string, QuickButton[]> = {
     { label: '全量重写', params: { full: true } },
     { label: '测试前 20 个', params: { limit: 20 } },
   ],
+  // 资金面（tushare，按交易日扫全市场）
+  cap_moneyflow: [
+    { label: '今日', params: { days: 1 } },
+    { label: '7天', params: { days: 7 } },
+    { label: '30天', params: { days: 30 } },
+  ],
+  cap_margin_detail: [
+    { label: '今日', params: { days: 1 } },
+    { label: '7天', params: { days: 7 } },
+  ],
+  cap_top_list: [
+    { label: '今日龙虎榜', params: { days: 1 } },
+    { label: '近 30 天', params: { days: 30 } },
+  ],
+  cap_top_inst: [
+    { label: '今日机构', params: { days: 1 } },
+    { label: '近 30 天', params: { days: 30 } },
+  ],
+  cap_block_trade: [
+    { label: '今日大宗', params: { days: 1 } },
+    { label: '近 30 天', params: { days: 30 } },
+  ],
+  cap_holder_num: [
+    { label: '只补缺失', params: { only_missing: true } },
+    { label: '全量回填', params: { only_missing: false } },
+  ],
+  // 基本面深度
+  fin_top10_holders: [
+    { label: '只补缺失', params: { only_missing: true } },
+    { label: '全量回填', params: { only_missing: false } },
+  ],
+  fin_top10_floatholders: [
+    { label: '只补缺失', params: { only_missing: true } },
+    { label: '全量回填', params: { only_missing: false } },
+  ],
+  base_dividend: [
+    { label: '只补缺失', params: { only_missing: true } },
+    { label: '全量回填', params: { only_missing: false } },
+  ],
+  // 基础层（tech / base）
+  base_adj_factor: [
+    { label: '近 1 年', params: { years: 1 } },
+    { label: '近 3 年', params: { years: 3 } },
+    { label: '全量', params: { full: true } },
+  ],
+  base_suspend: [
+    { label: '今日', params: { days: 1 } },
+    { label: '近 30 天', params: { days: 30 } },
+  ],
+  base_name_change: [
+    { label: '全量拉取', params: {} },
+  ],
 }
 
 const buttons = computed<QuickButton[]>(

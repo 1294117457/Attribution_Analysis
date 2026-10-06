@@ -1,0 +1,47 @@
+10:44:43 [vite] Internal server error: Invalid end tag.
+  Plugin: vite:vue
+  File: D:/codes/Attribution_Analysis/frontend/src/views/stock-info/components/StockDetailDrawer.vue:85:7
+  83 |            </el-button>
+  84 |          </div>
+  85 |        </div>
+     |         ^
+  86 |      </template>
+  87 |    </el-drawer>
+      at createCompilerError (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1378:17)
+      at emitError (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3014:5)
+      at Object.onclosetag (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:2391:9)
+      at Tokenizer.stateInClosingTagName (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:799:16)
+      at Tokenizer.parse (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1157:16)
+      at Object.baseParse (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3053:13)
+      at Object.parse (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-dom\dist\compiler-dom.cjs.js:910:23)
+      at Object.parse$1 [as parse] (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-sfc\dist\compiler-sfc.cjs.js:1824:24)
+      at createDescriptor (file:///D:/codes/Attribution_Analysis/frontend/node_modules/@vitejs/plugin-vue/dist/index.mjs:71:43)
+      at handleHotUpdate (file:///D:/codes/Attribution_Analysis/frontend/node_modules/@vitejs/plugin-vue/dist/index.mjs:2198:26)
+10:44:45 [vite] (client) Pre-transform error: Invalid end tag.
+  Plugin: vite:vue
+  File: D:/codes/Attribution_Analysis/frontend/src/views/stock-info/components/StockDetailDrawer.vue:85:7
+  83 |            </el-button>
+  84 |          </div>
+  85 |        </div>
+     |         ^
+  86 |      </template>
+  87 |    </el-drawer>
+10:44:45 [vite] Internal server error: Invalid end tag.
+  Plugin: vite:vue
+  File: D:/codes/Attribution_Analysis/frontend/src/views/stock-info/components/StockDetailDrawer.vue:85:7
+  83 |            </el-button>
+  84 |          </div>
+  85 |        </div>
+     |         ^
+  86 |      </template>
+  87 |    </el-drawer>
+      at createCompilerError (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1378:17)
+      at emitError (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3014:5)
+      at Object.onclosetag (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:2391:9)
+      at Tokenizer.stateInClosingTagName (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:799:16)
+      at Tokenizer.parse (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1157:16)
+      at Object.baseParse (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3053:13)
+      at Object.parse (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-dom\dist\compiler-dom.cjs.js:910:23)
+      at Object.parse$1 [as parse] (D:\codes\Attribution_Analysis\frontend\node_modules\@vue\compiler-sfc\dist\compiler-sfc.cjs.js:1824:24)
+      at createDescriptor (file:///D:/codes/Attribution_Analysis/frontend/node_modules/@vitejs/plugin-vue/dist/index.mjs:71:43)
+      at handleHotUpdate (file:///D:/codes/Attribution_Analysis/frontend/node_modules/@vitejs/plugin-vue/dist/index.mjs:2198:26)

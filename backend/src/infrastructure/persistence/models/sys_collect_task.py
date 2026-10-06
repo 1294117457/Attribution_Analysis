@@ -1,7 +1,14 @@
-"""采集任务日志 ORM 模型"""
+"""采集任务日志 ORM 模型
+
+表：
+  - sys_collect_tasks      采集任务主表（每次执行一行，任务框架 _finish_task 写入）
+
+注：原 sys_collect_task_details（采集单元明细）表已移除 —— 全库 0 行、0 代码读写，
+    单元级进度走 Redis + UnitTally 内存聚合，明细无落地需求。详见 docs 采集管理优化。
+"""
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, Integer, Text, DateTime, Index, JSON, func
+from sqlalchemy import String, Integer, Text, DateTime, Index, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from infrastructure.persistence.base import Base
 from infrastructure.persistence.mixins import TimestampMixin
@@ -24,8 +31,8 @@ class SysCollectTaskDB(Base, TimestampMixin):
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=False), nullable=True)
     duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    # 同一次任务组执行的各项共享（= 该次第一项的 task_id）
-    group_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    # 同一次采集方案执行的各项共享（= 该次第一项的 task_id）
+    plan_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
 
     __table_args__ = (
         Index("ix_sys_collect_tasks_type_time", "task_type", "started_at"),
@@ -33,20 +40,3 @@ class SysCollectTaskDB(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         return f"<SysCollectTask {self.id} {self.task_type} {self.status}>"
-
-
-class SysCollectTaskDetailDB(Base):
-    """采集任务明细表"""
-    __tablename__ = "sys_collect_task_details"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    task_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    symbol: Mapped[str] = mapped_column(String(10), nullable=False)
-    status: Mapped[str] = mapped_column(String(16), nullable=False)
-    saved_count: Mapped[int] = mapped_column(Integer, default=0)
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), server_default=func.now(), nullable=False)
-
-    def __repr__(self) -> str:
-        return f"<SysCollectTaskDetail {self.id} task={self.task_id} {self.symbol} {self.status}>"

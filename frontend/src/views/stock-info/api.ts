@@ -1,5 +1,5 @@
 // Stock Info API - 股票基础信息 + K 线（含 17 个指标列）+ AI 归因分析
-import http, { unwrap } from '@/common/utils/http'
+import http, { unwrap, type ApiResponse } from '@/common/utils/http'
 
 // ═══════════════════════════════════════════════════════════════
 //  类型定义
@@ -268,6 +268,8 @@ export interface StockQueryParams {
   list_status?: string
   exclude_st?:  boolean
   min_total_mv?: number
+  /** 概念板块 ID（按成分股过滤；后端 EXISTS 子查询，无行放大） */
+  concept_id?:  number
   /** 是否附带所属操作池（true 时响应 items[].pools 填充，避免 N+1） */
   with_pools?:  boolean
   /** 是否附带所属概念板块（true 时响应 items[].concepts 填充，详情抽屉预热用） */
@@ -340,8 +342,12 @@ export interface StockAnalysisResponse {
  * 新端点，替代原 /stocks/ 的富字段查询职责。
  * 响应字段与 StockInfo 接口 1:1 对齐（items/total/page/page_size）。
  */
-export const queryStocks = (params: StockQueryParams = {}) =>
-  http.get<PaginatedResponse<StockInfo>>('/stock-panel/', { params }).then(unwrap)
+export const queryStocks = (
+  params: StockQueryParams = {}
+): Promise<PaginatedResponse<StockInfo>> =>
+  http
+    .get<ApiResponse<PaginatedResponse<StockInfo>>>('/stock-panel/', { params })
+    .then(unwrap)
 
 /** GET /stocks/meta  获取行业/市场/交易所枚举值 */
 export const getStockMeta = (): Promise<StockMeta> =>
@@ -353,9 +359,17 @@ export const syncStocks = (): Promise<{ synced_count: number }> =>
 
 // ── 已采集股票（kline 关联视图） ─────────────────────────────
 
-/** GET /stocks/  股票列表（含 K 线统计） */
+/**
+ * GET /api/v1/stock-panel/  股票列表（含 K 线统计）
+ *
+ * 历史坑：旧实现调 `GET /stocks/`（尾斜杠），但后端 `/stocks` 只注册了
+ * `POST /`（upsert）而没有 `GET /`，导致 **405 Method Not Allowed**。
+ * 富字段列表查询职责已迁到 /stock-panel/，这里直接复用。
+ */
 export const listStocks = (params?: { industry?: string; market?: string }) =>
-  http.get<PaginatedResponse<StockListItem>>('/stocks/', { params }).then(unwrap)
+  http.get<PaginatedResponse<StockListItem>>('/stock-panel/', {
+    params: { page_size: 8, ...params },
+  }).then(unwrap)
 
 /** GET /stocks/{symbol}  单个股票详情 */
 export const getStock = (symbol: string) =>
@@ -770,6 +784,38 @@ export const getConceptSyncStatus = (): Promise<{
   active_concepts: number
 }> =>
   http.get('/concepts/sync/status').then(unwrap)
+
+/** 概念下拉选项（高级筛选「概念」用；只含活跃概念） */
+export interface ConceptOption {
+  concept_id: number
+  name: string
+  concept_type: ConceptType
+  stock_count: number | null
+}
+
+/**
+ * GET /api/v1/concepts/  概念列表（高级筛选「概念」下拉的数据源）
+ *
+ * ⚠️ 后端返回**裸数组**（非分页对象），参数 `q` 支持「名称模糊 / index_code 精确」，
+ *   `page_size` 上限 100，概念总数约 390 → 一次拉不全。
+ *
+ * 两种用法：
+ *   1. 不传 q   → 取成分股最多的前 100 个作「常用概念」快捷项
+ *   2. 传 q     → 服务端搜索（配合 el-select remote + remote-filterable）
+ *
+ * 选中后把 concept_id 传给 /stock-panel/ 的 concept_id 即可按成分股过滤。
+ */
+export const listConceptOptions = (params: {
+  page?: number
+  page_size?: number
+  q?: string
+  is_active?: boolean
+} = {}): Promise<ConceptOption[]> =>
+  http
+    .get<ApiResponse<ConceptOption[]>>('/concepts/', {
+      params: { page_size: 100, is_active: true, ...params },
+    })
+    .then(unwrap)
 
 /** GET /api/v1/concepts/quotes?codes=  批量概念实时行情（最多 100 个；取不到的不在结果中） */
 export const getConceptQuotes = (

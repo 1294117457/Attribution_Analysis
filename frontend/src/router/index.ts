@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import homeRoutes, { setupAuthGuard } from './home'
+import Shell from '@/layouts/Shell.vue'
 
 const routes: RouteRecordRaw[] = [
   { path: '/', redirect: '/home/index' },
@@ -9,6 +10,21 @@ const routes: RouteRecordRaw[] = [
     name: 'Login',
     component: () => import('@/views/auth/LoginPage.vue'),
     meta: { title: '登录', public: true },
+  },
+  {
+    // 四数据面单股看板（顶级独立路径，便于分享/收藏 /data-board/000601）
+    // 包裹在 Shell 内（顶部栏 + 左侧菜单）+ 复用 /home/data-board 同款组件
+    path: '/data-board',
+    component: Shell,
+    children: [
+      {
+        path: ':symbol?',
+        name: 'DataBoardStandalone',
+        component: () => import('@/views/data-board/DataBoard.vue'),
+        props: true,
+        meta: { title: '数据看板', hidden: true, requiresAuth: true },
+      },
+    ],
   },
   homeRoutes,
   { path: '/:pathMatch(.*)*', component: () => import('@/views/NotFound.vue') },

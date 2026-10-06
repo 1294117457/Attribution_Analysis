@@ -63,6 +63,7 @@ import {
   Upload,
   UserFilled,
   DataAnalysis,
+  TrendCharts,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -97,6 +98,7 @@ const menuItems = computed<MenuItem[]>(() => {
     icon: DataAnalysis,
     children: [
       { path: '/home/concepts', title: '概念大盘', icon: DataLine },
+      { path: '/home/data-board', title: '数据看板', icon: TrendCharts },
     ],
   })
   return items

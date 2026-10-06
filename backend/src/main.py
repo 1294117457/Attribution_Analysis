@@ -1,5 +1,6 @@
 """FastAPI 应用入口"""
 
+import json
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
@@ -59,7 +60,8 @@ from infrastructure.persistence.models import (                                 
     ConceptIndexTHDB,
     ConceptSnapshotDB,
     CollectPlanDB,
-    CollectGroupDB,
+    CollectPlanItemDB,
+    CollectFetcherDB,
     # 认证授权 ORM 模型
     UserDB,                                                              # noqa: F401
     RoleDB,                                                              # noqa: F401
@@ -76,10 +78,24 @@ from infrastructure.adapter.scheduler.collect import (
     ConceptIndexTHCollectTask,
     ConceptListCollectTask,
     ConceptMembershipCollectTask,
+    ConceptReasonCollectTask,
+    ConceptSnapshotCollectTask,
     DailyBasicCollectTask,
     DailyKlineCollectTask,
     FinReportCollectTask,
+    FinTop10HoldersCollectTask,
+    FinTop10FloatHoldersCollectTask,
     StockBasicCollectTask,
+    BaseAdjFactorCollectTask,
+    BaseSuspendCollectTask,
+    BaseNameChangeCollectTask,
+    BaseDividendCollectTask,
+    CapMoneyflowCollectTask,
+    CapMarginDetailCollectTask,
+    CapTopListCollectTask,
+    CapTopInstCollectTask,
+    CapBlockTradeCollectTask,
+    CapHolderNumCollectTask,
     all_planned_tasks,
     setup_collect_task_registry,
 )
@@ -107,7 +123,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # 第一段事务:create_all(必须先建表,后续迁移依赖)
     async with async_engine.begin() as conn:
-        # 先做重命名 / 重建(必须在 create_all 之前,否则 create_all 会创建空的新表)
+        # ⚠️ 以下两步顺序不可颠倒：
+        #    ① _rebuild_collect_config_tables 删旧表（必须在 create_all 之前，
+        #       否则 create_all 看到旧表会跳过，然后表被删掉 → 本次启动期间表缺失）
+        #    ② create_all 按新 ORM 重建
+        await _rebuild_collect_config_tables(conn)
         await _migrate_rename_kline_table(conn)
         await _migrate_concepts_adata_rebuild(conn)
         await conn.run_sync(Base.metadata.create_all)
@@ -118,6 +138,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await _migrate_stock_infos(conn)
         await _migrate_daily_klines_indicators(conn)
         await _migrate_sys_collect_tasks(conn)
+        await _rename_group_run_id_to_plan_run_id(conn)
         await _ensure_default_pool(conn)
         await _migrate_auth_system(conn)
         await _ensure_initial_admin(conn)
@@ -127,19 +148,39 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # 注册采集任务到 CollectTaskRegistry（router 通过 get_collect_task_registry 读取）
     setup_collect_task_registry([
+        # ── 已实现的基础任务（4 个）──
         DailyKlineCollectTask(),
         DailyBasicCollectTask(),
         StockBasicCollectTask(),
         FinReportCollectTask(),
-        # 概念（adata · 同花顺），依赖顺序：清单 → 成分股；清单 → 日 K
+        # ── 概念（adata · 同花顺，5 个：清单 / 成分股 / 日 K / 入选理由 / 快照）──
         ConceptListCollectTask(),
         ConceptMembershipCollectTask(),
         ConceptIndexTHCollectTask(),
-        # 🆕 四面重构：14 个 planned 占位任务（资金面/基础层/基本面深度/新闻面）
+        ConceptReasonCollectTask(),
+        ConceptSnapshotCollectTask(),
+        # ── 资金面（6 个，⭐⭐⭐ 0 → 6 突破）──
+        CapMoneyflowCollectTask(),
+        CapMarginDetailCollectTask(),
+        CapTopListCollectTask(),
+        CapTopInstCollectTask(),
+        CapBlockTradeCollectTask(),
+        CapHolderNumCollectTask(),
+        # ── 基本面深度 / 基础层（5 个）──
+        FinTop10HoldersCollectTask(),
+        FinTop10FloatHoldersCollectTask(),
+        BaseDividendCollectTask(),
+        BaseAdjFactorCollectTask(),
+        BaseSuspendCollectTask(),
+        BaseNameChangeCollectTask(),
+        # ── 剩余 planned（2 个：分钟 K 入库版 + news_article 权限未开通）──
         *all_planned_tasks(),
     ])
     # 实时接口（按需查询 + Redis 缓存，与采集任务共用目录）
     setup_realtime_registry([ConceptMinuteQuery(), StockMinuteKlineQuery()])
+
+    # 对账 DB 侧的 collect_fetchers（依赖上面两个注册表，必须在其后）
+    await _sync_fetcher_catalog()
 
     if settings.COLLECT_SCHEDULER_ENABLED:
         await start_collect_scheduler(settings.COLLECT_SCHEDULER_TIMEZONE)
@@ -154,11 +195,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 async def _migrate_sys_collect_tasks(conn) -> None:
-    """sys_collect_tasks 补 group_run_id 列（采集任务组）"""
+    """sys_collect_tasks 启动期清理（补 plan_run_id 索引 + 清理僵尸 running）"""
     from sqlalchemy import text
     statements = [
-        "ALTER TABLE sys_collect_tasks ADD COLUMN IF NOT EXISTS group_run_id INTEGER",
-        "CREATE INDEX IF NOT EXISTS ix_sys_collect_tasks_group_run_id ON sys_collect_tasks (group_run_id)",
         # 单进程部署：启动时仍为 running 的是上次进程异常退出遗留，不清理会让同类任务（含定时）永远被防重拦截
         "UPDATE sys_collect_tasks SET status = 'failed', finished_at = NOW(), "
         "message = COALESCE(message, '') || ' [服务重启，任务中断]' WHERE status = 'running'",
@@ -168,6 +207,240 @@ async def _migrate_sys_collect_tasks(conn) -> None:
             await conn.execute(text(stmt))
         except Exception as e:
             logging.warning("sys_collect_tasks 迁移跳过: %s | %s", stmt, e)
+
+    await _drop_unused_collect_task_details(conn)
+
+
+async def _drop_unused_collect_task_details(conn) -> None:
+    """删除废弃表 sys_collect_task_details（幂等）
+
+    该表从未被任何代码读写（0 行 0 引用），单元级进度走 Redis + UnitTally 内存聚合。
+    ORM 类已同步移除，残留表只会让新人误以为明细可查。
+    """
+    from sqlalchemy import text
+
+    probe = await conn.execute(text(
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_name = 'sys_collect_task_details'"
+    ))
+    if not probe.fetchone():
+        return
+
+    try:
+        n = (await conn.execute(
+            text("SELECT count(*) FROM sys_collect_task_details")
+        )).scalar()
+        if n:
+            # 有数据说明有我不知道的写入路径，宁可保留也不丢数据
+            logging.warning(
+                "sys_collect_task_details 有 %d 行数据，跳过 DROP（请人工确认）", n,
+            )
+            return
+        await conn.execute(text("DROP TABLE IF EXISTS sys_collect_task_details"))
+        logging.info("已删除废弃表 sys_collect_task_details（0 行）")
+    except Exception as e:
+        logging.warning("sys_collect_task_details 删除跳过: %s", e)
+
+
+async def _rebuild_collect_config_tables(conn) -> None:
+    """重建采集配置三表（破坏性 · 一次性 · 幂等）
+
+    ⚠️ 会真删数据。执行前提（已确认）：
+      - collect_plans 23 行，其中 enabled=true 的 0 行，无任何有效配置
+      - collect_groups  0 行
+      - 用户已确认不需要备份
+
+    幂等策略：用 information_schema 判断新结构是否已就位，已就位则直接返回。
+    这样第二次启动不会把用户新建的方案再删一遍。
+
+    ⚠️ 必须在 create_all 之前调用。
+    """
+    from sqlalchemy import text
+
+    probe = await conn.execute(text(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = 'collect_plans'"
+    ))
+    cols = {r[0] for r in probe.fetchall()}
+    if not cols:
+        # 表不存在（首次部署）→ 无需重建，交给 create_all
+        return
+    if {"name", "schedule_type"} <= cols and "task_type" not in cols:
+        logging.info("collect_plans 已是新结构，跳过重建")
+        return
+
+    # collect_plan_items 有 FK 指向 collect_plans，先删子表
+    for stmt in [
+        "DROP TABLE IF EXISTS collect_plan_items",
+        "DROP TABLE IF EXISTS collect_plans",
+        "DROP TABLE IF EXISTS collect_groups",
+    ]:
+        await conn.execute(text(stmt))
+    logging.warning("已删除旧 collect_plans / collect_groups 表，将按新结构重建")
+
+
+async def _rename_group_run_id_to_plan_run_id(conn) -> None:
+    """sys_collect_tasks.group_run_id → plan_run_id（列名 + 索引名）
+
+    ⚠️ 改索引名是因为 ORM 的 index=True 会按新列名生成
+       ix_sys_collect_tasks_plan_run_id，旧索引名残留会造成同列两个索引。
+
+    列内数据保留（RENAME COLUMN 不动数据），历史任务的关联关系不丢。
+    """
+    from sqlalchemy import text
+
+    probe = await conn.execute(text(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = 'sys_collect_tasks'"
+    ))
+    cols = {r[0] for r in probe.fetchall()}
+
+    if "plan_run_id" in cols:          # 已改名，幂等返回
+        return
+    if "group_run_id" not in cols:     # 从未有过该列（全新库，create_all 已建好）
+        return
+
+    for stmt in [
+        "DROP INDEX IF EXISTS ix_sys_collect_tasks_group_run_id",
+        "ALTER TABLE sys_collect_tasks RENAME COLUMN group_run_id TO plan_run_id",
+        "CREATE INDEX IF NOT EXISTS ix_sys_collect_tasks_plan_run_id ON sys_collect_tasks (plan_run_id)",
+    ]:
+        try:
+            await conn.execute(text(stmt))
+        except Exception as e:
+            logging.warning("plan_run_id 改名跳过: %s | %s", stmt, e)
+    logging.info("sys_collect_tasks.group_run_id 已改名为 plan_run_id")
+
+
+async def _sync_fetcher_catalog() -> None:
+    """启动时用代码注册表对账 collect_fetchers 表
+
+    - 代码有 / DB 无 → 自动 INSERT（补录）
+    - DB 有 / 代码无 → 标 status='orphan'（**不删**，保留现场 + 避免 CASCADE 掉方案项）
+    - 两边都有但元数据变了 → UPDATE + warning
+
+    ⚠️ 必须在 setup_collect_task_registry / setup_realtime_registry 之后调用。
+    """
+    from infrastructure.adapter.realtime import get_realtime_registry
+    from infrastructure.adapter.scheduler.collect import get_collect_task_registry
+    from sqlalchemy import text
+
+    registry = get_collect_task_registry()
+    code_side: dict[str, dict] = {}
+
+    for t in registry.supported_types():
+        h = registry.get(t)
+        code_side[t] = {
+            "label": h.label or h.name,
+            "facet": h.facet or "",
+            "sub_facet": h.sub_facet or "",
+            "description": h.description or "",
+            "kind": "batch",
+            "status": h.status or "ready",
+            "default_params": dict(h.default_params),
+            "supports_run_one": h.supports_collect_one,
+            "sort_order": h.sort_order,
+        }
+
+    rt = get_realtime_registry()
+    for q in rt.all():
+        code_side[q.name] = {
+            "label": q.label or q.name,
+            "facet": q.facet or "",
+            "sub_facet": q.sub_facet or "",
+            "description": q.description or "",
+            "kind": "realtime",
+            "status": "ready",
+            "default_params": dict(q.sample_params),
+            "supports_run_one": False,
+            "sort_order": q.sort_order,
+        }
+
+    inserted = updated = 0
+    async with async_engine.begin() as conn:
+        rows = (await conn.execute(
+            text("SELECT task_type, label, description, facet, sub_facet, "
+                 "kind, status, default_params, supports_run_one, sort_order "
+                 "FROM collect_fetchers")
+        )).mappings().all()
+        db_side = {r["task_type"]: dict(r) for r in rows}
+
+        for task_type, meta in code_side.items():
+            old = db_side.get(task_type)
+            if old is None:
+                await conn.execute(text(
+                    "INSERT INTO collect_fetchers "
+                    "(task_type, label, facet, sub_facet, description, kind, status, "
+                    " default_params, supports_run_one, sort_order, created_at, updated_at) "
+                    "VALUES (:tt, :label, :facet, :sub_facet, :description, :kind, :status, "
+                    "         CAST(:dp AS json), :sro, :so, NOW(), NOW())"
+                ), {
+                    "tt": task_type,
+                    "label": meta["label"][:64],
+                    "facet": meta["facet"][:32],
+                    "sub_facet": meta["sub_facet"][:32],
+                    "description": meta["description"][:255],
+                    "kind": meta["kind"],
+                    "status": meta["status"],
+                    "dp": json.dumps(meta["default_params"], ensure_ascii=False),
+                    "sro": meta["supports_run_one"],
+                    "so": meta["sort_order"],
+                })
+                inserted += 1
+                continue
+
+            # 已有：比对可变字段，有变化才 UPDATE
+            changed = [
+                k for k in ("label", "facet", "sub_facet", "description", "kind",
+                            "default_params", "supports_run_one", "sort_order")
+                if old.get(k) != meta[k]
+            ]
+            if old.get("status") == "orphan":
+                changed.append("status")   # orphan 复活
+            if not changed:
+                continue
+
+            await conn.execute(text(
+                "UPDATE collect_fetchers SET label=:label, facet=:facet, sub_facet=:sub_facet, "
+                "description=:description, kind=:kind, status=:status, "
+                "default_params=CAST(:dp AS json), supports_run_one=:sro, sort_order=:so, "
+                "updated_at=NOW() WHERE task_type=:tt"
+            ), {
+                "tt": task_type,
+                "label": meta["label"][:64],
+                "facet": meta["facet"][:32],
+                "sub_facet": meta["sub_facet"][:32],
+                "description": meta["description"][:255],
+                "kind": meta["kind"],
+                "status": meta["status"],
+                "dp": json.dumps(meta["default_params"], ensure_ascii=False),
+                "sro": meta["supports_run_one"],
+                "so": meta["sort_order"],
+            })
+            updated += 1
+            if old.get("status") == "orphan":
+                logging.info("collect_fetchers %s 从 orphan 复活", task_type)
+            else:
+                logging.warning(
+                    "collect_fetchers %s 元数据与代码不一致，已按代码更新: %s",
+                    task_type, changed,
+                )
+
+        # DB 有 / 代码无 → orphan
+        orphans = [t for t in db_side if t not in code_side]
+        for task_type in orphans:
+            await conn.execute(text(
+                "UPDATE collect_fetchers SET status='orphan', updated_at=NOW() "
+                "WHERE task_type=:tt AND status <> 'orphan'"
+            ), {"tt": task_type})
+
+    if orphans:
+        logging.warning(
+            "collect_fetchers 中有 %d 个接口在代码里已不存在，已标 orphan（未删除）: %s",
+            len(orphans), orphans,
+        )
+    logging.info("collect_fetchers 对账完成: 新增 %d / 更新 %d / orphan %d / 共 %d",
+                 inserted, updated, len(orphans), len(code_side))
 
 
 async def _migrate_rename_kline_table(conn) -> None:
@@ -603,6 +876,12 @@ async def health():
 if __name__ == "__main__":
     import uvicorn
 
+    # ⚠️ reload=True 未指定 reload_dirs，WatchFiles 会监听整个工作目录（backend/）。
+    #    在 backend/ 内写任何文件（临时脚本、.log、采集输出）都会触发热重载，
+    #    后端重启时正在跑的后台采集任务会被 asyncio.CancelledError 杀掉，
+    #    表现为 sys_collect_tasks 里 status=cancelled 但 success=0，
+    #    且日志无任何 fetcher 调用记录。详见 docs/overview/00-项目索引.md §8。
+    #    如需在开发期跑长时采集任务，请改用 reload=False 启动，或把产物写到 backend/ 之外。
     uvicorn.run(
         "main:app",
         host="0.0.0.0",

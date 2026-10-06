@@ -24,7 +24,7 @@ from datetime import timedelta
 from typing import Any, Optional
 
 from domain.service.market_session import market_now, ttl_for
-from infrastructure.adapter.cache.redis_client import get_redis
+from infrastructure.adapter.cache.redis_client import get_redis, try_get_redis
 from infrastructure.adapter.realtime.base import BaseRealtimeQuery
 from infrastructure.adapter.realtime.registry import get_realtime_registry
 
@@ -166,10 +166,14 @@ class RealtimeQueryFramework:
             try:
                 data = await self._fetch(q, params)
             except Exception as e:
-                logger.warning("实时接口 %s(%s) 请求失败: %s", q.name, ck, e)
+                # 注意：%s 在异常 message 为空串时会导致日志里什么都没有
+                # （如 adata 某些错误只带空 message），所以这里用 %r 打出异常类型
+                logger.warning(
+                    "实时接口 %s(%s) 请求失败: %r", q.name, ck, e,
+                )
                 fallback = await _safe_fallback(q, params)
                 if fallback is None:
-                    raise RealtimeQueryError(f"{q.label or q.name} 获取失败: {e}") from e
+                    raise RealtimeQueryError(f"{q.label or q.name} 获取失败: {e!r}") from e
                 return RealtimeResult(data=fallback, stale=True, fetched_at=market_now().isoformat())
 
             fetched_at = market_now().isoformat()
@@ -222,13 +226,18 @@ def _elapsed_ms(started: float) -> int:
 
 
 async def _redis_or_none():
-    try:
-        redis = await get_redis()
-        await redis.ping()
-        return redis
-    except Exception as e:
-        logger.warning("Redis 不可用，实时接口直连数据源: %s", e)
-        return None
+    """Redis 健康探测（带 30s 缓存，防止 Redis 真挂时 warning 刷屏）
+
+    历史问题：每秒几十条 "Too many connections" warning 表明：
+      - 旧 bug：`get_collect_manage_service()` 返回未 await 的 `get_redis()`，
+        导致每次请求都新建 Redis 客户端 / 连接池
+      - 加之 `_redis_or_none` 每次都 ping → 健康检查频率过高
+    修复：
+      - di.py 改为 `_LazyRedisPort` 延迟初始化（修根因）
+      - redis_client.py 加 max_connections 上限
+      - 本函数用缓存的健康检查（30s 内只 ping 一次）
+    """
+    return await try_get_redis()
 
 
 async def _read_cache(redis, key: str) -> Optional[RealtimeResult]:

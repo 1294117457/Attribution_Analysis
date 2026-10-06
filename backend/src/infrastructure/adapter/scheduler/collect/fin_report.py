@@ -1,4 +1,4 @@
-"""季报财务采集任务（Tushare income · 利润表）
+﻿"""季报财务采集任务（Tushare income · 利润表）
 
 单元 = 1 只股票（按单只调用 income；按报告期拉全市场的 income_vip 需 5000 积分，当前账号无权限）。
 只采合并报表 report_type=1，写 fin_reports 的利润表列；面板净利润率 = n_income / revenue × 100。
@@ -41,7 +41,6 @@ logger = logging.getLogger(__name__)
 RATE_LIMIT_WAIT = 60.0
 RATE_LIMIT_RETRIES = 3
 # 其他异常：主循环结束后间隔该秒数再试一轮
-RETRY_DELAY = 2.0
 
 
 class FinReportCollectTask(BaseCollectTask):
@@ -54,7 +53,6 @@ class FinReportCollectTask(BaseCollectTask):
     description = "利润表：营收 / 净利润 / EPS（tushare income，合并报表），面板净利润率数据来源"
 
     default_params = {"years": 1}
-    retry_delay = RETRY_DELAY
 
     async def list_units(self, params: dict) -> list[str]:
         return await self._symbols(params)

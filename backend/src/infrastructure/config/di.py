@@ -1,4 +1,4 @@
-"""依赖注入（DI）工厂
+﻿"""依赖注入（DI）工厂
 
 为 FastAPI route 层提供 application service 的 Depends 工厂。
 DDD 改造核心：把 Repo/Service 构造从 application 层挪到 infrastructure，
@@ -150,10 +150,13 @@ async def _session_ctx() -> AsyncIterator[AsyncSession]:
         yield session
 
 
-def _get_collect_redis():
-    """Redis 端口（适配 CollectManageService 的 RedisPort）"""
-    from infrastructure.adapter.cache.redis_client import get_redis
-    return get_redis()
+async def _get_collect_redis() -> Any:
+    """async 上下文获取 Redis 连接（向后兼容）
+
+    历史：早期实现为 sync + 未 await coroutine → RuntimeWarning
+    现在所有内部调用已迁移到 _LazyRedisPort
+    """
+    return await _LazyRedisPort._ensure()
 
 
 def _get_collect_task_registry():
@@ -174,17 +177,50 @@ def _get_realtime_registry():
 
 
 def get_collect_manage_service() -> "CollectManageService":
-    """采集管理应用服务（依赖注入）"""
+    """采集管理应用服务（依赖注入 · 同步）
+
+    旧实现是同步工厂 + 内含 `_get_collect_redis()` coroutine，
+    FastAPI 把它放在 threadpool 跑后**不会 await coroutine**——返回的是一个未 await 的
+    coroutine 对象，触发 `RuntimeWarning: coroutine 'get_redis' was never awaited`。
+    """
     from application.service import CollectManageService
     return CollectManageService(
-        redis=_get_collect_redis(),
+        redis=_LazyRedisPort(),   # 延迟到首次 await 时再连接 Redis，避免阻塞 sync 工厂
         task_registry=_get_collect_task_registry(),
         scheduler=_get_collect_scheduler(),
-        config_repo=CollectConfigRepoImpl(None),  # noqa: session 内部自开
+        config_repo=CollectConfigRepoImpl(),  # session 由调用方在使用时注入
         realtime_registry=_get_realtime_registry(),
         session_factory=_session_ctx,
     )
 
+
+class _LazyRedisPort:
+    """延迟初始化 Redis 端口（兼容 sync Depends 工厂）
+
+    业务侧通过 CollectManageService 的 prepare / submit 等 async 方法访问 redis：
+        await self._redis.hset(key, mapping)
+    第一次调用时会真正去连接 Redis，并把连接缓存下来。
+
+    行为对比：
+      - 旧：sync 工厂直接 return coroutine → 被 threadpool 同步调用后不 await → 警告
+      - 新：sync 工厂返回 _LazyRedisPort（一个"看起来像 Redis 实例"的对象）
+           FastAPI Depends async（工厂），在 event loop 中 await → 真正获取 Redis
+    """
+    _instance: Any = None
+    _lock = None  # 用法：import 时不创建，由 _ensure() 懒加载
+
+    @classmethod
+    async def _ensure(cls) -> Any:
+        if cls._instance is None:
+            from infrastructure.adapter.cache.redis_client import get_redis
+            cls._instance = await get_redis()
+        return cls._instance
+
+    async def hset(self, key: str, mapping: dict) -> Any:
+        return await (await self._ensure()).hset(key, mapping=mapping)
+
+    async def expire(self, key: str, seconds: int) -> Any:
+        return await (await self._ensure()).expire(key, seconds)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Route 层 Depends 工厂
@@ -314,12 +350,24 @@ def setup_default_registry() -> None:
     本函数只由 infrastructure 层持有（application 不知道 SDK 细节）。
     """
     from application.port.collector_port import (
+        AdjFactorFetcher,
+        BlockTradeFetcher,
         ConceptFetcher,
         DailyBasicFetcher,
+        DividendFetcher,
         FinReportFetcher,
+        HolderNumberFetcher,
         KlineFetcher,
+        MarginDetailFetcher,
         MinuteKlineFetcher,
+        MoneyflowFetcher,
+        NameChangeFetcher,
         StockBasicFetcher,
+        SuspendFetcher,
+        Top10FloatHoldersFetcher,
+        Top10HoldersFetcher,
+        TopInstFetcher,
+        TopListFetcher,
     )
     from infrastructure.adapter.fetcher.pytdx import PytdxFetcher
     from infrastructure.adapter.fetcher.tushare import TushareFetcher
@@ -327,7 +375,11 @@ def setup_default_registry() -> None:
 
     reg = get_registry()
 
-    # ── TushareFetcher：覆盖 Kline / StockBasic / DailyBasic / FinReport ──
+    # ── TushareFetcher：单一实例覆盖全部 tushare 协议 ──
+    # 注意：Kline/StockBasic/DailyBasic/FinReport 之外，下面 13 个协议
+    # （资金面 6 + 基本面 3 + 基础面 4）也由同一个 TushareFetcher 实现。
+    # 早期版本漏注册，导致 base_*/cap_*/fin_top10_* 任务运行时报
+    # "fetcher 未注册"，全部 0 行 —— 详见 collect/registry 的任务列表。
     tushare_singleton = TushareFetcher(KlineBO)
     tushare_factory = lambda: TushareFetcher(KlineBO)  # noqa: E731
 
@@ -338,6 +390,36 @@ def setup_default_registry() -> None:
     reg.register_instance(DailyBasicFetcher, tushare_singleton)
     reg.register_factory(DailyBasicFetcher, tushare_factory)
     reg.register_instance(FinReportFetcher, tushare_singleton)
+
+    # ── 资金面 6 个协议（cap_* 任务）──────────────────────────
+    for port in (
+        MoneyflowFetcher,        # cap_moneyflow
+        MarginDetailFetcher,     # cap_margin_detail
+        TopListFetcher,          # cap_top_list
+        TopInstFetcher,          # cap_top_inst
+        BlockTradeFetcher,       # cap_block_trade
+        HolderNumberFetcher,     # cap_holder_num
+    ):
+        reg.register_instance(port, tushare_singleton)
+        reg.register_factory(port, tushare_factory)
+
+    # ── 基本面 3 个协议（fin_* 任务）──────────────────────────
+    for port in (
+        Top10HoldersFetcher,      # fin_top10_holders
+        Top10FloatHoldersFetcher, # fin_top10_floatholders
+    ):
+        reg.register_instance(port, tushare_singleton)
+        reg.register_factory(port, tushare_factory)
+
+    # ── 基础面 4 个协议（base_* 任务）──────────────────────────
+    for port in (
+        AdjFactorFetcher,   # base_adj_factor
+        SuspendFetcher,     # base_suspend
+        NameChangeFetcher,  # base_name_change
+        DividendFetcher,    # base_dividend
+    ):
+        reg.register_instance(port, tushare_singleton)
+        reg.register_factory(port, tushare_factory)
 
     # ── MinuteKlineFetcher（PytdxFetcher 有状态，单例复用 TCP 连接） ──
     pytdx_fetcher = PytdxFetcher()

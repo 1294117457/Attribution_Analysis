@@ -506,3 +506,574 @@ class TushareFetcher(BaseCollector):
             act_name=row.get("act_name") if pd.notna(row.get("act_name")) else None,
             act_ent_type=row.get("act_ent_type") if pd.notna(row.get("act_ent_type")) else None,
         )
+
+    # ══════════════════════════════════════════════════════════════════════════════
+    #  资金面 / 基本面深度 / 基础层 — 9 个新接口（cap_* / fin_* / base_*）
+    #  每个方法配套一个 _row_to_xxx_bo 静态方法，便于测试复用
+    # ══════════════════════════════════════════════════════════════════════════════
+
+    # ── 资金面 ────────────────────────────────────────────────────────────
+
+    def fetch_moneyflow(
+        self,
+        trade_date: str,
+        symbols: Optional[list[str]] = None,
+    ) -> list[Any]:
+        """个股资金流向（tushare moneyflow，按交易日）
+
+        Args:
+            trade_date: YYYYMMDD
+            symbols: 可选，只返回指定 symbol 列表
+        """
+        self._log("info", f"moneyflow {trade_date} {len(symbols or [])} 只")
+        kwargs = {"trade_date": trade_date}
+        try:
+            df = self._pro.moneyflow(**kwargs)
+        except Exception as e:
+            if _is_rate_limit(e):
+                raise RateLimitError(str(e)) from e
+            self._log("warning", f"moneyflow {trade_date} 失败: {e}")
+            return []
+
+        if df is None or df.empty:
+            return []
+
+        out: list = []
+        for _, row in df.iterrows():
+            bo = self._row_to_moneyflow_bo(row)
+            if bo is None:
+                continue
+            if symbols and bo.symbol not in symbols:
+                continue
+            out.append(bo)
+        return out
+
+    @staticmethod
+    def _row_to_moneyflow_bo(row: pd.Series) -> Optional[Any]:
+        from route.dto.request.cap_moneyflow import CapMoneyflowBO
+        ts_code = row.get("ts_code")
+        if not ts_code or pd.isna(ts_code):
+            return None
+        td = parse_list_date(row.get("trade_date"))
+        if not td:
+            return None
+
+        def _f(key):
+            v = row.get(key)
+            return float(v) if v is not None and pd.notna(v) else None
+
+        return CapMoneyflowBO(
+            symbol=str(ts_code).split(".")[0],
+            trade_date=td,
+            buy_sm_vol=_f("buy_sm_vol"), buy_sm_amount=_f("buy_sm_amount"),
+            sell_sm_vol=_f("sell_sm_vol"), sell_sm_amount=_f("sell_sm_amount"),
+            buy_md_vol=_f("buy_md_vol"), buy_md_amount=_f("buy_md_amount"),
+            sell_md_vol=_f("sell_md_vol"), sell_md_amount=_f("sell_md_amount"),
+            buy_lg_vol=_f("buy_lg_vol"), buy_lg_amount=_f("buy_lg_amount"),
+            sell_lg_vol=_f("sell_lg_vol"), sell_lg_amount=_f("sell_lg_amount"),
+            buy_elg_vol=_f("buy_elg_vol"), buy_elg_amount=_f("buy_elg_amount"),
+            sell_elg_vol=_f("sell_elg_vol"), sell_elg_amount=_f("sell_elg_amount"),
+            net_mf_vol=_f("net_mf_vol"), net_mf_amount=_f("net_mf_amount"),
+        )
+
+    def fetch_margin_detail(
+        self, trade_date: str,
+    ) -> list[Any]:
+        """融资融券交易明细（tushare margin_detail）"""
+        self._log("info", f"margin_detail {trade_date}")
+        try:
+            df = self._pro.margin_detail(trade_date=trade_date)
+        except Exception as e:
+            if _is_rate_limit(e):
+                raise RateLimitError(str(e)) from e
+            self._log("warning", f"margin_detail {trade_date} 失败: {e}")
+            return []
+        if df is None or df.empty:
+            return []
+
+        out: list = []
+        for _, row in df.iterrows():
+            bo = self._row_to_margin_detail_bo(row)
+            if bo:
+                out.append(bo)
+        return out
+
+    @staticmethod
+    def _row_to_margin_detail_bo(row: pd.Series) -> Optional[Any]:
+        from route.dto.request.cap_margin_detail import CapMarginDetailBO
+        ts_code = row.get("ts_code")
+        if not ts_code or pd.isna(ts_code):
+            return None
+        td = parse_list_date(row.get("trade_date"))
+        if not td:
+            return None
+
+        def _f(key):
+            v = row.get(key)
+            return float(v) if v is not None and pd.notna(v) else None
+
+        return CapMarginDetailBO(
+            symbol=str(ts_code).split(".")[0],
+            trade_date=td,
+            rzye=_f("rzye"), rqye=_f("rqye"), rzmre=_f("rzmre"),
+            rqyl=_f("rqyl"), rzche=_f("rzche"), rqchl=_f("rqchl"),
+            rqmcl=_f("rqmcl"), rzrqye=_f("rzrqye"),
+        )
+
+    def fetch_top_list(self, trade_date: str) -> list[Any]:
+        """龙虎榜每日上榜（tushare top_list）"""
+        self._log("info", f"top_list {trade_date}")
+        try:
+            df = self._pro.top_list(trade_date=trade_date)
+        except Exception as e:
+            if _is_rate_limit(e):
+                raise RateLimitError(str(e)) from e
+            self._log("warning", f"top_list {trade_date} 失败: {e}")
+            return []
+        if df is None or df.empty:
+            return []
+
+        out: list = []
+        for _, row in df.iterrows():
+            bo = self._row_to_top_list_bo(row)
+            if bo:
+                out.append(bo)
+        return out
+
+    @staticmethod
+    def _row_to_top_list_bo(row: pd.Series) -> Optional[Any]:
+        from route.dto.request.cap_top_list import CapTopListBO
+        ts_code = row.get("ts_code")
+        td = parse_list_date(row.get("trade_date"))
+        if not ts_code or pd.isna(ts_code) or not td:
+            return None
+
+        def _f(key):
+            v = row.get(key)
+            return float(v) if v is not None and pd.notna(v) else None
+
+        return CapTopListBO(
+            trade_date=td,
+            symbol=str(ts_code).split(".")[0],
+            name=str(row.get("name") or "") if pd.notna(row.get("name")) else None,
+            close=_f("close"), pct_change=_f("pct_change"),
+            turnover_rate=_f("turnover_rate"), amount=_f("amount"),
+            l_sell=_f("l_sell"), l_buy=_f("l_buy"), l_amount=_f("l_amount"),
+            net_amount=_f("net_amount"), net_rate=_f("net_rate"),
+            amount_rate=_f("amount_rate"),
+            float_values=_f("float_values"),
+            reason=str(row.get("reason")) if pd.notna(row.get("reason")) else None,
+        )
+
+    def fetch_top_inst(self, trade_date: str) -> list[Any]:
+        """龙虎榜机构席位（tushare top_inst）"""
+        self._log("info", f"top_inst {trade_date}")
+        try:
+            df = self._pro.top_inst(trade_date=trade_date)
+        except Exception as e:
+            if _is_rate_limit(e):
+                raise RateLimitError(str(e)) from e
+            self._log("warning", f"top_inst {trade_date} 失败: {e}")
+            return []
+        if df is None or df.empty:
+            return []
+        out: list = []
+        for _, row in df.iterrows():
+            bo = self._row_to_top_inst_bo(row)
+            if bo:
+                out.append(bo)
+        return out
+
+    @staticmethod
+    def _row_to_top_inst_bo(row: pd.Series) -> Optional[Any]:
+        from route.dto.request.cap_top_inst import CapTopInstBO
+        ts_code = row.get("ts_code")
+        td = parse_list_date(row.get("trade_date"))
+        if not ts_code or pd.isna(ts_code) or not td:
+            return None
+
+        def _f(key):
+            v = row.get(key)
+            return float(v) if v is not None and pd.notna(v) else None
+
+        return CapTopInstBO(
+            trade_date=td,
+            symbol=str(ts_code).split(".")[0],
+            exalter=str(row.get("exalter") or "") if pd.notna(row.get("exalter")) else None,
+            side=str(row.get("side") or "") if pd.notna(row.get("side")) else None,
+            buy=_f("buy"), buy_rate=_f("buy_rate"),
+            sell=_f("sell"), sell_rate=_f("sell_rate"),
+            net_buy=_f("net_buy"),
+            reason=str(row.get("reason")) if pd.notna(row.get("reason")) else None,
+        )
+
+    def fetch_block_trade(self, trade_date: str) -> list[Any]:
+        """大宗交易（tushare block_trade）"""
+        self._log("info", f"block_trade {trade_date}")
+        try:
+            df = self._pro.block_trade(trade_date=trade_date)
+        except Exception as e:
+            if _is_rate_limit(e):
+                raise RateLimitError(str(e)) from e
+            self._log("warning", f"block_trade {trade_date} 失败: {e}")
+            return []
+        if df is None or df.empty:
+            return []
+        out: list = []
+        for _, row in df.iterrows():
+            bo = self._row_to_block_trade_bo(row)
+            if bo:
+                out.append(bo)
+        return out
+
+    @staticmethod
+    def _row_to_block_trade_bo(row: pd.Series) -> Optional[Any]:
+        from route.dto.request.cap_block_trade import CapBlockTradeBO
+        ts_code = row.get("ts_code")
+        td = parse_list_date(row.get("trade_date"))
+        if not ts_code or pd.isna(ts_code) or not td:
+            return None
+
+        def _f(key):
+            v = row.get(key)
+            return float(v) if v is not None and pd.notna(v) else None
+
+        return CapBlockTradeBO(
+            trade_date=td,
+            symbol=str(ts_code).split(".")[0],
+            name=str(row.get("name") or "") if pd.notna(row.get("name")) else None,
+            price=_f("price"), vol=_f("vol"), amount=_f("amount"),
+            buyer=str(row.get("buyer") or "") if pd.notna(row.get("buyer")) else None,
+            seller=str(row.get("seller") or "") if pd.notna(row.get("seller")) else None,
+        )
+
+    def fetch_holder_number(
+        self, symbol: str, ann_date: Optional[str] = None,
+    ) -> list[Any]:
+        """股东户数（tushare stk_holdernumber）"""
+        ts_code = symbol_to_ts_code(symbol)
+        kwargs = {"ts_code": ts_code}
+        if ann_date:
+            kwargs["ann_date"] = ann_date
+        self._log("info", f"holder_number {ts_code}")
+        try:
+            df = self._pro.stk_holdernumber(**kwargs)
+        except Exception as e:
+            if _is_rate_limit(e):
+                raise RateLimitError(str(e)) from e
+            self._log("warning", f"stk_holdernumber {ts_code} 失败: {e}")
+            return []
+        if df is None or df.empty:
+            return []
+        out: list = []
+        for _, row in df.iterrows():
+            bo = self._row_to_holder_num_bo(row)
+            if bo:
+                out.append(bo)
+        return out
+
+    @staticmethod
+    def _row_to_holder_num_bo(row: pd.Series) -> Optional[Any]:
+        from route.dto.request.cap_holder_num import CapHolderNumBO
+        ts_code = row.get("ts_code")
+        end_date = parse_list_date(row.get("end_date"))
+        if not ts_code or pd.isna(ts_code) or not end_date:
+            return None
+
+        def _f(key):
+            v = row.get(key)
+            if v is None or pd.isna(v):
+                return None
+            try:
+                return float(v)
+            except (ValueError, TypeError):
+                return None
+
+        holder_num_raw = row.get("holder_num")
+        holder_num_int = int(holder_num_raw) if holder_num_raw is not None and pd.notna(holder_num_raw) else None
+
+        return CapHolderNumBO(
+            symbol=str(ts_code).split(".")[0],
+            ann_date=parse_list_date(row.get("ann_date")),
+            end_date=end_date,
+            holder_num=holder_num_int,
+            holder_nums=_f("holder_nums"),
+        )
+
+    # ── 基本面深度：前十大股东 ────────────────────────────────────────────────
+
+    def fetch_top10_holders(
+        self, symbol: str, period: Optional[str] = None,
+    ) -> list[Any]:
+        """前十大股东（tushare top10_holders）
+
+        Args:
+            symbol: 6 位股票代码
+            period: 报告期 YYYYMMDD，不传则取最新
+        """
+        ts_code = symbol_to_ts_code(symbol)
+        kwargs = {"ts_code": ts_code}
+        if period:
+            kwargs["period"] = period
+        self._log("info", f"top10_holders {ts_code}")
+        try:
+            df = self._pro.top10_holders(**kwargs)
+        except Exception as e:
+            if _is_rate_limit(e):
+                raise RateLimitError(str(e)) from e
+            self._log("warning", f"top10_holders {ts_code} 失败: {e}")
+            return []
+        if df is None or df.empty:
+            return []
+        out: list = []
+        for _, row in df.iterrows():
+            bo = self._row_to_top10_holders_bo(row)
+            if bo:
+                out.append(bo)
+        return out
+
+    @staticmethod
+    def _row_to_top10_holders_bo(row: pd.Series) -> Optional[Any]:
+        from route.dto.request.fin_top10_holders import FinTop10HoldersBO
+        ts_code = row.get("ts_code")
+        if not ts_code or pd.isna(ts_code):
+            return None
+        holder_name = row.get("holder_name")
+        if not holder_name or pd.isna(holder_name):
+            return None
+
+        def _f(key):
+            v = row.get(key)
+            return float(v) if v is not None and pd.notna(v) else None
+
+        return FinTop10HoldersBO(
+            symbol=str(ts_code).split(".")[0],
+            ann_date=parse_list_date(row.get("ann_date")),
+            end_date=parse_list_date(row.get("end_date")),
+            holder_name=str(holder_name),
+            hold_amount=_f("hold_amount"),
+            hold_ratio=_f("hold_ratio"),
+            hold_float_ratio=_f("hold_float_ratio"),
+            hold_change=_f("hold_change"),
+            holder_type=str(row.get("holder_type")) if pd.notna(row.get("holder_type")) else None,
+        )
+
+    def fetch_top10_floatholders(
+        self, symbol: str, period: Optional[str] = None,
+    ) -> list[Any]:
+        """前十大流通股东（tushare top10_floatholders）"""
+        ts_code = symbol_to_ts_code(symbol)
+        kwargs = {"ts_code": ts_code}
+        if period:
+            kwargs["period"] = period
+        self._log("info", f"top10_floatholders {ts_code}")
+        try:
+            df = self._pro.top10_floatholders(**kwargs)
+        except Exception as e:
+            if _is_rate_limit(e):
+                raise RateLimitError(str(e)) from e
+            self._log("warning", f"top10_floatholders {ts_code} 失败: {e}")
+            return []
+        if df is None or df.empty:
+            return []
+        out: list = []
+        for _, row in df.iterrows():
+            bo = self._row_to_top10_float_bo(row)
+            if bo:
+                out.append(bo)
+        return out
+
+    @staticmethod
+    def _row_to_top10_float_bo(row: pd.Series) -> Optional[Any]:
+        from route.dto.request.fin_top10_float import FinTop10FloatHoldersBO
+        ts_code = row.get("ts_code")
+        holder_name = row.get("holder_name")
+        if not ts_code or pd.isna(ts_code) or not holder_name or pd.isna(holder_name):
+            return None
+
+        def _f(key):
+            v = row.get(key)
+            return float(v) if v is not None and pd.notna(v) else None
+
+        return FinTop10FloatHoldersBO(
+            symbol=str(ts_code).split(".")[0],
+            ann_date=parse_list_date(row.get("ann_date")),
+            end_date=parse_list_date(row.get("end_date")),
+            holder_name=str(holder_name),
+            hold_amount=_f("hold_amount"),
+            hold_ratio=_f("hold_ratio"),
+            hold_change=_f("hold_change"),
+            holder_type=str(row.get("holder_type")) if pd.notna(row.get("holder_type")) else None,
+        )
+
+    # ── 基础层：复权因子 / 停复牌 / 曾用名 / 分红 ────────────────────────────────
+
+    def fetch_adj_factor(self, symbol: str) -> list[Any]:
+        """复权因子（tushare adj_factor）"""
+        ts_code = symbol_to_ts_code(symbol)
+        self._log("info", f"adj_factor {ts_code}")
+        try:
+            df = self._pro.adj_factor(ts_code=ts_code)
+        except Exception as e:
+            if _is_rate_limit(e):
+                raise RateLimitError(str(e)) from e
+            self._log("warning", f"adj_factor {ts_code} 失败: {e}")
+            return []
+        if df is None or df.empty:
+            return []
+        out: list = []
+        for _, row in df.iterrows():
+            bo = self._row_to_adj_factor_bo(row)
+            if bo:
+                out.append(bo)
+        return out
+
+    @staticmethod
+    def _row_to_adj_factor_bo(row: pd.Series) -> Optional[Any]:
+        from route.dto.request.base_adj_factor import BaseAdjFactorBO
+        ts_code = row.get("ts_code")
+        td = parse_list_date(row.get("trade_date"))
+        af = row.get("adj_factor")
+        if not ts_code or pd.isna(ts_code) or not td or af is None or pd.isna(af):
+            return None
+        return BaseAdjFactorBO(
+            symbol=str(ts_code).split(".")[0],
+            trade_date=td,
+            adj_factor=float(af),
+        )
+
+    def fetch_suspend(self, trade_date: Optional[str] = None) -> list[Any]:
+        """停复牌（tushare suspend_d）
+
+        Args:
+            trade_date: YYYYMMDD，不传则拉全量（不推荐）
+        """
+        kwargs = {}
+        if trade_date:
+            kwargs["trade_date"] = trade_date
+        self._log("info", f"suspend_d trade_date={trade_date or '(all)'}")
+        try:
+            df = self._pro.suspend_d(**kwargs)
+        except Exception as e:
+            if _is_rate_limit(e):
+                raise RateLimitError(str(e)) from e
+            self._log("warning", f"suspend_d 失败: {e}")
+            return []
+        if df is None or df.empty:
+            return []
+        out: list = []
+        for _, row in df.iterrows():
+            bo = self._row_to_suspend_bo(row)
+            if bo:
+                out.append(bo)
+        return out
+
+    @staticmethod
+    def _row_to_suspend_bo(row: pd.Series) -> Optional[Any]:
+        from route.dto.request.base_suspend import BaseSuspendBO
+        ts_code = row.get("ts_code")
+        td = parse_list_date(row.get("trade_date"))
+        if not ts_code or pd.isna(ts_code) or not td:
+            return None
+        return BaseSuspendBO(
+            symbol=str(ts_code).split(".")[0],
+            trade_date=td,
+            suspend_timing=parse_list_date(row.get("suspend_timing")),
+            suspend_type=str(row.get("suspend_type")) if pd.notna(row.get("suspend_type")) else None,
+        )
+
+    def fetch_name_change(
+        self, symbol: Optional[str] = None,
+    ) -> list[Any]:
+        """股票曾用名（tushare namechange）"""
+        kwargs = {}
+        if symbol:
+            kwargs["ts_code"] = symbol_to_ts_code(symbol)
+        self._log("info", f"namechange symbol={symbol or '(all)'}")
+        try:
+            df = self._pro.namechange(**kwargs)
+        except Exception as e:
+            if _is_rate_limit(e):
+                raise RateLimitError(str(e)) from e
+            self._log("warning", f"namechange 失败: {e}")
+            return []
+        if df is None or df.empty:
+            return []
+        out: list = []
+        for _, row in df.iterrows():
+            bo = self._row_to_name_change_bo(row)
+            if bo:
+                out.append(bo)
+        return out
+
+    @staticmethod
+    def _row_to_name_change_bo(row: pd.Series) -> Optional[Any]:
+        from route.dto.request.base_name_change import BaseNameChangeBO
+        ts_code = row.get("ts_code")
+        start_date = parse_list_date(row.get("start_date"))
+        name = row.get("name")
+        if not ts_code or pd.isna(ts_code) or not start_date or not name or pd.isna(name):
+            return None
+        return BaseNameChangeBO(
+            symbol=str(ts_code).split(".")[0],
+            name=str(name),
+            start_date=start_date,
+            end_date=parse_list_date(row.get("end_date")),
+            ann_date=parse_list_date(row.get("ann_date")),
+            change_reason=str(row.get("change_reason")) if pd.notna(row.get("change_reason")) else None,
+        )
+
+    def fetch_dividend(
+        self, symbol: Optional[str] = None,
+    ) -> list[Any]:
+        """分红送股（tushare dividend）
+
+        Args:
+            symbol: 不传则拉全市场（限频严重，需谨慎使用）
+        """
+        kwargs = {}
+        if symbol:
+            kwargs["ts_code"] = symbol_to_ts_code(symbol)
+        self._log("info", f"dividend symbol={symbol or '(all)'}")
+        try:
+            df = self._pro.dividend(**kwargs)
+        except Exception as e:
+            if _is_rate_limit(e):
+                raise RateLimitError(str(e)) from e
+            self._log("warning", f"dividend 失败: {e}")
+            return []
+        if df is None or df.empty:
+            return []
+        out: list = []
+        for _, row in df.iterrows():
+            bo = self._row_to_dividend_bo(row)
+            if bo:
+                out.append(bo)
+        return out
+
+    @staticmethod
+    def _row_to_dividend_bo(row: pd.Series) -> Optional[Any]:
+        from route.dto.request.base_dividend import BaseDividendBO
+        ts_code = row.get("ts_code")
+        end_date = parse_list_date(row.get("end_date"))
+        if not ts_code or pd.isna(ts_code) or not end_date:
+            return None
+
+        def _f(key):
+            v = row.get(key)
+            return float(v) if v is not None and pd.notna(v) else None
+
+        return BaseDividendBO(
+            symbol=str(ts_code).split(".")[0],
+            end_date=end_date,
+            ann_date=parse_list_date(row.get("ann_date")),
+            record_date=parse_list_date(row.get("record_date")),
+            ex_date=parse_list_date(row.get("ex_date")),
+            pay_date=parse_list_date(row.get("pay_date")),
+            div_proc=str(row.get("div_proc")) if pd.notna(row.get("div_proc")) else None,
+            stk_div=_f("stk_div"),
+            stk_bo_rate=_f("stk_bo_rate"),
+            stk_co_rate=_f("stk_co_rate"),
+            cash_div=_f("cash_div"),
+            cash_div_tax=_f("cash_div_tax"),
+        )

@@ -17,9 +17,12 @@
 from application.service.auth_service import AuthService
 from application.service.collect_manage_service import (
     CollectManageService,
+    PlanNotFound,
     TaskConflict,
     UnknownTaskType,
     cancel_background,
+    fetcher_to_dict,
+    plan_to_dict,
     task_to_dict,
 )
 from application.service.concept_board_service import ConceptBoardService
@@ -35,8 +38,11 @@ __all__ = [
     "StockInfoService",
     "StockPoolService",
     # 采集相关辅助符号
+    "PlanNotFound",
     "TaskConflict",
     "UnknownTaskType",
     "cancel_background",
+    "fetcher_to_dict",
+    "plan_to_dict",
     "task_to_dict",
 ]

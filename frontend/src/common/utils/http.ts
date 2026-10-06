@@ -26,9 +26,31 @@ const TOKEN_KEYS = {
   refresh: 'refresh_token',
 } as const
 
+// ── 客户端 ETag 缓存（K线/复权因子/停复牌/曾用名 准静态） ──
+//
+// 后端返回 ETag 头 → 下次请求带 If-None-Match → 服务端 304 即可省去 body 传输
+// 同时客户端用 etagCache 保留上次响应，再次 304 时直接用本地缓存数据，
+// 即使断网/服务端过期也能秒级渲染。
+//
+// 注：304 的 body 是空的，所以「用不用缓存」的决定权必须在 etagGet 手里，
+//     不能让 http 拦截器代劳（否则会被伪造成 data:null 而静默渲染空白）。
+
+interface EtagEntry<T> {
+  etag: string
+  data: T
+}
+const etagCache = new Map<string, EtagEntry<any>>()
+
+const etagCacheGet = <T>(key: string) => etagCache.get(key) as EtagEntry<T> | undefined
+const etagCacheSet = <T>(key: string, entry: EtagEntry<T>) => etagCache.set(key, entry)
+
 const http: AxiosInstance = axios.create({
   baseURL: '/api/v1',
   timeout: 60_000,
+  // 304 视为合法响应（ETag 协商），不能 reject。
+  // 否则 axios 默认 validateStatus（仅 2xx）会把 304 丢进 error 分支，
+  // 而 304 本身是"内容未变"的正常语义，必须交由调用方用缓存兜底。
+  validateStatus: (s) => (s >= 200 && s < 300) || s === 304,
 })
 
 // ── 请求拦截器 ────────────────────────────────────────────
@@ -80,6 +102,10 @@ function addRefreshSubscriber(cb: (token: string | null) => void) {
 
 // ── 响应拦截器 ────────────────────────────────────────────
 http.interceptors.response.use(
+  // 304 Not Modified：内容未变，body 为空。
+  // 这里【必须原样透出 status】，绝不能伪造成 { code:0, data:null } 的信封——
+  // 因为 unwrap() 只按 code>=400 判错，伪造信封会让调用方静默拿到 null 而渲染成空白面板。
+  // 真正要用缓存兜底的是 etagGet()，它自己持有 _etagCache 并判断 status===304。
   (response) => response,
   async (error: AxiosError<ApiResponse>) => {
     const status = error.response?.status
@@ -155,6 +181,39 @@ export function unwrap<T>(res: { data: ApiResponse<T> }): T {
     throw new Error(d.message || '请求失败')
   }
   return d.data
+}
+
+/**
+ * ETag 协商：服务端 304（内容未变、body 为空）时用本地缓存兜底。
+ *
+ * 三种情形都能拿到数据，不会出现 null/空白：
+ *  1. 304 且本地有缓存          → 返回缓存 data（省带宽的快路径）
+ *  2. 304 但本地无缓存（首屏 / 切股票 / 热重载清空 Map）→ 去掉 If-None-Match 重试一次，
+ *     强制拿 200 全量 body
+ *  3. 200                        → 正常解包，并回填缓存供下次 304 复用
+ */
+export async function etagGet<T>(url: string, params?: Record<string, any>): Promise<T> {
+  const cacheKey = url + JSON.stringify(params ?? {})
+  const cached = etagCacheGet<T>(cacheKey)
+
+  const send = (inm?: string) =>
+    http.get<ApiResponse<T>>(url, {
+      params,
+      headers: inm ? { 'If-None-Match': inm } : {},
+    })
+
+  let res = await send(cached?.etag)
+
+  if (res.status === 304) {
+    if (cached) return cached.data
+    // 兜底重试：本地无缓存时必须拿全量 body，否则组件会渲染空白
+    res = await send(undefined)
+  }
+
+  const data = unwrap<T>(res)
+  const etag = (res.headers as any)?.etag as string | undefined
+  if (etag) etagCacheSet(cacheKey, { etag, data })
+  return data
 }
 
 /** 清空 token(登出场景) */

@@ -79,6 +79,15 @@ const homeRoutes: RouteRecordRaw = {
       component: () => import('@/views/concept-board/ConceptBoard.vue'),
       meta: { title: '概念大盘', icon: 'data-line' },
     },
+    {
+      // 四数据面单股看板（个股分析工具）
+      // 路径：/home/data-board/:symbol?   （220px 左侧股票列 + 右侧 4 Tab 看板）
+      path: 'data-board/:symbol?',
+      name: 'DataBoard',
+      component: () => import('@/views/data-board/DataBoard.vue'),
+      props: true,
+      meta: { title: '数据看板', icon: 'data-analysis', hidden: false },
+    },
   ],
 }
 

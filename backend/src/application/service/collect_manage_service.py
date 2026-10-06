@@ -1,14 +1,14 @@
 """采集管理应用服务（业务模块：collect-manage/）
 
-唯一入口：submit / run_one / start_group + plans / groups
+唯一入口：submit / run_one / run_plan + plans / fetchers
 
 依赖通过 port 注入（DDD.md §4）：
 - redis:                Redis 端口
 - task_registry:        采集任务注册中心
 - scheduler:            定时调度器
 - session_factory:      session 工厂
-- plan_repo:            采集方案/任务组仓储
-- realtime_registry:    实时接口注册中心（任务组校验用）
+- config_repo:          采集配置仓储（方案 / 方案项 / 接口元数据）
+- realtime_registry:    实时接口注册中心（方案项校验用）
 """
 from __future__ import annotations
 
@@ -21,30 +21,23 @@ from typing import Any, Coroutine, Optional, Protocol
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from application.port.collector_port import (
-    CollectParams,
-)  # 仅用于类型兼容
-from infrastructure.adapter.cache.redis_client import get_redis
 from infrastructure.adapter.scheduler.collect import (
     BaseCollectTask,
     UnitResult,
     execute_task,
-    get_collect_task_registry,
 )
 from infrastructure.adapter.scheduler.collect_scheduler import (
     get_collect_scheduler,
-    validate_cron,
+    normalize_times,
+    validate_schedule,
 )
-from infrastructure.persistence.connection import AsyncSessionLocal
 from infrastructure.persistence.models.collect_config import (
-    CollectGroupDB,
+    CollectFetcherDB,
     CollectPlanDB,
+    CollectPlanItemDB,
 )
 from infrastructure.persistence.models.sys_collect_task import (
     SysCollectTaskDB,
-)
-from infrastructure.persistence.repositories.collect_config_repository import (
-    CollectConfigRepoImpl,
 )
 
 logger = logging.getLogger(__name__)
@@ -66,23 +59,42 @@ class CollectTaskRegistryPort(Protocol):
 
 
 class CollectSchedulerPort(Protocol):
-    def sync_plan(self, task_type: str, enabled: bool, cron: Optional[str]) -> None: ...
-    def sync_group(self, group_id: int, enabled: bool, cron: Optional[str]) -> None: ...
-    def next_run(self, job_id: str) -> Optional[datetime]: ...
+    def sync_plan(
+        self,
+        plan_id: int,
+        enabled: bool,
+        schedule_type: Optional[str],
+        times: Optional[list[str]] = None,
+        interval_seconds: Optional[int] = None,
+    ) -> None: ...
+    def next_run(self, prefix: str) -> Optional[datetime]: ...
 
 
 class CollectConfigRepositoryPort(Protocol):
-    async def get_plan(self, task_type: str) -> Optional[CollectPlanDB]: ...
-    async def list_plans(self) -> list[CollectPlanDB]: ...
-    async def upsert_plan(
-        self, task_type: str, *, enabled: bool, cron: Optional[str],
-        params: dict, trading_day_only: bool,
+    # 采集接口元数据
+    async def list_fetchers(self, session: AsyncSession) -> list[CollectFetcherDB]: ...
+    async def get_fetcher(
+        self, task_type: str, session: AsyncSession,
+    ) -> Optional[CollectFetcherDB]: ...
+    # 采集方案
+    async def list_plans(self, session: AsyncSession) -> list[CollectPlanDB]: ...
+    async def get_plan(self, plan_id: int, session: AsyncSession) -> Optional[CollectPlanDB]: ...
+    async def create_plan(self, session: AsyncSession, **fields) -> CollectPlanDB: ...
+    async def update_plan(
+        self, session: AsyncSession, plan: CollectPlanDB, **fields,
     ) -> CollectPlanDB: ...
-    async def touch_plan(self, task_type: str, task_id: int) -> None: ...
-    async def get_group(self, group_id: int) -> Optional[CollectGroupDB]: ...
-    async def list_groups(self) -> list[CollectGroupDB]: ...
-    async def create_group(self, **fields) -> CollectGroupDB: ...
-    async def delete_group(self, group: CollectGroupDB) -> None: ...
+    async def delete_plan(self, session: AsyncSession, plan: CollectPlanDB) -> None: ...
+    async def touch_plan(self, session: AsyncSession, plan_id: int, task_id: int) -> None: ...
+    # 采集方案项
+    async def list_plan_items(
+        self, session: AsyncSession, plan_id: int,
+    ) -> list[CollectPlanItemDB]: ...
+    async def list_all_plan_items(
+        self, session: AsyncSession, plan_id: int,
+    ) -> list[CollectPlanItemDB]: ...
+    async def replace_plan_items(
+        self, session: AsyncSession, plan_id: int, items: list[dict],
+    ) -> None: ...
 
 
 class RealtimeRegistryPort(Protocol):
@@ -104,6 +116,10 @@ class UnknownTaskType(ValueError):
 
 class TaskConflict(Exception):
     """同 task_type 已有运行中的任务"""
+
+
+class PlanNotFound(ValueError):
+    """采集方案不存在"""
 
 
 @dataclass(frozen=True)
@@ -134,47 +150,60 @@ async def cancel_background() -> None:
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
-# ── 方案 / 任务组的对外字典 ─────────────────────────────────────────────
+# ── 方案 / 采集接口 的对外字典 ─────────────────────────────────────────
 
 
 def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt else None
 
 
-def plan_to_dict(handler: BaseCollectTask, plan: Optional[CollectPlanDB]) -> dict:
-    scheduler = get_collect_scheduler()
+def fetcher_to_dict(f: CollectFetcherDB) -> dict:
     return {
-        "task_type": handler.name,
-        "label": handler.label or handler.name,
-        "status": handler.status,
-        "configured": plan is not None,
-        "enabled": plan.enabled if plan else False,
-        "cron": plan.cron if plan else None,
-        "params": dict(plan.params or {}) if plan else {},
-        "trading_day_only": plan.trading_day_only if plan else True,
-        "default_params": dict(handler.default_params),
-        "last_run_at": _iso(plan.last_run_at) if plan else None,
-        "last_task_id": plan.last_task_id if plan else None,
-        "next_run_at": _iso(scheduler.next_run(f"plan:{handler.name}")) if scheduler else None,
-        "updated_at": _iso(plan.updated_at) if plan else None,
+        "task_type": f.task_type,
+        "label": f.label or f.task_type,
+        "facet": f.facet,
+        "sub_facet": f.sub_facet,
+        "description": f.description,
+        "kind": f.kind,
+        "status": f.status,
+        "default_params": dict(f.default_params or {}),
+        "supports_run_one": f.supports_run_one,
+        "sort_order": f.sort_order,
     }
 
 
-def group_to_dict(group: CollectGroupDB) -> dict:
+def plan_to_dict(
+    plan: CollectPlanDB,
+    items: list[CollectPlanItemDB],
+    labels: Optional[dict[str, str]] = None,
+) -> dict:
+    """labels: task_type → label，由调用方从 fetchers/handler 补充"""
+    labels = labels or {}
     scheduler = get_collect_scheduler()
     return {
-        "id": group.id,
-        "name": group.name,
-        "items": list(group.items or []),
-        "enabled": group.enabled,
-        "cron": group.cron,
-        "trading_day_only": group.trading_day_only,
-        "stop_on_fail": group.stop_on_fail,
-        "last_run_at": _iso(group.last_run_at),
-        "last_group_run_id": group.last_group_run_id,
-        "next_run_at": _iso(scheduler.next_run(f"group:{group.id}")) if scheduler else None,
-        "created_at": _iso(group.created_at),
-        "updated_at": _iso(group.updated_at),
+        "id": plan.id,
+        "name": plan.name,
+        "enabled": plan.enabled,
+        "schedule_type": plan.schedule_type,
+        "times": list(plan.times or []),
+        "interval_seconds": plan.interval_seconds,
+        "stop_on_fail": plan.stop_on_fail,
+        "items": [
+            {
+                "id": it.id,
+                "task_type": it.task_type,
+                "label": labels.get(it.task_type, it.task_type),
+                "params": dict(it.params or {}),
+                "enabled": it.enabled,
+                "sort_order": it.sort_order,
+            }
+            for it in items
+        ],
+        "last_run_at": _iso(plan.last_run_at),
+        "last_task_id": plan.last_task_id,
+        "next_run_at": _iso(scheduler.next_run(f"plan:{plan.id}")) if scheduler else None,
+        "created_at": _iso(plan.created_at),
+        "updated_at": _iso(plan.updated_at),
     }
 
 
@@ -194,7 +223,7 @@ def task_to_dict(t: SysCollectTaskDB) -> dict[str, Any]:
         "finished_at": _iso(t.finished_at),
         "duration_ms": t.duration_ms,
         "message": t.message,
-        "group_run_id": t.group_run_id,
+        "plan_run_id": t.plan_run_id,
         "created_at": _iso(t.created_at),
     }
 
@@ -224,7 +253,27 @@ class CollectManageService:
         self._realtime_registry = realtime_registry
         self._session_factory = session_factory
 
-    # ── 基础 ──────────────────────────────────────────────────────────
+    # ── 调度器（未启用时为 None，全部操作降级为 no-op）──────────────────
+
+    def _sync_scheduler(
+        self,
+        plan_id: int,
+        enabled: bool,
+        schedule_type: Optional[str],
+        times: Optional[list[str]] = None,
+        interval_seconds: Optional[int] = None,
+    ) -> None:
+        """同步定时 job；调度器未启用（COLLECT_SCHEDULER_ENABLED=false）时静默跳过
+
+        这样手动触发方案在无调度器环境下依然可用。
+        """
+        if self._scheduler is None:
+            return
+        self._scheduler.sync_plan(
+            plan_id, enabled, schedule_type, times, interval_seconds,
+        )
+
+    # ── 基础 ────────────────────────────────────────────────────────────
 
     def handler(self, task_type: str) -> BaseCollectTask:
         handler = self._task_registry.get(task_type)
@@ -234,17 +283,24 @@ class CollectManageService:
             )
         return handler
 
-    async def resolve_params(self, task_type: str, params: Optional[dict] = None) -> dict:
+    async def resolve_params(
+        self,
+        task_type: str,
+        params: Optional[dict] = None,
+        plan_item_params: Optional[dict] = None,
+    ) -> dict:
+        """参数合并：手动传入 > 方案项 params > default_params
+
+        ⚠️ 不查 DB —— 方案项参数由调用方（run_plan）传入。
+        """
         handler = self.handler(task_type)
-        async with self._session_factory() as session:
-            plan = await self._config_repo.get_plan(task_type)
         return {
             **handler.default_params,
-            **((plan.params or {}) if plan else {}),
+            **(plan_item_params or {}),
             **(params or {}),
         }
 
-    # ── 后台执行 ──────────────────────────────────────────────────────
+    # ── 后台执行 ────────────────────────────────────────────────────────
 
     async def prepare(
         self,
@@ -252,15 +308,16 @@ class CollectManageService:
         params: Optional[dict] = None,
         trigger: str = "manual",
         *,
-        group_run_id: Optional[int] = None,
-        group_first: bool = False,
+        plan_item_params: Optional[dict] = None,
+        plan_run_id: Optional[int] = None,
+        plan_first: bool = False,
     ) -> SubmittedTask:
         """防重 → estimate_total → 写任务行 → 初始化 Redis 进度；不启动执行
 
-        group_first=True 时本行的 group_run_id 取自身 id（任务组第一项）。
+        plan_first=True 时本行的 plan_run_id 取自身 id（方案执行的第一项）。
         """
         handler = self.handler(task_type)
-        merged = await self.resolve_params(task_type, params)
+        merged = await self.resolve_params(task_type, params, plan_item_params)
 
         async with self._session_factory() as session:
             running = await session.execute(
@@ -280,14 +337,13 @@ class CollectManageService:
                 status="running",
                 total_count=total,
                 started_at=datetime.now(),
-                group_run_id=group_run_id,
+                plan_run_id=plan_run_id,
             )
             session.add(task)
             await session.flush()
-            if group_first:
-                task.group_run_id = task.id
+            if plan_first:
+                task.plan_run_id = task.id
             task_id = task.id
-            await self._config_repo.touch_plan(task_type, task_id)
             await session.commit()
 
         key = f"collect:progress:{task_id}"
@@ -313,7 +369,7 @@ class CollectManageService:
         spawn(execute_task(sub.task_id, self.handler(task_type), sub.params))
         return sub
 
-    # ── 同步单元 ──────────────────────────────────────────────────────
+    # ── 同步单元 ────────────────────────────────────────────────────────
 
     async def run_one(
         self, task_type: str, unit: str, params: Optional[dict] = None,
@@ -324,193 +380,262 @@ class CollectManageService:
         merged = {**handler.default_params, **(params or {})}
         return await handler.collect_one(unit, merged)
 
-    # ── 采集方案 ──────────────────────────────────────────────────────
+    # ── 失败任务重跑（复用原 task_id + 原 params） ─────────────────────
+
+    async def retry_failed(self, task_id: int) -> SubmittedTask:
+        """重跑一个失败 / 已取消的任务：复制原 task 的 type+params，新开 task_id
+
+        设计：
+          - 不修改原 task 行（保留历史记录用于追溯）
+          - 跳过 list_units → 直接用原 task 的 total_count 作为估计
+          - 后台协程继续由 spawn 接管
+
+        Raises:
+            ValueError: 任务不存在 / 不在终态
+        """
+        async with self._session_factory() as session:
+            orig = await session.get(SysCollectTaskDB, task_id)
+            if orig is None:
+                raise ValueError(f"任务 {task_id} 不存在")
+            if orig.status not in ("failed", "cancelled", "success"):
+                raise ValueError(
+                    f"任务 {task_id} 状态为 {orig.status}，仅 failed/cancelled/success 可重跑"
+                )
+            orig_type = orig.task_type
+            orig_params = dict(orig.params or {})
+            orig_trigger = orig.trigger_type
+
+        sub = await self.prepare(orig_type, orig_params, trigger=orig_trigger)
+        spawn(execute_task(sub.task_id, self.handler(orig_type), sub.params))
+        logger.info(
+            "重跑任务: 原 #%d → 新 #%d (type=%s, trigger=%s)",
+            task_id, sub.task_id, orig_type, orig_trigger,
+        )
+        return sub
+
+    # ── 采集接口元数据 ──────────────────────────────────────────────────
+
+    async def list_fetchers(self) -> list[dict]:
+        """列出全部采集接口元数据（UI 的接口选择器数据源）"""
+        async with self._session_factory() as session:
+            rows = await self._config_repo.list_fetchers(session)
+        return [fetcher_to_dict(f) for f in rows]
+
+    # ── 采集方案 CRUD ───────────────────────────────────────────────────
+
+    def _check_plan(self, fields: dict) -> dict:
+        """校验 + 归一化方案表单；非法时抛 ValueError"""
+        name = (fields.get("name") or "").strip()
+        if not name:
+            raise ValueError("方案名称不能为空")
+        if len(name) > 64:
+            raise ValueError("方案名称不能超过 64 个字符")
+
+        schedule_type = fields.get("schedule_type")
+        times = normalize_times(fields.get("times"))
+        interval_seconds = fields.get("interval_seconds")
+        validate_schedule(schedule_type, times, interval_seconds)
+
+        enabled = bool(fields.get("enabled"))
+        if enabled and not schedule_type:
+            raise ValueError("启用方案需要选择触发方式")
+
+        items = self._validate_items(fields.get("items") or [])
+        if not items:
+            raise ValueError("方案至少需要包含一个采集接口")
+        if enabled and not any(it["enabled"] for it in items):
+            raise ValueError("启用方案需要至少一个启用的采集接口")
+
+        return {
+            "name": name,
+            "enabled": enabled,
+            "schedule_type": schedule_type,
+            "times": times,
+            "interval_seconds": interval_seconds,
+            "stop_on_fail": bool(fields.get("stop_on_fail", True)),
+            "items": items,
+        }
+
+    def _validate_items(self, items: list[dict]) -> list[dict]:
+        """校验方案项：已注册 / status=ready / 非实时接口 / 不重复"""
+        seen: set[str] = set()
+        out: list[dict] = []
+        for it in items:
+            task_type = (it.get("task_type") or "").strip()
+            if not task_type:
+                continue
+            if task_type in seen:
+                raise ValueError(f"方案内重复的采集接口: {task_type}")
+            seen.add(task_type)
+
+            if self._realtime_registry.get(task_type) is not None:
+                raise ValueError(f"{task_type} 是实时接口，不能加入方案")
+            handler = self.handler(task_type)           # 未注册 → UnknownTaskType
+            if handler.status != "ready":
+                raise ValueError(f"{task_type} 尚未实现，不能加入方案")
+
+            out.append({
+                "task_type": task_type,
+                "params": dict(it.get("params") or {}),
+                "enabled": bool(it.get("enabled", True)),
+            })
+        return out
+
+    async def _label_map(self, task_types: list[str]) -> dict[str, str]:
+        """task_type → label：优先 fetchers 表，其次代码 registry"""
+        wanted = set(task_types)
+        if not wanted:
+            return {}
+        async with self._session_factory() as session:
+            rows = await self._config_repo.list_fetchers(session)
+        out = {f.task_type: (f.label or f.task_type) for f in rows if f.task_type in wanted}
+        for t in wanted - set(out):
+            h = self._task_registry.get(t)
+            if h is not None:
+                out[t] = h.label or h.name
+        return out
 
     async def list_plans(self) -> list[dict]:
         async with self._session_factory() as session:
-            plans = {p.task_type: p for p in await self._config_repo.list_plans()}
+            plans = await self._config_repo.list_plans(session)
+            all_items = [
+                it
+                for p in plans
+                for it in await self._config_repo.list_all_plan_items(session, p.id)
+            ]
+        labels = await self._label_map([it.task_type for it in all_items])
+        items_by_plan: dict[int, list[CollectPlanItemDB]] = {}
+        for it in all_items:
+            items_by_plan.setdefault(it.plan_id, []).append(it)
         return [
-            plan_to_dict(self._task_registry.get(t), plans.get(t))
-            for t in self._task_registry.supported_types()
+            plan_to_dict(p, items_by_plan.get(p.id, []), labels)
+            for p in plans
         ]
 
-    async def get_plan(self, task_type: str) -> dict:
-        handler = self.handler(task_type)
+    async def get_plan(self, plan_id: int) -> dict:
         async with self._session_factory() as session:
-            plan = await self._config_repo.get_plan(task_type)
-        return plan_to_dict(handler, plan)
+            plan = await self._config_repo.get_plan(plan_id, session)
+            if plan is None:
+                raise PlanNotFound(f"采集方案 {plan_id} 不存在")
+            items = await self._config_repo.list_all_plan_items(session, plan_id)
+        labels = await self._label_map([it.task_type for it in items])
+        return plan_to_dict(plan, items, labels)
 
-    async def save_plan(
-        self,
-        task_type: str,
-        *,
-        enabled: bool,
-        cron: Optional[str],
-        params: dict,
-        trading_day_only: bool,
-    ) -> dict:
-        handler = self.handler(task_type)
-        cron = (cron or "").strip() or None
-        if cron:
-            validate_cron(cron)
-        if enabled and not cron:
-            raise ValueError("启用定时需要填写 cron 表达式")
-        if enabled and handler.status != "ready":
-            raise ValueError(f"{task_type} 尚未实现，不能启用定时")
-
+    async def create_plan(self, fields: dict) -> dict:
+        values = self._check_plan(fields)
+        items = values.pop("items")
         async with self._session_factory() as session:
-            plan = await self._config_repo.upsert_plan(
-                task_type, enabled=enabled, cron=cron, params=params or {},
-                trading_day_only=trading_day_only,
-            )
+            plan = await self._config_repo.create_plan(session, **values)
+            await self._config_repo.replace_plan_items(session, plan.id, items)
             await session.commit()
             await session.refresh(plan)
+        self._sync_scheduler(
+            plan.id, plan.enabled, plan.schedule_type, plan.times, plan.interval_seconds,
+        )
+        return await self.get_plan(plan.id)
 
-        self._scheduler.sync_plan(task_type, enabled, cron)
-        return plan_to_dict(handler, plan)
-
-    # ── 任务组 ────────────────────────────────────────────────────────
-
-    def _check_group(self, fields: dict) -> dict:
-        name = (fields.get("name") or "").strip()
-        if not name:
-            raise ValueError("任务组名称不能为空")
-        items = []
-        for item in fields.get("items") or []:
-            task_type = item.get("task_type")
-            if self._realtime_registry.get(task_type) is not None:
-                raise ValueError(f"{task_type} 是实时接口，不能加入任务组")
-            handler = self.handler(task_type)
-            if handler.status != "ready":
-                raise ValueError(f"{task_type} 尚未实现，不能加入任务组")
-            items.append({"task_type": task_type, "params": dict(item.get("params") or {})})
-        if not items:
-            raise ValueError("任务组至少需要一项")
-        cron = (fields.get("cron") or "").strip() or None
-        if cron:
-            validate_cron(cron)
-        enabled = bool(fields.get("enabled"))
-        if enabled and not cron:
-            raise ValueError("启用定时需要填写 cron 表达式")
-        return {
-            "name": name,
-            "items": items,
-            "enabled": enabled,
-            "cron": cron,
-            "trading_day_only": bool(fields.get("trading_day_only", True)),
-            "stop_on_fail": bool(fields.get("stop_on_fail", True)),
-        }
-
-    async def list_groups(self) -> list[dict]:
+    async def update_plan(self, plan_id: int, fields: dict) -> dict:
+        values = self._check_plan(fields)
+        items = values.pop("items")
         async with self._session_factory() as session:
-            return [
-                group_to_dict(g)
-                for g in await self._config_repo.list_groups()
-            ]
-
-    async def create_group(self, fields: dict) -> dict:
-        values = self._check_group(fields)
-        async with self._session_factory() as session:
-            group = await self._config_repo.create_group(**values)
+            plan = await self._config_repo.get_plan(plan_id, session)
+            if plan is None:
+                raise PlanNotFound(f"采集方案 {plan_id} 不存在")
+            await self._config_repo.update_plan(session, plan, **values)
+            await self._config_repo.replace_plan_items(session, plan_id, items)
             await session.commit()
-            await session.refresh(group)
-        self._sync_group(group)
-        return group_to_dict(group)
+            await session.refresh(plan)
+        self._sync_scheduler(
+            plan.id, plan.enabled, plan.schedule_type, plan.times, plan.interval_seconds,
+        )
+        return await self.get_plan(plan_id)
 
-    async def update_group(self, group_id: int, fields: dict) -> dict:
-        values = self._check_group(fields)
+    async def delete_plan(self, plan_id: int) -> None:
         async with self._session_factory() as session:
-            group = await self._config_repo.get_group(group_id)
-            if group is None:
-                raise ValueError(f"任务组 {group_id} 不存在")
-            for k, v in values.items():
-                setattr(group, k, v)
+            plan = await self._config_repo.get_plan(plan_id, session)
+            if plan is None:
+                raise PlanNotFound(f"采集方案 {plan_id} 不存在")
+            await self._config_repo.delete_plan(session, plan)
             await session.commit()
-            await session.refresh(group)
-        self._sync_group(group)
-        return group_to_dict(group)
+        # 停用所有 job
+        self._sync_scheduler(plan_id, False, None, [], None)
 
-    async def delete_group(self, group_id: int) -> None:
-        async with self._session_factory() as session:
-            group = await self._config_repo.get_group(group_id)
-            if group is None:
-                raise ValueError(f"任务组 {group_id} 不存在")
-            await self._config_repo.delete_group(group)
-            await session.commit()
-        self._scheduler.sync_group(group_id, False, None)
+    # ── 方案执行 ────────────────────────────────────────────────────────
 
-    def _sync_group(self, group: CollectGroupDB) -> None:
-        self._scheduler.sync_group(group.id, group.enabled, group.cron)
-
-    async def start_group(self, group_id: int, trigger: str = "manual") -> dict:
-        async with self._session_factory() as session:
-            group = await self._config_repo.get_group(group_id)
-            if group is None:
-                raise ValueError(f"任务组 {group_id} 不存在")
-            info = group_to_dict(group)
-        spawn(self.run_group(group_id, trigger))
+    async def start_plan(self, plan_id: int, trigger: str = "manual") -> dict:
+        """立即执行一次方案（后台跑，不阻塞）"""
+        info = await self.get_plan(plan_id)
+        if not any(it["enabled"] for it in info["items"]):
+            raise ValueError("方案没有启用的采集接口")
+        spawn(self.run_plan(plan_id, trigger))
         return info
 
-    async def run_group(
-        self, group_id: int, trigger: str = "manual",
-    ) -> Optional[int]:
-        """按 items 顺序串行执行；返回 group_run_id（全部跳过时为 None）"""
-        async with self._session_factory() as session:
-            group = await self._config_repo.get_group(group_id)
-            if group is None:
-                logger.warning("任务组 %d 不存在，跳过执行", group_id)
-                return None
-            name, items, stop_on_fail = (
-                group.name, list(group.items or []), group.stop_on_fail,
-            )
+    async def run_plan(self, plan_id: int, trigger: str = "manual") -> Optional[int]:
+        """按 sort_order 顺序串行执行方案的所有启用项
 
-        group_run_id: Optional[int] = None
-        logger.info("任务组 [%s] 开始: %d 项, trigger=%s", name, len(items), trigger)
+        Returns: plan_run_id（= 第一项的 task_id）；全部跳过时为 None
+        """
+        async with self._session_factory() as session:
+            plan = await self._config_repo.get_plan(plan_id, session)
+            if plan is None:
+                logger.warning("采集方案 %d 不存在，跳过执行", plan_id)
+                return None
+            name = plan.name
+            stop_on_fail = plan.stop_on_fail
+            # list_plan_items 已按 sort_order 排序并过滤 disabled
+            items = await self._config_repo.list_plan_items(session, plan_id)
+
+        plan_run_id: Optional[int] = None
+        logger.info("采集方案 [%s] 开始: %d 项, trigger=%s", name, len(items), trigger)
 
         for idx, item in enumerate(items, 1):
-            task_type = item.get("task_type")
+            task_type = item.task_type
             try:
                 sub = await self.prepare(
-                    task_type, item.get("params"), trigger,
-                    group_run_id=group_run_id,
-                    group_first=group_run_id is None,
+                    task_type, item.params, trigger,
+                    plan_item_params=item.params,
+                    plan_run_id=plan_run_id,
+                    plan_first=plan_run_id is None,
                 )
             except TaskConflict as e:
-                logger.info("任务组 [%s] 第 %d 项跳过: %s", name, idx, e)
+                logger.info("采集方案 [%s] 第 %d 项跳过: %s", name, idx, e)
                 continue
             except Exception as e:
-                logger.error("任务组 [%s] 第 %d 项 %s 创建失败: %s", name, idx, task_type, e)
+                logger.error("采集方案 [%s] 第 %d 项 %s 创建失败: %s", name, idx, task_type, e)
                 if stop_on_fail:
                     break
                 continue
 
-            if group_run_id is None:
-                group_run_id = sub.task_id
-                await self._touch_group(group_id, group_run_id)
+            if plan_run_id is None:
+                plan_run_id = sub.task_id
+                await self._touch_plan(plan_id, plan_run_id)
 
             await execute_task(sub.task_id, self.handler(task_type), sub.params)
 
             async with self._session_factory() as session:
                 row = await session.get(SysCollectTaskDB, sub.task_id)
                 status = row.status if row else "unknown"
+                ok = row.success_count if row else 0
+                fail = row.fail_count if row else 0
             logger.info(
-                "任务组 [%s] 第 %d/%d 项 %s 结束: %s",
-                name, idx, len(items), task_type, status,
+                "采集方案 [%s] 第 %d/%d 项 %s 结束: %s（成功%d 失败%d）",
+                name, idx, len(items), task_type, status, ok, fail,
             )
-            if stop_on_fail and status in ("failed", "cancelled"):
+            # ⚠️ 不能只看 status —— _decide_status 里"部分失败也算 success"，
+            #   所以额外拦"零成功但有失败"的极端情况。
+            if stop_on_fail and (
+                status in ("failed", "cancelled") or (ok == 0 and fail > 0)
+            ):
                 logger.warning(
-                    "任务组 [%s] 第 %d 项 %s，停止后续 %d 项",
-                    name, idx, status, len(items) - idx,
+                    "采集方案 [%s] 第 %d 项 %s（成功%d 失败%d），停止后续 %d 项",
+                    name, idx, status, ok, fail, len(items) - idx,
                 )
                 break
 
-        logger.info("任务组 [%s] 结束: group_run_id=%s", name, group_run_id)
-        return group_run_id
+        logger.info("采集方案 [%s] 结束: plan_run_id=%s", name, plan_run_id)
+        return plan_run_id
 
-    async def _touch_group(self, group_id: int, group_run_id: int) -> None:
+    async def _touch_plan(self, plan_id: int, plan_run_id: int) -> None:
         async with self._session_factory() as session:
-            group = await self._config_repo.get_group(group_id)
-            if group is not None:
-                group.last_run_at = datetime.now()
-                group.last_group_run_id = group_run_id
-                await session.commit()
+            await self._config_repo.touch_plan(session, plan_id, plan_run_id)
+            await session.commit()

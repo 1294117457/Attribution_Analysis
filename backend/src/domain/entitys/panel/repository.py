@@ -33,11 +33,15 @@ class StockPanelComposeRepository(Protocol):
         list_status: Optional[str] = None,
         exclude_st: Optional[bool] = None,
         min_total_mv: Optional[float] = None,
+        concept_id: Optional[int] = None,
         with_pools: bool = False,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[StockPanelRow], int]:
         """分页 + 多维筛选 + 4 表快照，返回 (rows, total)
+
+        concept_id：按概念成分股过滤（EXISTS 子查询 stock_concept_members，
+        走 (symbol, concept_id) 唯一索引，不产生行放大）。
 
         with_pools 当前在此方法签名上保留以保持向后兼容的接口形状；
         实际批量反查由调用方调用 list_membership_by_symbols 触发。

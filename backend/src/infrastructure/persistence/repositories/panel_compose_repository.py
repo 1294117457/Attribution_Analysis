@@ -24,6 +24,7 @@ from domain.entitys.concept.repository import ConceptRepository
 from domain.entitys.concept.vo import ConceptBriefVO
 from domain.entitys.panel.repository import StockPanelComposeRepository
 from domain.entitys.panel.vo import StockPanelRow
+from infrastructure.persistence.models.concept import ConceptMemberDB
 from infrastructure.persistence.models.fin_daily_basic import FinDailyBasicDB
 from infrastructure.persistence.models.fin_report import FinReportDB
 from infrastructure.persistence.models.pool import StockPoolDB, StockPoolMemberDB
@@ -66,6 +67,7 @@ class StockPanelComposeRepoImpl:
         list_status: Optional[str] = None,
         exclude_st: Optional[bool] = None,
         min_total_mv: Optional[float] = None,
+        concept_id: Optional[int] = None,
         with_pools: bool = False,  # 当前签名保留以保持 Protocol 兼容
         page: int = 1,
         page_size: int = 20,
@@ -158,6 +160,19 @@ class StockPanelComposeRepoImpl:
             conditions.append(~StockInfoDB.name.ilike("%ST%"))
         elif exclude_st is False:
             conditions.append(StockInfoDB.name.ilike("%ST%"))
+        if concept_id is not None:
+            # 用 EXISTS 而非 JOIN：一只股票可能属于多个概念，
+            # JOIN 会产生行放大导致 count 与分页重复。EXISTS 走
+            # (symbol, concept_id) 唯一索引，半相关子查询可提前短路。
+            conditions.append(
+                select(1)
+                .select_from(ConceptMemberDB)
+                .where(
+                    ConceptMemberDB.symbol == StockInfoDB.symbol,
+                    ConceptMemberDB.concept_id == concept_id,
+                )
+                .exists()
+            )
 
         # ── 先分页：只取当前页的 symbol ─────────────────────
         # K 线聚合 / 估值 / 财报只关联这一页；若先 JOIN 全量日 K 再 GROUP BY + OFFSET，

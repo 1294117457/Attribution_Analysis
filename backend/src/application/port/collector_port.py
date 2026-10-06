@@ -148,6 +148,108 @@ class FinReportFetcher(Protocol):
 class RateLimitError(RuntimeError):
     """数据源限频（调用方应等待后重试）"""
 
+# ═════════════════════════════════════════════════════════════════════
+# 资金面 / 基本面深度 / 基础层 — 9 个新协议（2026-10-04 补齐）
+# ═════════════════════════════════════════════════════════════════════
+
+
+@runtime_checkable
+class MoneyflowFetcher(Protocol):
+    """个股资金流向（tushare moneyflow）"""
+
+    def fetch_moneyflow(
+        self, trade_date: str, symbols: Optional[list[str]] = None,
+    ) -> list[Any]: ...
+
+
+@runtime_checkable
+class MarginDetailFetcher(Protocol):
+    """融资融券交易明细（tushare margin_detail）"""
+
+    def fetch_margin_detail(self, trade_date: str) -> list[Any]: ...
+
+
+@runtime_checkable
+class TopListFetcher(Protocol):
+    """龙虎榜每日上榜（tushare top_list）"""
+
+    def fetch_top_list(self, trade_date: str) -> list[Any]: ...
+
+
+@runtime_checkable
+class TopInstFetcher(Protocol):
+    """龙虎榜机构席位（tushare top_inst）"""
+
+    def fetch_top_inst(self, trade_date: str) -> list[Any]: ...
+
+
+@runtime_checkable
+class BlockTradeFetcher(Protocol):
+    """大宗交易（tushare block_trade）"""
+
+    def fetch_block_trade(self, trade_date: str) -> list[Any]: ...
+
+
+@runtime_checkable
+class HolderNumberFetcher(Protocol):
+    """股东户数（tushare stk_holdernumber）"""
+
+    def fetch_holder_number(
+        self, symbol: str, ann_date: Optional[str] = None,
+    ) -> list[Any]: ...
+
+
+@runtime_checkable
+class Top10HoldersFetcher(Protocol):
+    """前十大股东（tushare top10_holders）"""
+
+    def fetch_top10_holders(
+        self, symbol: str, period: Optional[str] = None,
+    ) -> list[Any]: ...
+
+
+@runtime_checkable
+class Top10FloatHoldersFetcher(Protocol):
+    """前十大流通股东（tushare top10_floatholders）"""
+
+    def fetch_top10_floatholders(
+        self, symbol: str, period: Optional[str] = None,
+    ) -> list[Any]: ...
+
+
+@runtime_checkable
+class AdjFactorFetcher(Protocol):
+    """复权因子（tushare adj_factor）"""
+
+    def fetch_adj_factor(self, symbol: str) -> list[Any]: ...
+
+
+@runtime_checkable
+class SuspendFetcher(Protocol):
+    """停复牌（tushare suspend_d）"""
+
+    def fetch_suspend(
+        self, trade_date: Optional[str] = None,
+    ) -> list[Any]: ...
+
+
+@runtime_checkable
+class NameChangeFetcher(Protocol):
+    """股票曾用名（tushare namechange）"""
+
+    def fetch_name_change(
+        self, symbol: Optional[str] = None,
+    ) -> list[Any]: ...
+
+
+@runtime_checkable
+class DividendFetcher(Protocol):
+    """分红送股（tushare dividend）"""
+
+    def fetch_dividend(
+        self, symbol: Optional[str] = None,
+    ) -> list[Any]: ...
+
 
 @runtime_checkable
 class ConceptFetcher(Protocol):
