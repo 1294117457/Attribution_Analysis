@@ -1,0 +1,448 @@
+INFO:     127.0.0.1:63735 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55793 - "GET /api/v1/concepts/?page_size=3&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57591 - "GET /api/v1/stock-panel/?page_size=2&with_pools=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64613 - "GET /api/v1/stock-panel/?page_size=5&with_pools=true&concept_id=287 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49730 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60975 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55692 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51484 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63305 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57426 - "POST /api/v1/auth/captcha/generate HTTP/1.1" 405 Method Not Allowed
+INFO:     127.0.0.1:57426 - "POST /api/v1/auth/login HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:60542 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60542 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50988 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:50990 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:50992 - "POST /api/v1/auth/refresh HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:50994 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56040 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57932 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:57934 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:57936 - "POST /api/v1/auth/refresh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57940 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63560 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59388 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59389 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51725 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52722 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61311 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63239 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63240 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49917 - "GET /api/v1/concepts/?q=%E7%99%BD%E9%85%92&is_active=true&page_size=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63641 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56055 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L&concept_id=58 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53669 - "GET /api/v1/concepts/?q=%E4%B8%93%E7%B2%BE%E7%89%B9%E6%96%B0&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53669 - "GET /api/v1/stock-panel/?concept_id=58&page_size=1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52795 - "GET /api/v1/concepts/?is_active=true&page_size=100&page=1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52795 - "GET /api/v1/concepts/?is_active=true&page_size=100&page=4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52795 - "GET /api/v1/concepts/?is_active=true&page_size=100&page=5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57396 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51119 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52533 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52534 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55108 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52281 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52282 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57914 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57913 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54678 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64725 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65267 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65270 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56282 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56283 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56320 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56323 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57502 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50408 - "GET /api/v1/concepts/?page_size=100&is_active=true&q=%E8%8A%AF%E7%89%87 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60201 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L&concept_id=169 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52456 - "GET /api/v1/concepts/?q=%E8%8A%AF%E7%89%87%E6%A6%82%E5%BF%B5&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52456 - "GET /api/v1/stock-panel/?concept_id=169&page_size=1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52456 - "GET /api/v1/stock-panel/?concept_id=169&list_status=L&page_size=1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57889 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57890 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56865 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:56867 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:65186 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56869 - "POST /api/v1/auth/refresh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50183 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:50185 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:50187 - "POST /api/v1/auth/refresh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57691 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57694 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61855 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61857 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56994 - "GET /api/v1/klines/000001?limit=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56995 - "GET /api/v1/concepts/tab-by-symbol/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56950 - "GET /api/v1/concepts/886072/minute HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56949 - "GET /api/v1/concepts/886072/kline?days=250 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53254 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51837 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52699 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50768 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56212 - "GET /api/v1/concepts/?page_size=100&is_active=true&q=gO HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54167 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64905 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52638 - "GET /api/v1/concepts/?page_size=100&is_active=true&q=GA HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59363 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51906 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62504 - "GET /api/v1/concepts/?page_size=100&is_active=true&q=GA HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60382 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60381 - "GET /api/v1/concepts/?page_size=100&is_active=true&q=ga HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51334 - "GET /api/v1/concepts/?page_size=100&is_active=true&q=gao HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62292 - "GET /api/v1/concepts/?page_size=100&is_active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50687 - "GET /api/v1/concepts/?page_size=100&is_active=true&q=%E9%AB%98 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55530 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L&concept_id=268 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60968 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64755 - "GET /api/v1/klines/000006?limit=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64756 - "GET /api/v1/concepts/tab-by-symbol/000006 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60235 - "GET /api/v1/concepts/886021/minute HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60234 - "GET /api/v1/concepts/886021/kline?days=250 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61660 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53929 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56909 - "GET /api/v1/data-board/stock-list-all HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56910 - "GET /api/v1/data-board/overview/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57059 - "GET /api/v1/data-board/capital/margin/000010?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57055 - "GET /api/v1/data-board/tech/name-change/000010 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57058 - "GET /api/v1/data-board/capital/moneyflow/000010?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57054 - "GET /api/v1/data-board/tech/suspend/000010 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57052 - "GET /api/v1/data-board/tech/kline/000010?limit=250 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57053 - "GET /api/v1/data-board/tech/adj-factor/000010 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57408 - "GET /api/v1/data-board/capital/top-list/000010?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57043 - "GET /api/v1/data-board/capital/block-trade/000010?days=180 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57045 - "GET /api/v1/data-board/capital/holder-num/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49672 - "GET /api/v1/data-board/capital/top-inst/000010?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50847 - "GET /api/v1/data-board/fundamental/stock/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51670 - "GET /api/v1/data-board/fundamental/daily-basic/000010?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55275 - "GET /api/v1/data-board/fundamental/fin-report/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54351 - "GET /api/v1/data-board/fundamental/top10-float/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60714 - "GET /api/v1/data-board/fundamental/top10-holders/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54352 - "GET /api/v1/data-board/fundamental/dividend/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61189 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64309 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50359 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49966 - "GET /api/v1/data-board/stock-list-all HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49967 - "GET /api/v1/data-board/overview/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64618 - "GET /api/v1/data-board/capital/moneyflow/000010?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64616 - "GET /api/v1/data-board/tech/suspend/000010 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64619 - "GET /api/v1/data-board/capital/margin/000010?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64612 - "GET /api/v1/data-board/tech/kline/000010?limit=250 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64617 - "GET /api/v1/data-board/tech/name-change/000010 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64613 - "GET /api/v1/data-board/tech/adj-factor/000010 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61950 - "GET /api/v1/data-board/capital/top-list/000010?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49679 - "GET /api/v1/data-board/capital/holder-num/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59982 - "GET /api/v1/data-board/capital/top-inst/000010?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59983 - "GET /api/v1/data-board/capital/block-trade/000010?days=180 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49680 - "GET /api/v1/data-board/fundamental/stock/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51675 - "GET /api/v1/data-board/fundamental/daily-basic/000010?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61259 - "GET /api/v1/data-board/fundamental/dividend/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57328 - "GET /api/v1/data-board/fundamental/fin-report/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51420 - "GET /api/v1/data-board/fundamental/top10-float/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51419 - "GET /api/v1/data-board/fundamental/top10-holders/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54328 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54329 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51564 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51566 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51569 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50289 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50291 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63354 - "GET /api/v1/concepts/concept-board?type_filter=all&sort_by=pct_change&order=desc&page=1&page_size=500 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57521 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61603 - "GET /api/v1/auth/captcha HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61603 - "POST /api/v1/auth/login HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:60170 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52743 - "POST /api/v1/auth/login HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:59644 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57117 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57117 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62720 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51173 - "POST /api/v1/auth/login HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:54583 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52732 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58940 - "POST /api/v1/auth/login HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:58942 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63325 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63325 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51951 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51954 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49177 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49178 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54596 - "GET /api/v1/data-board/tech/name-change/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54597 - "GET /api/v1/data-board/tech/suspend/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54595 - "GET /api/v1/data-board/capital/moneyflow/000001?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54598 - "GET /api/v1/data-board/capital/margin/000001?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54589 - "GET /api/v1/data-board/tech/adj-factor/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56233 - "GET /api/v1/data-board/tech/kline/000001?limit=250 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61363 - "GET /api/v1/data-board/capital/block-trade/000001?days=180 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60397 - "GET /api/v1/data-board/capital/top-inst/000001?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60396 - "GET /api/v1/data-board/capital/top-list/000001?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52131 - "GET /api/v1/data-board/fundamental/daily-basic/000001?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52472 - "GET /api/v1/data-board/capital/holder-num/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65128 - "GET /api/v1/data-board/fundamental/fin-report/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54329 - "GET /api/v1/data-board/fundamental/dividend/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54328 - "GET /api/v1/data-board/fundamental/top10-float/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54310 - "GET /api/v1/data-board/fundamental/top10-holders/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52351 - "GET /api/v1/concepts/tab-by-symbol/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61030 - "GET /api/v1/concepts/886072/minute HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61029 - "GET /api/v1/concepts/886072/kline?days=250 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49314 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50233 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54428 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53879 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52460 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63647 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63650 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62260 - "GET /api/v1/data-board/stock-list-all HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62261 - "GET /api/v1/data-board/overview/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49831 - "GET /api/v1/data-board/fundamental/stock/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49825 - "GET /api/v1/data-board/tech/suspend/000001 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:49830 - "GET /api/v1/data-board/capital/moneyflow/000001?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49827 - "GET /api/v1/data-board/tech/name-change/000001 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:49823 - "GET /api/v1/data-board/tech/kline/000001?limit=250 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:49824 - "GET /api/v1/data-board/tech/adj-factor/000001 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51319 - "GET /api/v1/data-board/capital/margin/000001?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64530 - "GET /api/v1/data-board/capital/holder-num/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50332 - "GET /api/v1/data-board/capital/top-list/000001?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50333 - "GET /api/v1/data-board/capital/top-inst/000001?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61247 - "GET /api/v1/data-board/capital/block-trade/000001?days=180 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61000 - "GET /api/v1/data-board/fundamental/daily-basic/000001?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51573 - "GET /api/v1/data-board/fundamental/top10-float/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61755 - "GET /api/v1/data-board/fundamental/fin-report/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51574 - "GET /api/v1/data-board/fundamental/dividend/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58259 - "GET /api/v1/data-board/fundamental/top10-holders/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59399 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:59401 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:59403 - "POST /api/v1/auth/refresh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59407 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60812 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63016 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63017 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50350 - "GET /api/v1/data-board/capital/moneyflow/000010?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50345 - "GET /api/v1/data-board/tech/suspend/000010 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:50352 - "GET /api/v1/data-board/capital/margin/000010?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62486 - "GET /api/v1/data-board/tech/kline/000010?limit=250 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:50347 - "GET /api/v1/data-board/tech/name-change/000010 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:62487 - "GET /api/v1/data-board/tech/adj-factor/000010 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52723 - "GET /api/v1/data-board/capital/top-inst/000010?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58109 - "GET /api/v1/data-board/capital/holder-num/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61861 - "GET /api/v1/data-board/capital/top-list/000010?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52725 - "GET /api/v1/data-board/capital/block-trade/000010?days=180 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61022 - "GET /api/v1/data-board/fundamental/fin-report/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54801 - "GET /api/v1/data-board/fundamental/daily-basic/000010?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49250 - "GET /api/v1/data-board/fundamental/dividend/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49248 - "GET /api/v1/data-board/fundamental/top10-holders/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49249 - "GET /api/v1/data-board/fundamental/top10-float/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51249 - "GET /api/v1/concepts/tab-by-symbol/000010 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51928 - "GET /api/v1/concepts/885699/minute HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57723 - "GET /api/v1/concepts/885699/kline?days=250 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59813 - "GET /api/v1/concepts/quotes?codes=885699,885935,885690,885572,885991,885957 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50193 - "GET /api/v1/concepts/quotes?codes=885699,885935,885690,885572,885991,885957 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51791 - "GET /api/v1/concepts/quotes?codes=885699,885935,885690,885572,885991,885957 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60852 - "GET /api/v1/concepts/quotes?codes=885699,885935,885690,885572,885991,885957 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51850 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51288 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55202 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55206 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53217 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53218 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61527 - "GET /api/v1/data-board/tech/name-change/000009 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61531 - "GET /api/v1/data-board/capital/margin/000009?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61526 - "GET /api/v1/data-board/tech/suspend/000009 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61530 - "GET /api/v1/data-board/capital/moneyflow/000009?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61525 - "GET /api/v1/data-board/tech/kline/000009?limit=250 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61524 - "GET /api/v1/data-board/tech/adj-factor/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53813 - "GET /api/v1/data-board/capital/block-trade/000009?days=180 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56104 - "GET /api/v1/data-board/capital/top-list/000009?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60723 - "GET /api/v1/data-board/capital/top-inst/000009?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56055 - "GET /api/v1/data-board/capital/holder-num/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54488 - "GET /api/v1/data-board/fundamental/daily-basic/000009?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49933 - "GET /api/v1/data-board/fundamental/fin-report/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63722 - "GET /api/v1/data-board/fundamental/dividend/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55864 - "GET /api/v1/data-board/fundamental/top10-holders/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55866 - "GET /api/v1/data-board/fundamental/top10-float/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63746 - "GET /api/v1/concepts/tab-by-symbol/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63494 - "GET /api/v1/concepts/885781/minute HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63493 - "GET /api/v1/concepts/885781/kline?days=250 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54322 - "GET /api/v1/concepts/quotes?codes=885781,885439,885944,885928,885958,885530,885865,885915,885969,885972,885823,885355,885552,885494,885706,885338,886008,885775,886032,885413,885694,885921,885710,885789,885461,885431,885517,886069,885537,885700,885997,886001,885521,885774,886044 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64502 - "GET /api/v1/concepts/quotes?codes=885781,885439,885944,885928,885958,885530,885865,885915,885969,885972,885823,885355,885552,885494,885706,885338,886008,885775,886032,885413,885694,885921,885710,885789,885461,885431,885517,886069,885537,885700,885997,886001,885521,885774,886044 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62556 - "GET /api/v1/concepts/quotes?codes=885781,885439,885944,885928,885958,885530,885865,885915,885969,885972,885823,885355,885552,885494,885706,885338,886008,885775,886032,885413,885694,885921,885710,885789,885461,885431,885517,886069,885537,885700,885997,886001,885521,885774,886044 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55440 - "GET /api/v1/data-board/tech/suspend/000009 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:54872 - "GET /api/v1/data-board/capital/moneyflow/000009?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55443 - "GET /api/v1/data-board/tech/name-change/000009 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51122 - "GET /api/v1/data-board/capital/margin/000009?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55439 - "GET /api/v1/data-board/tech/adj-factor/000009 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61288 - "GET /api/v1/data-board/tech/kline/000009?limit=250 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:51850 - "GET /api/v1/data-board/capital/top-list/000009?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49335 - "GET /api/v1/data-board/capital/top-inst/000009?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55885 - "GET /api/v1/data-board/capital/block-trade/000009?days=180 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57414 - "GET /api/v1/data-board/capital/holder-num/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52805 - "GET /api/v1/data-board/fundamental/fin-report/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54738 - "GET /api/v1/data-board/fundamental/daily-basic/000009?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51446 - "GET /api/v1/data-board/fundamental/top10-float/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53689 - "GET /api/v1/data-board/fundamental/top10-holders/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53418 - "GET /api/v1/data-board/fundamental/dividend/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53547 - "GET /api/v1/concepts/tab-by-symbol/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65043 - "GET /api/v1/concepts/885781/minute HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65041 - "GET /api/v1/concepts/885781/kline?days=250 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50834 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:50836 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:50838 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60529 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60529 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65047 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65050 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64979 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64980 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61042 - "GET /api/v1/data-board/tech/name-change/000001 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61043 - "GET /api/v1/data-board/capital/moneyflow/000001?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61046 - "GET /api/v1/data-board/capital/margin/000001?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61041 - "GET /api/v1/data-board/tech/suspend/000001 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52327 - "GET /api/v1/data-board/tech/kline/000001?limit=250 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:61039 - "GET /api/v1/data-board/tech/adj-factor/000001 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:56387 - "GET /api/v1/data-board/capital/top-list/000001?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57070 - "GET /api/v1/data-board/capital/top-inst/000001?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62115 - "GET /api/v1/data-board/capital/block-trade/000001?days=180 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64106 - "GET /api/v1/data-board/capital/holder-num/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64108 - "GET /api/v1/data-board/fundamental/daily-basic/000001?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55080 - "GET /api/v1/data-board/fundamental/fin-report/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58977 - "GET /api/v1/data-board/fundamental/top10-float/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59060 - "GET /api/v1/data-board/fundamental/dividend/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54075 - "GET /api/v1/data-board/fundamental/top10-holders/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62359 - "GET /api/v1/concepts/tab-by-symbol/000001 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52872 - "GET /api/v1/concepts/886072/minute HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52871 - "GET /api/v1/concepts/886072/kline?days=250 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49304 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64435 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55514 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56989 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62447 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51226 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59651 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59269 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61776 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50314 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57159 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53900 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58465 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63139 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51535 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61528 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60502 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58692 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60464 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52466 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51413 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:51415 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:51418 - "POST /api/v1/auth/refresh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63743 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56335 - "GET /api/v1/concepts/quotes?codes=885781,885439,885944,885928,885958,885530,885865,885915,885969,885972,885823,885355,885552,885494,885706,885338,886008,885775,886032,885413,885694,885921,885710,885789,885461,885431,885517,886069,885537,885700,885997,886001,885521,885774,886044 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63755 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64235 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64236 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53331 - "GET /api/v1/data-board/capital/margin/000002?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53328 - "GET /api/v1/data-board/tech/suspend/000002 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53329 - "GET /api/v1/data-board/tech/name-change/000002 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53330 - "GET /api/v1/data-board/capital/moneyflow/000002?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53323 - "GET /api/v1/data-board/tech/kline/000002?limit=250 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:53327 - "GET /api/v1/data-board/tech/adj-factor/000002 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:54961 - "GET /api/v1/data-board/capital/block-trade/000002?days=180 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54960 - "GET /api/v1/data-board/capital/top-inst/000002?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54958 - "GET /api/v1/data-board/capital/top-list/000002?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60914 - "GET /api/v1/data-board/fundamental/daily-basic/000002?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51980 - "GET /api/v1/data-board/capital/holder-num/000002 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60915 - "GET /api/v1/data-board/fundamental/fin-report/000002 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59168 - "GET /api/v1/data-board/fundamental/top10-float/000002 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54094 - "GET /api/v1/data-board/fundamental/top10-holders/000002 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51070 - "GET /api/v1/data-board/fundamental/dividend/000002 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57809 - "GET /api/v1/concepts/tab-by-symbol/000002 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58283 - "GET /api/v1/concepts/885761/minute HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58282 - "GET /api/v1/concepts/885761/kline?days=250 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64971 - "GET /api/v1/data-board/tech/name-change/000006 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64976 - "GET /api/v1/data-board/capital/margin/000006?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64974 - "GET /api/v1/data-board/tech/suspend/000006 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64972 - "GET /api/v1/data-board/capital/moneyflow/000006?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64973 - "GET /api/v1/data-board/tech/kline/000006?limit=250 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64970 - "GET /api/v1/data-board/tech/adj-factor/000006 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63165 - "GET /api/v1/data-board/capital/top-list/000006?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58552 - "GET /api/v1/data-board/capital/block-trade/000006?days=180 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58550 - "GET /api/v1/data-board/capital/top-inst/000006?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52828 - "GET /api/v1/data-board/capital/holder-num/000006 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54688 - "GET /api/v1/data-board/fundamental/fin-report/000006 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53809 - "GET /api/v1/data-board/fundamental/daily-basic/000006?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56807 - "GET /api/v1/data-board/fundamental/top10-holders/000006 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59559 - "GET /api/v1/data-board/fundamental/dividend/000006 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56808 - "GET /api/v1/data-board/fundamental/top10-float/000006 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57195 - "GET /api/v1/concepts/tab-by-symbol/000006 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53420 - "GET /api/v1/concepts/886021/minute HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53419 - "GET /api/v1/concepts/886021/kline?days=250 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54667 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64356 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57489 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62501 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65087 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65089 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57732 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61045 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56914 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61280 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55504 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50268 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54448 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52038 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62295 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60456 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65336 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59261 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64403 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51872 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63946 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60414 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50003 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52680 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62838 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62056 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:62058 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:60790 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53684 - "GET /api/v1/concepts/quotes?codes=886072,885338,885694,885966 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64265 - "GET /api/v1/concepts/quotes?codes=886021,885915,885697,885338,885991,885694,885521 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57001 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61375 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54985 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54986 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57314 - "GET /api/v1/data-board/tech/suspend/000009 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57319 - "GET /api/v1/data-board/capital/margin/000009?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57315 - "GET /api/v1/data-board/tech/name-change/000009 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57318 - "GET /api/v1/data-board/capital/moneyflow/000009?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57312 - "GET /api/v1/data-board/tech/kline/000009?limit=250 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:57313 - "GET /api/v1/data-board/tech/adj-factor/000009 HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:64823 - "GET /api/v1/data-board/capital/top-inst/000009?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54961 - "GET /api/v1/data-board/capital/top-list/000009?days=90 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64824 - "GET /api/v1/data-board/capital/block-trade/000009?days=180 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64482 - "GET /api/v1/data-board/fundamental/daily-basic/000009?days=60 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64738 - "GET /api/v1/data-board/fundamental/fin-report/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50579 - "GET /api/v1/data-board/capital/holder-num/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58868 - "GET /api/v1/data-board/fundamental/top10-holders/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58869 - "GET /api/v1/data-board/fundamental/top10-float/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52004 - "GET /api/v1/data-board/fundamental/dividend/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59160 - "GET /api/v1/concepts/tab-by-symbol/000009 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51523 - "GET /api/v1/concepts/885781/minute HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51521 - "GET /api/v1/concepts/885781/kline?days=250 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49829 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57876 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53178 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:53181 - "GET /api/v1/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:53182 - "POST /api/v1/auth/refresh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53185 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62363 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52775 - "GET /api/v1/stocks/meta HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52774 - "GET /api/v1/stock-panel/?page=1&page_size=20&with_pools=true&list_status=L HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53327 - "GET /api/v1/collect/catalog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53326 - "GET /api/v1/collect/tasks?task_type=daily_kline&page=1&page_size=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62316 - "GET /api/v1/collect/fetchers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62315 - "GET /api/v1/collect/plans HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55330 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52617 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58669 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53669 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64734 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52087 - "GET /api/v1/auth/captcha/generate HTTP/1.1" 200 OK

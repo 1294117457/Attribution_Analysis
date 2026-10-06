@@ -152,6 +152,34 @@ class AdataConceptFetcher(BaseCollector):
             ))
         return items
 
+    def fetch_current_snapshot(self, index_code: str, delay: Optional[float] = None) -> Optional[dict]:
+        """概念当前行情快照（adata stock.market.get_market_concept_current_ths）
+
+        用于补全概念大盘 / 实时涨幅快照。返回 dict（不引入新 BO 类型）。
+        """
+        df = self._call(
+            lambda: self._adata.stock.market.get_market_concept_current_ths(index_code=index_code),
+            delay=delay,
+        )
+        for row in _rows(df):
+            return {
+                "index_code": index_code,
+                "price": _float(row.get("price")),
+                "change": _float(row.get("change")),
+                "change_pct": _float(row.get("change_pct")),
+                "volume": _float(row.get("volume")),
+                "amount": _float(row.get("amount")),
+                "open": _float(row.get("open")),
+                "high": _float(row.get("high")),
+                "low": _float(row.get("low")),
+                "prev_close": _float(row.get("prev_close")),
+                "turnover_rate": _float(row.get("turnover_rate")),
+                "pe": _float(row.get("pe")),
+                "pb": _float(row.get("pb")),
+                "trade_time": _str(row.get("trade_time")),
+            }
+        return None
+
     def fetch_minute(self, index_code: str, delay: Optional[float] = 0) -> Optional[ConceptMinuteBO]:
         """概念当日分时（实时接口，默认不限速；限流由 RealtimeQueryFramework 的并发信号量控制）"""
         df = self._call(

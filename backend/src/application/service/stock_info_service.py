@@ -516,7 +516,8 @@ class StockInfoService:
             q=req.q, industry=req.industry, market=req.market,
             exchange=req.exchange, is_hs=req.is_hs,
             list_status=req.list_status, exclude_st=req.exclude_st,
-            min_total_mv=req.min_total_mv, with_pools=req.with_pools,
+            min_total_mv=req.min_total_mv, concept_id=req.concept_id,
+            with_pools=req.with_pools,
             page=req.page, page_size=req.page_size,
         )
         symbols = [r.symbol for r in rows]

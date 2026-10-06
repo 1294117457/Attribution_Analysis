@@ -113,6 +113,30 @@
       <!-- 高级筛选展开区（grid-rows 动画，避免 max-height 重排） -->
       <div class="advanced-wrapper" :class="{ open: showAdvanced }">
         <div class="advanced-filters">
+          <el-select
+            v-model="filters.concept_id"
+            placeholder="概念"
+            clearable
+            filterable
+            remote
+            :remote-method="onConceptSearch"
+            :loading="conceptLoading"
+            :style="{ width: topDensityProxy * 150 + 'px' }"
+            @visible-change="onConceptDropdownVisible"
+            @change="onFilterChange"
+          >
+            <el-option
+              v-for="c in conceptOptions"
+              :key="c.concept_id"
+              :label="c.name"
+              :value="c.concept_id"
+            >
+              <span class="concept-opt-name">{{ c.name }}</span>
+              <span v-if="c.stock_count != null" class="concept-opt-count">
+                {{ c.stock_count }} 只
+              </span>
+            </el-option>
+          </el-select>
           <el-select v-model="filters.industry" placeholder="行业" clearable :style="{ width: topDensityProxy * 130 + 'px' }" @change="onFilterChange">
             <el-option v-for="v in meta.industries" :key="v" :label="v" :value="v" />
           </el-select>
@@ -145,6 +169,7 @@
             :min="0"
             :precision="0"
             :controls="false"
+            align="left"
             :style="{ width: topDensityProxy * 110 + 'px' }"
             @change="onFilterChange"
           />
@@ -335,12 +360,14 @@ import {
   queryStocks,
   getStockMeta,
   syncStocks,
+  listConceptOptions,
 } from '@/views/stock-info/api'
 import type {
   StockInfo,
   StockMeta,
   StockQueryParams,
   PoolMembership,
+  ConceptOption,
 } from '@/views/stock-info/api'
 
 const router = useRouter()
@@ -490,6 +517,10 @@ const syncing = ref(false)
 const meta = ref<StockMeta>({ industries: [], markets: [], exchanges: [] })
 const selectedStocks = ref<StockInfo[]>([])
 
+/** 概念下拉选项（高级筛选用；展开时懒加载，输入关键词走服务端 remote 搜索） */
+const conceptOptions = ref<ConceptOption[]>([])
+const conceptLoading = ref(false)
+
 // ── 弹窗 / 抽屉 ─────────────────────────────────────────
 const tableRef = ref()
 const addToPoolVisible = ref(false)
@@ -530,6 +561,7 @@ const filters = ref({
   list_status: 'L',
   st_filter: '' as string,
   min_total_mv: undefined as number | undefined,
+  concept_id: undefined as number | undefined,
 })
 
 const advancedFilterCount = computed(() => {
@@ -541,6 +573,7 @@ const advancedFilterCount = computed(() => {
   if (filters.value.list_status !== 'L') count++
   if (filters.value.st_filter) count++
   if (filters.value.min_total_mv != null) count++
+  if (filters.value.concept_id != null) count++
   return count
 })
 
@@ -559,8 +592,13 @@ function onFilterChange() {
   loadStocks()
 }
 
+/** 展开高级筛选时懒加载概念选项（首屏不拉，避免多余请求） */
+watch(showAdvanced, (v) => {
+  if (v) loadConceptOptions()
+}, { immediate: false })
+
 function resetFilters() {
-  filters.value = { q: '', industry: '', market: '', exchange: '', is_hs: '', list_status: 'L', st_filter: '', min_total_mv: undefined }
+  filters.value = { q: '', industry: '', market: '', exchange: '', is_hs: '', list_status: 'L', st_filter: '', min_total_mv: undefined, concept_id: undefined }
   page.value = 1
   loadStocks()
 }
@@ -586,6 +624,7 @@ async function loadStocks() {
     if (filters.value.st_filter === 'exclude') params.exclude_st = true
     else if (filters.value.st_filter === 'only') params.exclude_st = false
     if (filters.value.min_total_mv != null) params.min_total_mv = filters.value.min_total_mv * 10000
+    if (filters.value.concept_id != null) params.concept_id = filters.value.concept_id
 
     const data = await queryStocks(params)
     stocks.value = data.items || []
@@ -600,6 +639,37 @@ async function loadStocks() {
 
 async function loadMeta() {
   try { meta.value = await getStockMeta() } catch { /* silent */ }
+}
+
+/** 加载概念下拉选项
+ *
+ * 概念总数约 390（> 后端 page_size 上限 100），所以用「服务端搜索」：
+ *  - 首次展开 / 清空关键词 → 取成分股最多的前 100 个作快捷项
+ *  - 输入关键词 → remote-method 调后端 q 搜索，覆盖全部概念
+ * 失败静默：概念下拉不可用不影响主列表。
+ */
+async function loadConceptOptions(q = '') {
+  conceptLoading.value = true
+  try {
+    const list = await listConceptOptions({ q: q || undefined })
+    conceptOptions.value = Array.isArray(list) ? list : []
+  } catch {
+    conceptOptions.value = []
+  } finally {
+    conceptLoading.value = false
+  }
+}
+
+/** el-select remote-method：防抖 300ms，避免逐字符打后端 */
+let conceptSearchTimer: ReturnType<typeof setTimeout> | null = null
+function onConceptSearch(q: string) {
+  if (conceptSearchTimer) clearTimeout(conceptSearchTimer)
+  conceptSearchTimer = setTimeout(() => loadConceptOptions(q.trim()), 300)
+}
+
+/** 下拉展开时兜底加载（remote 模式下 EP 不会自动填初始选项） */
+function onConceptDropdownVisible(visible: boolean) {
+  if (visible && conceptOptions.value.length === 0) loadConceptOptions()
 }
 
 async function syncStocksHandler() {
@@ -1124,20 +1194,77 @@ onMounted(async () => {
   color: #a8abb2;
 }
 
+/* ── el-select / el-input-number 盒模型归一化（「最低市值」与其它筛选对齐）──
+ *
+ * 根因：两者内部「可见盒子」不是同一个元素，原生盒模型基准也不同——
+ *   el-select       可见盒子 = .el-select__wrapper （border + padding 4px 11px）
+ *   el-input-number 可见盒子 = .el-input__wrapper （box-shadow 画边框，
+ *                                           EP 原生 padding 1px 11px）
+ * 只给两者套同一组 padding 会让边框盒差 2px，且内层原生 <input> 被二次压缩，
+ * 视觉上「矮一截 + 文字居中 + 占位符偏深」——与左侧 7 个 select 明显不齐。
+ *
+ * 归一化策略：
+ *   1. 边框盒统一交给两者的 wrapper：height / padding / line-height / 字号完全一致
+ *   2. 内层原生 input 只负责填满剩余空间（height:100%），不再写死 -8px 二次压缩
+ *   3. 占位符颜色 / 字重与 .el-select__placeholder 一致（浅灰 #a8abb2）
+ *   4. 文字左对齐（模板上 align="left"，让 EP 输出 is-left 类）
+ */
+
+/* 边框盒：两个组件共用同一组规格 */
 .advanced-filters :deep(.el-select__wrapper),
 .advanced-filters :deep(.el-input-number .el-input__wrapper) {
+  height: var(--sil-top-control-h);
   min-height: var(--sil-top-control-h);
-  /* 强制覆盖 EP sass 固化的 padding，让两个组件像素级一致
-   * el-select__wrapper sass: padding 4px 11px; line-height: 24px */
   padding: 4px 11px;
   line-height: calc(var(--sil-top-control-h) - 8px);
   box-sizing: border-box;
 }
 
-/* el-input-number 内部 input 去掉默认行高干扰 + 垂直居中 */
+/* 内层原生 input：填满剩余高度，不再写死 -8px 造成二次压缩 */
 .advanced-filters :deep(.el-input-number .el-input__inner) {
-  height: calc(var(--sil-top-control-h) - 8px);
+  height: 100%;
   line-height: calc(var(--sil-top-control-h) - 8px);
+}
+
+/* 占位符与 select 的 .el-select__placeholder 视觉对齐：
+ * select 占位符是 <span>（字号可继承），input-number 是原生 placeholder
+ *（EP sass 单独写死），这里显式补齐字号 + 颜色 + 字重。
+ * ⚠️ 不要用 var(--el-color-text-color-placeholder)：EP 没有这个变量
+ *    （实测解析为空串会让 color 失效并回退到深色），统一用字面量 #a8abb2。 */
+.advanced-filters :deep(.el-input-number .el-input__inner::placeholder) {
+  font-size: var(--sil-top-select-fs);
+  font-weight: 400;
+  color: #a8abb2;
+}
+
+/* 概念下拉：名称左对齐 + 成分股数量右对齐灰显
+ * （EP 选项行默认 list-item / 居中，长短不一时视觉参差）
+ *
+ * ⚠️ el-select 下拉是 **teleport 到 body** 的，不在 .advanced-filters 子树内，
+ *    `:deep()` 选不中（实测 item 的祖先链是 el-popper → body）。
+ *    但选项内容仍带本组件的 data-v-xxx 属性，所以用 `:global()` 按属性选，
+ *    既能穿透 teleport 又只作用于本页的概念下拉。 */
+:global(.el-select-dropdown__item:has(.concept-opt-count)) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sil-top-gap);
+}
+
+.concept-opt-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.concept-opt-count {
+  flex: 0 0 auto;
+  font-size: var(--sil-top-select-fs);
+  color: #a8abb2;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ════════════════════════════════════════════════

@@ -35,6 +35,7 @@ class StockPanelQueryRequest(BaseModel):
     list_status: Optional[str] = Field("L", description="上市状态 L/D/P/全部")
     exclude_st: Optional[bool] = Field(None, description="排除 ST / 仅 ST")
     min_total_mv: Optional[float] = Field(None, ge=0, description="最低总市值(万元)")
+    concept_id: Optional[int] = Field(None, ge=1, description="概念板块 ID（按成分股过滤）")
     with_pools: bool = Field(False, description="是否附带所属操作池（避免 N+1）")
     with_concepts: bool = Field(False, description="是否附带所属概念板块（详情抽屉预热用）")
     page: int = Field(1, ge=1, description="页码")

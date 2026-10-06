@@ -41,9 +41,23 @@ from infrastructure.adapter.scheduler.collect.concept import (
     ConceptListCollectTask,
     ConceptMembershipCollectTask,
 )
+from infrastructure.adapter.scheduler.collect.concept_reason import ConceptReasonCollectTask
+from infrastructure.adapter.scheduler.collect.concept_snapshot import ConceptSnapshotCollectTask
 from infrastructure.adapter.scheduler.collect.daily_basic import DailyBasicCollectTask
 from infrastructure.adapter.scheduler.collect.daily_kline import DailyKlineCollectTask
 from infrastructure.adapter.scheduler.collect.fin_report import FinReportCollectTask
+from infrastructure.adapter.scheduler.collect.fin_top10_holders import FinTop10HoldersCollectTask
+from infrastructure.adapter.scheduler.collect.fin_top10_float import FinTop10FloatHoldersCollectTask
+from infrastructure.adapter.scheduler.collect.base_adj_factor import BaseAdjFactorCollectTask
+from infrastructure.adapter.scheduler.collect.base_suspend import BaseSuspendCollectTask
+from infrastructure.adapter.scheduler.collect.base_name_change import BaseNameChangeCollectTask
+from infrastructure.adapter.scheduler.collect.base_dividend import BaseDividendCollectTask
+from infrastructure.adapter.scheduler.collect.cap_moneyflow import CapMoneyflowCollectTask
+from infrastructure.adapter.scheduler.collect.cap_margin_detail import CapMarginDetailCollectTask
+from infrastructure.adapter.scheduler.collect.cap_top_list import CapTopListCollectTask
+from infrastructure.adapter.scheduler.collect.cap_top_inst import CapTopInstCollectTask
+from infrastructure.adapter.scheduler.collect.cap_block_trade import CapBlockTradeCollectTask
+from infrastructure.adapter.scheduler.collect.cap_holder_num import CapHolderNumCollectTask
 from infrastructure.adapter.scheduler.collect.planned import (
     PlannedCollectTask,
     all_planned_tasks,
@@ -66,6 +80,21 @@ __all__ = [
     "ConceptListCollectTask",
     "ConceptMembershipCollectTask",
     "ConceptIndexTHCollectTask",
+    "ConceptReasonCollectTask",
+    "ConceptSnapshotCollectTask",
+    # 资金面（13 资金面/基本面/基础层 新增）
+    "CapMoneyflowCollectTask",
+    "CapMarginDetailCollectTask",
+    "CapTopListCollectTask",
+    "CapTopInstCollectTask",
+    "CapBlockTradeCollectTask",
+    "CapHolderNumCollectTask",
+    "FinTop10HoldersCollectTask",
+    "FinTop10FloatHoldersCollectTask",
+    "BaseAdjFactorCollectTask",
+    "BaseSuspendCollectTask",
+    "BaseNameChangeCollectTask",
+    "BaseDividendCollectTask",
     # 抽象
     "BaseCollectTask",
     "UnitResult",
