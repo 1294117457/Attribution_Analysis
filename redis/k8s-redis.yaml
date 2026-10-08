@@ -1,0 +1,112 @@
+# Redis 7 — K8s 部署清单
+#
+# 部署：
+#   cd /home/project/attribution
+#   source deploy.env
+#   envsubst < redis/k8s-redis.yaml | kubectl apply -f -
+#
+# 卸载：
+#   envsubst < redis/k8s-redis.yaml | kubectl delete -f -
+#
+# 前置条件：
+#   - attribution namespace 已存在（postgres yaml 会创建）
+#   - 镜像已推送到 ACR：${ACR_PREFIX}/redis:${REDIS_VERSION}
+
+---
+# ===== Secret: Redis 密码 =====
+apiVersion: v1
+kind: Secret
+metadata:
+  name: redis-secret
+  namespace: attribution
+type: Opaque
+stringData:
+  REDIS_PASSWORD: "${REDIS_PASSWORD}"
+
+---
+# ===== Service: ClusterIP =====
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: attribution
+  labels:
+    app: redis
+spec:
+  type: ClusterIP
+  ports:
+  - port: 6379
+    targetPort: 6379
+    protocol: TCP
+    name: redis
+  selector:
+    app: redis
+
+---
+# ===== Deployment =====
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: attribution
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        effect: NoSchedule
+      containers:
+      - name: redis
+        image: ${ACR_PREFIX}/redis:${REDIS_VERSION}
+        imagePullPolicy: IfNotPresent
+        command:
+        - redis-server
+        args:
+        - --appendonly
+        - "yes"
+        - --maxmemory
+        - 256mb
+        - --maxmemory-policy
+        - allkeys-lru
+        - --requirepass
+        - $(REDIS_PASSWORD)
+        - --bind
+        - 0.0.0.0
+        - --protected-mode
+        - "no"
+        ports:
+        - containerPort: 6379
+          protocol: TCP
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: REDIS_PASSWORD
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 256Mi
+        livenessProbe:
+          exec:
+            command: ["redis-cli", "-a", "$(REDIS_PASSWORD)", "ping"]
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
+        readinessProbe:
+          exec:
+            command: ["redis-cli", "-a", "$(REDIS_PASSWORD)", "ping"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3

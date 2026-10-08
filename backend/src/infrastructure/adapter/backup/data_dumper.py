@@ -15,6 +15,7 @@ r"""数据导出：用 asyncpg server-side cursor 流式读，渲染成 COPY FRO
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
 import asyncpg
@@ -56,6 +57,7 @@ class DataDumper:
     def __init__(self, conn_factory=None) -> None:
         self._conn_factory = conn_factory or self._default_connect
 
+    @asynccontextmanager
     async def _default_connect(self) -> AsyncIterator[asyncpg.Connection]:
         url = get_settings().DATABASE_URL
         dsn = url.replace("postgresql+asyncpg://", "postgresql://")
@@ -82,12 +84,9 @@ class DataDumper:
         col_list_sql = ", ".join(f'"{c}"' for c in columns)
 
         async with self._conn_factory() as conn:
-            # 拿 server-side cursor
-            # 注：asyncpg cursor 默认 fetch 100 行，需 scroll=True 才支持流式 async for
             async with conn.transaction():
                 cursor = await conn.cursor(
                     f'SELECT {col_list_sql} FROM "public"."{table}"',
-                    scroll=True,
                 )
                 row_count = 0
                 col_count = len(columns)
@@ -97,18 +96,17 @@ class DataDumper:
                     f'COPY "public"."{table}" ({col_list_sql}) FROM stdin;\n'
                 )
 
-                # 流式读 + 写
-                buf_lines: list[str] = []
-                BUF_SIZE = 1000  # 每 1000 行 flush 一次
-                async for row in cursor:
-                    cells = [_quote_copy_value(v) for v in row]
-                    buf_lines.append(_COPY_DELIM.join(cells))
-                    row_count += 1
-                    if len(buf_lines) >= BUF_SIZE:
-                        await out_fp.write(_COPY_EOL.join(buf_lines) + _COPY_EOL)
-                        buf_lines.clear()
-
-                if buf_lines:
+                # 分批读 + 写
+                BATCH_SIZE = 1000
+                while True:
+                    rows = await cursor.fetch(BATCH_SIZE)
+                    if not rows:
+                        break
+                    buf_lines = []
+                    for row in rows:
+                        cells = [_quote_copy_value(v) for v in row]
+                        buf_lines.append(_COPY_DELIM.join(cells))
+                        row_count += 1
                     await out_fp.write(_COPY_EOL.join(buf_lines) + _COPY_EOL)
 
                 await out_fp.write("\\.\n\n")

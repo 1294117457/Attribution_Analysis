@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, AsyncIterator
 
@@ -56,6 +57,7 @@ class Restorer:
         self.path_resolver = path_resolver
         self._conn_factory = conn_factory or self._default_connect
 
+    @asynccontextmanager
     async def _default_connect(self) -> AsyncIterator[asyncpg.Connection]:
         url = get_settings().DATABASE_URL
         dsn = url.replace("postgresql+asyncpg://", "postgresql://")
