@@ -6,8 +6,8 @@
         <p class="page-subtitle">查看用户、分配角色、对照权限矩阵</p>
       </div>
       <div class="header-actions">
-        <el-tag :type="isAdmin ? 'success' : 'info'" effect="light">
-          {{ isAdmin ? '管理员视角' : '只读' }}
+        <el-tag type="success" effect="light">
+          管理员视角
         </el-tag>
       </div>
     </header>
@@ -252,11 +252,9 @@ import {
   type Role,
   type Permission,
 } from './api'
-import { useAuthStore } from '@/stores/auth'
 
-const authStore = useAuthStore()
-const canManage = computed(() => authStore.hasPermission('user:write'))
-const isAdmin = computed(() => authStore.isAdmin)
+// 暂去掉 RBAC 限制：登录用户均可管理（rbac 后续接入）
+const canManage = computed(() => true)
 
 const activeTab = ref<'users' | 'roles' | 'permissions'>('users')
 
