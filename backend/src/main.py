@@ -25,6 +25,12 @@ from domain.entitys.stock_pool.entity import (
     PoolOperationNotFoundError,
     CannotDeleteDefaultPoolError,
 )
+from infrastructure.adapter.backup.exceptions import (
+    BackupError,
+    BackupTaskRunningError,
+    InvalidBackupFileError,
+    PathSecurityError,
+)
 from infrastructure.config.settings import get_settings
 from infrastructure.config.di import setup_default_registry
 from infrastructure.persistence.base import Base
@@ -142,6 +148,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await _ensure_default_pool(conn)
         await _migrate_auth_system(conn)
         await _ensure_initial_admin(conn)
+        await _migrate_backup_permissions(conn)
+        await _recover_interrupted_backup_tasks(conn)
 
     # 注册数据源到采集器注册中心
     setup_default_registry()
@@ -588,6 +596,7 @@ async def _migrate_auth_system(conn) -> None:
     - 002_auth_system.sql                     建 6 张 sys_* 表 + 角色/权限
     - 003_drop_username.sql                   删 sys_users.username 字段
     - 005_drop_redis_replaced_tables.sql      删 sys_email_verifications / sys_refresh_tokens / sys_captchas(已切到 Redis)
+    - 006_backup_records.sql                  建 sys_backup_records / sys_restore_records (数据备份功能)
 
     关键:每条语句独立 SAVEPOINT,任意一条失败不会污染整个事务。
     注释行(-- 开头)被预过滤,避免被当成"坏 SQL"塞进事务。
@@ -607,6 +616,7 @@ async def _migrate_auth_system(conn) -> None:
         "002_auth_system.sql",
         "003_drop_username.sql",
         "005_drop_redis_replaced_tables.sql",
+        "006_backup_records.sql",
     ]
     for file_name in files:
         path = migrations_dir / file_name
@@ -740,6 +750,56 @@ async def _ensure_initial_admin(conn) -> None:
     )
 
 
+async def _migrate_backup_permissions(conn) -> None:
+    """追加备份功能所需权限（system:backup）并绑定到 admin 角色。
+
+    幂等：ON CONFLICT DO NOTHING；表不存在则被 try/except 吞掉。
+    """
+    from sqlalchemy import text
+    statements = [
+        # 1. 插入新权限
+        "INSERT INTO sys_permissions (code, resource, action, name, description) "
+        "VALUES ('system:backup', 'system', 'backup', '数据备份与恢复', '管理数据库备份、恢复与路径配置') "
+        "ON CONFLICT (code) DO NOTHING",
+        # 2. 绑定到 admin 角色（admin 自动拿全部权限）
+        "INSERT INTO sys_role_permissions (role_id, permission_id) "
+        "SELECT r.id, p.id FROM sys_roles r, sys_permissions p "
+        "WHERE r.code = 'admin' AND p.code = 'system:backup' "
+        "ON CONFLICT (role_id, permission_id) DO NOTHING",
+    ]
+    for stmt in statements:
+        try:
+            await conn.execute(text(stmt))
+        except Exception as e:
+            logging.warning("backup 权限迁移跳过: %s | err=%s", stmt[:80], e)
+
+
+async def _recover_interrupted_backup_tasks(conn) -> None:
+    """启动期清理：把上次进程异常退出遗留的 pending/running 备份/恢复任务标为 failed。
+
+    与现有 _migrate_sys_collect_tasks 同思路（单进程部署，启动时仍为 running 的 = 僵尸）。
+    幂等：表不存在/字段缺失会触发 exception，被 try/except 吞掉即可。
+    """
+    from sqlalchemy import text
+    statements = [
+        # sys_backup_records
+        "UPDATE sys_backup_records SET status = 'failed', "
+        "error_message = COALESCE(error_message, '') || ' [服务重启，任务中断]', "
+        "finished_at = NOW() "
+        "WHERE status IN ('pending', 'running')",
+        # sys_restore_records
+        "UPDATE sys_restore_records SET status = 'failed', "
+        "error_message = COALESCE(error_message, '') || ' [服务重启，任务中断]', "
+        "finished_at = NOW() "
+        "WHERE status IN ('pending', 'running')",
+    ]
+    for stmt in statements:
+        try:
+            await conn.execute(text(stmt))
+        except Exception as e:
+            logging.warning("backup 任务恢复跳过: %s | err=%s", stmt[:80], e)
+
+
 def create_app() -> FastAPI:
     """创建 FastAPI 应用"""
     app = FastAPI(
@@ -823,12 +883,25 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, exc: RequestValidationError):
+        # 兜底：把 ctx/input 里的 bytes 转成 str，避免 JSON 序列化失败
+        def _safe(value):
+            if isinstance(value, bytes):
+                try:
+                    return value.decode("utf-8", errors="replace")
+                except Exception:  # noqa: BLE001
+                    return repr(value)
+            if isinstance(value, dict):
+                return {k: _safe(v) for k, v in value.items()}
+            if isinstance(value, (list, tuple)):
+                return [_safe(v) for v in value]
+            return value
+
         return JSONResponse(
             status_code=422,
             content={
                 "code": 422,
                 "message": "请求参数校验失败",
-                "data": {"errors": exc.errors()},
+                "data": {"errors": _safe(exc.errors())},
             },
         )
 
@@ -861,6 +934,35 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=500,
             content={"code": 500, "message": "服务器内部错误", "data": None},
+        )
+
+    # ── Backup 模块异常（数据备份与恢复） ──
+    @app.exception_handler(PathSecurityError)
+    async def backup_path_security(request: Request, exc: PathSecurityError):
+        return JSONResponse(
+            status_code=403,
+            content={"code": 403, "message": str(exc), "data": None},
+        )
+
+    @app.exception_handler(InvalidBackupFileError)
+    async def backup_invalid_file(request: Request, exc: InvalidBackupFileError):
+        return JSONResponse(
+            status_code=400,
+            content={"code": 400, "message": str(exc), "data": None},
+        )
+
+    @app.exception_handler(BackupTaskRunningError)
+    async def backup_task_running(request: Request, exc: BackupTaskRunningError):
+        return JSONResponse(
+            status_code=409,
+            content={"code": 409, "message": str(exc), "data": None},
+        )
+
+    @app.exception_handler(BackupError)
+    async def backup_generic(request: Request, exc: BackupError):
+        return JSONResponse(
+            status_code=400,
+            content={"code": 400, "message": str(exc), "data": None},
         )
 
 

@@ -15,15 +15,6 @@
             <span class="user-name">
               {{ authStore.userInfo?.nickname || authStore.userInfo?.email || '未登录' }}
             </span>
-            <el-tag
-              v-if="authStore.isAdmin"
-              type="danger"
-              size="small"
-              effect="dark"
-              class="admin-badge"
-            >
-              ADMIN
-            </el-tag>
             <el-icon class="user-arrow"><ArrowDown /></el-icon>
           </div>
           <template #dropdown>

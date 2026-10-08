@@ -310,6 +310,51 @@ def get_stock_pool_service(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+#  Backup 应用服务
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def get_backup_app_service() -> "BackupAppService":
+    """Backup 应用服务（无 AsyncSession 依赖）
+
+    实现细节：
+    - session 工厂走 AsyncSessionLocal → DB 操作短生命周期
+    - 备份/恢复引擎直接用 asyncpg 连接 DB（绕过 SQLAlchemy）
+    - 异步任务（asyncio.create_task）由 AppService 内部管理
+    """
+    from application.service.backup_app_service import BackupAppService
+    from infrastructure.adapter.backup.engine import BackupEngine
+    from infrastructure.adapter.backup.path_resolver import PathResolver
+    from infrastructure.adapter.backup.restorer import Restorer
+    from infrastructure.adapter.backup.schema_dumper import SchemaDumper
+    from infrastructure.adapter.backup.data_dumper import DataDumper
+    from infrastructure.config.settings import get_settings
+
+    settings = get_settings()
+    path_resolver = PathResolver(settings.BACKUP_ALLOWED_ROOTS)
+
+    schema_dumper = SchemaDumper()
+    data_dumper = DataDumper()
+
+    # 1. 先构造 AppService（不带 backup_engine）
+    service = BackupAppService(
+        session_factory=lambda: AsyncSessionLocal(),
+        path_resolver=path_resolver,
+        restorer=Restorer(path_resolver=path_resolver),
+    )
+    # 2. 构造 BackupEngine，注入 AppService
+    backup_engine = BackupEngine(
+        schema_dumper=schema_dumper,
+        data_dumper=data_dumper,
+        path_resolver=path_resolver,
+        app_service=service,
+    )
+    # 3. 双向绑定完成
+    service.attach_backup_engine(backup_engine)
+    return service
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 #  Scheduler 工厂（带 session 参数的同步构造版）
 # ═══════════════════════════════════════════════════════════════════════════════
 

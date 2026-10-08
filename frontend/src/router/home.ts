@@ -58,7 +58,6 @@ const homeRoutes: RouteRecordRaw = {
       meta: {
         title: '账户管理',
         icon: 'user-filled',
-        requiresAdmin: true,
       },
     },
     {
@@ -111,11 +110,6 @@ export function setupAuthGuard(router: import('vue-router').Router) {
       return
     }
     if (authStore.isLoggedIn && isPublic) {
-      next('/home/index')
-      return
-    }
-    // 路由级 admin 拦截
-    if (to.meta?.requiresAdmin && !authStore.isAdmin) {
       next('/home/index')
       return
     }

@@ -75,6 +75,12 @@ class Settings(BaseSettings):
     # 用英文逗号分隔的用户名列表
     SYSTEM_ACCOUNTS: str = ""
 
+    # ── 数据备份配置 ──
+    BACKUP_DIR: str = "./backups"
+    BACKUP_ALLOWED_ROOTS: list[str] = ["./backups", "./data"]
+    BACKUP_SCHEMA_VERSION: int = 1
+    BACKUP_MAX_FILE_SIZE: int = 500 * 1024 * 1024  # 500MB
+
 
 _settings: Settings | None = None
 _lock = threading.Lock()
