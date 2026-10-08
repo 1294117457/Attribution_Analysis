@@ -58,11 +58,37 @@
 
     <el-card class="bkup-step" shadow="never">
       <template #header><span class="bkup-step__title">③ 输出路径</span></template>
-      <el-input
-        v-model="form.output_dir"
-        :placeholder="`默认 ${backupConfig?.default_output_dir || './backups'}`"
-        clearable
-      />
+      <div class="bkup-path-select">
+        <el-input
+          :model-value="form.output_dir || backupConfig?.default_output_dir || './backups'"
+          readonly
+          placeholder="点击选择输出路径"
+        >
+          <template #append>
+            <el-button :icon="FolderOpened" @click="showPathDialog = true">选择</el-button>
+          </template>
+        </el-input>
+      </div>
+
+      <el-dialog v-model="showPathDialog" title="选择备份输出路径" width="480px" :close-on-click-modal="false">
+        <el-radio-group v-model="selectedPath" class="bkup-path-radio">
+          <el-radio
+            v-for="root in allowedRoots"
+            :key="root"
+            :value="root"
+            class="bkup-path-radio__item"
+          >
+            <code>{{ root }}</code>
+          </el-radio>
+        </el-radio-group>
+        <div v-if="!allowedRoots.length" class="bkup-path-empty">
+          未获取到服务端白名单路径，将使用默认路径
+        </div>
+        <template #footer>
+          <el-button @click="showPathDialog = false">取消</el-button>
+          <el-button type="primary" @click="onConfirmPath">确定</el-button>
+        </template>
+      </el-dialog>
     </el-card>
 
     <el-card class="bkup-step" shadow="never">
@@ -126,7 +152,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { VideoPlay } from '@element-plus/icons-vue'
+import { VideoPlay, FolderOpened } from '@element-plus/icons-vue'
 import {
   createBackup,
   listTables,
@@ -154,6 +180,9 @@ const tableFilter = ref('')
 const tablePickerRef = ref()
 const backupConfig = ref<BackupConfig | null>(null)
 const submitting = ref(false)
+const showPathDialog = ref(false)
+const selectedPath = ref('')
+const allowedRoots = ref<string[]>([])
 
 const currentRecordId = ref<number | null>(null)
 const currentRecord = ref<BackupRecord | null>(null)
@@ -182,10 +211,24 @@ onMounted(async () => {
     const [tbl, cfg] = await Promise.all([listTables(), getBackupConfig().catch(() => null)])
     tables.value = tbl
     backupConfig.value = cfg
+    if (cfg) {
+      allowedRoots.value = cfg.allowed_roots || []
+      if (!form.value.output_dir && cfg.default_output_dir) {
+        form.value.output_dir = cfg.default_output_dir
+        selectedPath.value = cfg.default_output_dir
+      }
+    }
   } catch (e) {
     ElMessage.error((e as Error).message || '加载表列表失败')
   }
 })
+
+function onConfirmPath() {
+  if (selectedPath.value) {
+    form.value.output_dir = selectedPath.value
+  }
+  showPathDialog.value = false
+}
 
 onBeforeUnmount(() => {
   if (currentRecordId.value) store.stopPolling(currentRecordId.value)
@@ -338,5 +381,24 @@ async function onCreate() {
   margin-top: 0.6rem;
   color: #dc2626;
   font-size: 0.9rem;
+}
+.bkup-path-select {
+  max-width: 500px;
+}
+.bkup-path-radio {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.bkup-path-radio__item {
+  height: auto !important;
+}
+.bkup-path-radio__item code {
+  font-size: 0.9rem;
+}
+.bkup-path-empty {
+  color: #94a3b8;
+  font-size: 0.9rem;
+  padding: 1rem 0;
 }
 </style>

@@ -20,6 +20,9 @@ backend/.env
 backend/.env.local
 backend/.env.production
 
+# K8s 部署参数（含数据库密码）
+deploy.env
+
 # docker-compose.override.yml 可能含本地定制，不入 git
 docker-compose.override.yml
 

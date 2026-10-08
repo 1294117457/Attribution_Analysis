@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 import asyncpg
@@ -70,6 +71,7 @@ class SchemaDumper:
         不传则自己从 DATABASE_URL 建连。"""
         self._conn_factory = conn_factory or self._default_connect
 
+    @asynccontextmanager
     async def _default_connect(self) -> AsyncIterator[asyncpg.Connection]:
         """默认连接工厂：从 DATABASE_URL 解析 + asyncpg.connect"""
         url = get_settings().DATABASE_URL
@@ -94,7 +96,9 @@ class SchemaDumper:
         """
         async with self._conn_factory() as conn:
             for table in table_names:
-                await out_fp.write(f'DROP TABLE IF EXISTS "public"."{table}" CASCADE;\n')
+                await out_fp.write(
+                    f'DROP TABLE IF EXISTS "public"."{table}" CASCADE;\n'
+                )
                 create_sql, indexes_sql = await self._build_create_table(conn, table)
                 await out_fp.write(create_sql + "\n")
                 for idx_sql in indexes_sql:
@@ -142,15 +146,15 @@ class SchemaDumper:
             """,
             table,
         )
-        pk_list = [r["name"] for r in pk_cols]
+        pk_list = [r["attname"] for r in pk_cols]
 
         # 4. 构造 CREATE TABLE
         col_lines = []
         for c in cols:
-            parts = [f'"{c["name"]}"', c["type_full"]]
+            parts = [f'"{c["attname"]}"', c["type_full"]]
             if c["default_expr"]:
                 parts.append(_format_default(c["default_expr"]))
-            if c["attnotnull"] or c["name"] in pk_list:
+            if c["attnotnull"] or c["attname"] in pk_list:
                 parts.append("NOT NULL")
             col_lines.append("    " + " ".join(parts))
         if pk_list:

@@ -1,10 +1,10 @@
 """数据备份 API 路由（业务模块：backup/）
 
 URL：/api/v1/backups/...
-权限：system:backup（管理员功能）
 
 路由顺序：静态路径在前，/{rid} 通配在后（避免 /restore 被 /{rid} 吃掉）
 """
+
 from __future__ import annotations
 
 from typing import Optional
@@ -30,7 +30,7 @@ from infrastructure.adapter.backup.exceptions import (
 )
 from infrastructure.config.di import get_backup_app_service
 from route.api import _response as R
-from route.api.v1.deps_auth import get_current_user_id, require_permission
+from route.api.v1.deps_auth import get_current_user_id
 from route.dto.backup.request.create_backup import CreateBackupRequest
 from route.dto.backup.request.restore import RestoreRequest
 from route.dto.backup.request.update_config import UpdateConfigRequest
@@ -52,7 +52,7 @@ router = APIRouter(prefix="/backups", tags=["数据备份"])
 # ═════════════════════════════════════════════════════
 @router.get("/config", summary="获取备份配置")
 async def get_config(
-    _user=Depends(require_permission("system:backup")),
+    _user_id: int = Depends(get_current_user_id),
     service: BackupAppService = Depends(get_backup_app_service),
 ):
     cfg = await service.get_backup_config()
@@ -63,7 +63,6 @@ async def get_config(
 async def update_config(
     req: UpdateConfigRequest,
     user_id: int = Depends(get_current_user_id),
-    _user=Depends(require_permission("system:backup")),
     service: BackupAppService = Depends(get_backup_app_service),
 ):
     await service.update_backup_config(req, user_id)
@@ -72,7 +71,7 @@ async def update_config(
 
 @router.get("/_tables", summary="列出可备份的表")
 async def list_tables(
-    _user=Depends(require_permission("system:backup")),
+    _user_id: int = Depends(get_current_user_id),
     service: BackupAppService = Depends(get_backup_app_service),
 ):
     tables = await service.list_tables()
@@ -87,7 +86,6 @@ async def list_tables(
 async def create_backup(
     req: CreateBackupRequest,
     user_id: int = Depends(get_current_user_id),
-    _user=Depends(require_permission("system:backup")),
     service: BackupAppService = Depends(get_backup_app_service),
 ):
     record_id = await service.create_backup(req, user_id)
@@ -99,16 +97,20 @@ async def list_backups(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=200, description="每页条数"),
     status: Optional[str] = Query(None, description="按状态过滤"),
-    _user=Depends(require_permission("system:backup")),
+    _user_id: int = Depends(get_current_user_id),
     service: BackupAppService = Depends(get_backup_app_service),
 ):
-    items, total = await service.list_backups(page=page, page_size=page_size, status=status)
-    return R.ok({
-        "items": [BackupRecordDTO(**i).model_dump(mode="json") for i in items],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    })
+    items, total = await service.list_backups(
+        page=page, page_size=page_size, status=status
+    )
+    return R.ok(
+        {
+            "items": [BackupRecordDTO(**i).model_dump(mode="json") for i in items],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
+    )
 
 
 # ═════════════════════════════════════════════════════
@@ -122,7 +124,6 @@ async def list_backups(
 async def create_restore(
     req: RestoreRequest,
     user_id: int = Depends(get_current_user_id),
-    _user=Depends(require_permission("system:backup")),
     service: BackupAppService = Depends(get_backup_app_service),
 ):
     record_id = await service.create_restore(req, user_id)
@@ -133,22 +134,24 @@ async def create_restore(
 async def list_restores(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
-    _user=Depends(require_permission("system:backup")),
+    _user_id: int = Depends(get_current_user_id),
     service: BackupAppService = Depends(get_backup_app_service),
 ):
     items, total = await service.list_restores(page=page, page_size=page_size)
-    return R.ok({
-        "items": [RestoreRecordDTO(**i).model_dump(mode="json") for i in items],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    })
+    return R.ok(
+        {
+            "items": [RestoreRecordDTO(**i).model_dump(mode="json") for i in items],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
+    )
 
 
 @router.get("/restore/{rid}", summary="单条恢复详情")
 async def get_restore(
     rid: int = Path(..., description="恢复记录 ID"),
-    _user=Depends(require_permission("system:backup")),
+    _user_id: int = Depends(get_current_user_id),
     service: BackupAppService = Depends(get_backup_app_service),
 ):
     record = await service.get_restore(rid)
@@ -161,7 +164,6 @@ async def get_restore(
 async def upload_backup(
     file: UploadFile = File(..., description=".sql 文件"),
     user_id: int = Depends(get_current_user_id),
-    _user=Depends(require_permission("system:backup")),
     service: BackupAppService = Depends(get_backup_app_service),
 ):
     if not file.filename:
@@ -180,7 +182,7 @@ async def upload_backup(
 @router.get("/{rid}", summary="单条备份详情")
 async def get_backup(
     rid: int = Path(..., description="备份记录 ID"),
-    _user=Depends(require_permission("system:backup")),
+    _user_id: int = Depends(get_current_user_id),
     service: BackupAppService = Depends(get_backup_app_service),
 ):
     record = await service.get_backup(rid)
@@ -192,7 +194,7 @@ async def get_backup(
 @router.get("/{rid}/download", summary="下载 .sql")
 async def download_backup(
     rid: int = Path(..., description="备份记录 ID"),
-    _user=Depends(require_permission("system:backup")),
+    _user_id: int = Depends(get_current_user_id),
     service: BackupAppService = Depends(get_backup_app_service),
 ):
     file_path = await service.get_download_path(rid)
@@ -208,7 +210,7 @@ async def download_backup(
 @router.delete("/{rid}", summary="删除备份")
 async def delete_backup(
     rid: int = Path(..., description="备份记录 ID"),
-    _user=Depends(require_permission("system:backup")),
+    _user_id: int = Depends(get_current_user_id),
     service: BackupAppService = Depends(get_backup_app_service),
 ):
     await service.delete_backup(rid)
