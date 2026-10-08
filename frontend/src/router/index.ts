@@ -26,6 +26,36 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
+
+  // ════════════════════════════════════════════════════════════════
+  //  数据备份与恢复（v1 新增模块；独立顶级路由，便于权限控制 + 跳转）
+  // ════════════════════════════════════════════════════════════════
+  {
+    path: '/backup',
+    component: () => import('@/views/backup/BackupLayout.vue'),
+    redirect: '/backup/create',
+    meta: { title: '数据备份', icon: 'folder-opened', requiresAuth: true },
+    children: [
+      {
+        path: 'create',
+        name: 'BackupCreate',
+        component: () => import('@/views/backup/BackupCreatePage.vue'),
+        meta: { title: '创建备份', hidden: true },
+      },
+      {
+        path: 'history',
+        name: 'BackupHistory',
+        component: () => import('@/views/backup/BackupHistoryPage.vue'),
+        meta: { title: '备份历史', hidden: true },
+      },
+    ],
+  },
+  {
+    path: '/restore',
+    component: () => import('@/views/backup/RestorePage.vue'),
+    meta: { title: '数据恢复', icon: 'refresh-left', requiresAuth: true },
+  },
+
   homeRoutes,
   { path: '/:pathMatch(.*)*', component: () => import('@/views/NotFound.vue') },
 ]

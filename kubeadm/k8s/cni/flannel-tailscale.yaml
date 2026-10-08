@@ -1,0 +1,201 @@
+# Flannel CNI 配置（走 Tailscale 接口）
+# 用途：让 pod 跨节点通信时走 Tailscale 内网接口 tailscale0
+# 原理：flannel VXLAN 包外层用 tailscale0 走 Tailscale 内网传输，不再依赖公网/eth0
+# 部署：
+#   kubectl apply -f cni/flannel-tailscale.yaml
+# 卸载：
+#   kubectl delete -f cni/flannel-tailscale.yaml
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-flannel
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+
+---
+# Flannel DaemonSet（带 --iface=tailscale0 参数）
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kube-flannel-ds
+  namespace: kube-flannel
+  labels:
+    tier: node
+    app: flannel
+    k8s-app: flannel
+spec:
+  selector:
+    matchLabels:
+      app: flannel
+  template:
+    metadata:
+      labels:
+        tier: node
+        app: flannel
+        k8s-app: flannel
+    spec:
+      hostNetwork: true
+      tolerations:
+      - operator: Exists
+        effect: NoSchedule
+        key: node.kubernetes.io/not-ready
+      - operator: Exists
+        effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+      - operator: Exists
+        effect: NoSchedule
+        key: node-role.kubernetes.io/master
+      - operator: Exists
+        effect: NoSchedule
+        key: node.kubernetes.io/disk-pressure
+      - operator: Exists
+        effect: NoExecute
+        key: node.kubernetes.io/memory-pressure
+        tolerationSeconds: 300
+      - operator: Exists
+        effect: NoExecute
+        key: node.kubernetes.io/pid-pressure
+        tolerationSeconds: 300
+      - operator: Exists
+        effect: NoExecute
+        key: node.kubernetes.io/unschedulable
+        tolerationSeconds: 300
+      serviceAccountName: flannel
+      priorityClassName: system-node-critical
+      containers:
+      - name: kube-flannel
+        # 主程序镜像：flannel daemon
+        image: ${ACR_PREFIX}/flannel:${FLANNEL_VERSION}
+        command:
+        - /opt/bin/flanneld
+        args:
+        - --ip-masq
+        - --kube-subnet-mgr
+        - --iface=${FLANNEL_IFACE}            # 关键：让 flannel 用指定接口（Tailscale 环境为 tailscale0，普通环境为 eth0）
+        resources:
+          requests:
+            cpu: 100m
+            memory: 50Mi
+        securityContext:
+          privileged: true
+          seLinuxOptions:
+            level: system_r
+            role: system_r
+            type: system_r
+        volumeMounts:
+        - name: run
+          mountPath: /run/flannel
+        - name: flannel-cfg
+          mountPath: /etc/kube-flannel/
+        - name: xtables-lock
+          mountPath: /run/xtables.lock
+      initContainers:
+      - name: install-cni
+        # CNI 插件镜像：被复制到 /opt/cni/bin/flannel
+        image: ${ACR_PREFIX}/flannel-cni-plugin:${FLANNEL_CNI_PLUGIN_VERSION}
+        command:
+        - cp
+        args:
+        - -f
+        - /flannel
+        - /opt/cni/bin/flannel
+        volumeMounts:
+        - name: cni-plugin
+          mountPath: /opt/cni/bin
+        - name: flannel-cfg
+          mountPath: /etc/kube-flannel/
+      volumes:
+      - name: run
+        hostPath:
+          path: /run/flannel
+      - name: cni-plugin
+        hostPath:
+          path: /opt/cni/bin
+      - name: flannel-cfg
+        hostPath:
+          path: /etc/kube-flannel/
+      - name: xtables-lock
+        hostPath:
+          path: /run/xtables.lock
+          type: FileOrCreate
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flannel
+  namespace: kube-flannel
+
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: flannel
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get"]
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["list", "watch"]
+- apiGroups: [""]
+  resources: ["nodes/status"]
+  verbs: ["patch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["clustercidrpools"]
+  verbs: ["list", "watch"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: flannel
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: flannel
+subjects:
+- kind: ServiceAccount
+  name: flannel
+  namespace: kube-flannel
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kube-flannel-cfg
+  namespace: kube-flannel
+  labels:
+    tier: node
+    app: flannel
+data:
+  cni-conf.json: |
+    {
+      "name": "cbr0",
+      "cniVersion": "0.3.1",
+      "plugins": [
+        {
+          "type": "flannel",
+          "delegate": {
+            "hairpinMode": true,
+            "isDefaultGateway": true
+          }
+        },
+        {
+          "type": "portmap",
+          "capabilities": {
+            "portMappings": true
+          }
+        }
+      ]
+    }
+  net-conf.json: |
+    {
+      "Network": "10.244.0.0/16",
+      "EnableNFTables": false,
+      "Backend": {
+        "Type": "vxlan"
+      }
+    }

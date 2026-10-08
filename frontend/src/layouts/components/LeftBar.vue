@@ -59,11 +59,14 @@ import {
   Expand,
   DataLine,
   Folder,
+  FolderOpened,
   Odometer,
+  RefreshLeft,
   Upload,
   UserFilled,
   DataAnalysis,
   TrendCharts,
+  Setting,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -87,10 +90,11 @@ const menuItems = computed<MenuItem[]>(() => {
     { path: '/home/stock-panel', title: '股票信息', icon: DataLine },
     { path: '/home/pool', title: '操作池', icon: Folder },
     { path: '/home/collect-manage', title: '采集管理', icon: Upload },
+    { path: '/home/account', title: '账户管理', icon: UserFilled },
   ]
-  if (authStore.isAdmin) {
-    items.push({ path: '/home/account', title: '账户管理', icon: UserFilled })
-  }
+  // ── 数据备份与恢复（所有已登录用户可见）──
+  items.push({ path: '/backup/create', title: '数据备份', icon: FolderOpened })
+  items.push({ path: '/restore', title: '数据恢复', icon: RefreshLeft })
   // ── v2 新增：实验性子菜单组，挂在最末尾（不动原 4 个菜单项）──
   items.push({
     path: '/home/experimental',
