@@ -1,0 +1,181 @@
+# PostgreSQL 16 — K8s 部署清单
+#
+# 部署：
+#   cd /home/project/attribution
+#   source deploy.env
+#   envsubst < postgres/k8s-postgres.yaml | kubectl apply -f -
+#
+# 卸载（保留数据）：
+#   envsubst < postgres/k8s-postgres.yaml | kubectl delete -f -
+#
+# 卸载（删除数据）：
+#   kubectl delete pvc postgres-data -n attribution
+#
+# 前置条件：
+#   - local-path-provisioner 已部署（提供 StorageClass: local-path）
+#   - 镜像已推送到 ACR：${ACR_PREFIX}/postgres:${POSTGRES_VERSION}
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: attribution
+
+---
+# ===== Secret: 数据库凭证 =====
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: attribution
+type: Opaque
+stringData:
+  POSTGRES_USER: "${POSTGRES_USER}"
+  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+  POSTGRES_DB: "${POSTGRES_DB}"
+
+---
+# ===== ConfigMap: postgresql.conf =====
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-conf
+  namespace: attribution
+data:
+  postgresql.conf: |
+    # 内存相关
+    shared_buffers = 256MB
+    effective_cache_size = 768MB
+    work_mem = 16MB
+    maintenance_work_mem = 128MB
+
+    # 连接
+    max_connections = 100
+
+    # 日志
+    log_min_duration_statement = 1000
+
+    # 字符集
+    client_encoding = UTF8
+
+---
+# ===== ConfigMap: initdb 初始化脚本 =====
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-initdb
+  namespace: attribution
+data:
+  01-init.sql: |
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+    SET timezone = 'Asia/Shanghai';
+    DO $$
+    BEGIN
+        RAISE NOTICE 'Attribution database initialized at %', NOW();
+    END $$;
+
+---
+# ===== Service: ClusterIP =====
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: attribution
+  labels:
+    app: postgres
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+    protocol: TCP
+    name: postgres
+  selector:
+    app: postgres
+
+---
+# ===== StatefulSet =====
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: attribution
+  labels:
+    app: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: ${POSTGRES_NODE}
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        effect: NoSchedule
+      containers:
+      - name: postgres
+        image: ${ACR_PREFIX}/postgres:${POSTGRES_VERSION}
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 5432
+          protocol: TCP
+        envFrom:
+        - secretRef:
+            name: postgres-secret
+        env:
+        - name: TZ
+          value: Asia/Shanghai
+        - name: POSTGRES_INITDB_ARGS
+          value: "--encoding=UTF8 --locale=C"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 512Mi
+        livenessProbe:
+          exec:
+            command: ["pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        - name: postgres-conf
+          mountPath: /etc/postgresql/conf.d
+          readOnly: true
+        - name: postgres-initdb
+          mountPath: /docker-entrypoint-initdb.d
+          readOnly: true
+      volumes:
+      - name: postgres-conf
+        configMap:
+          name: postgres-conf
+      - name: postgres-initdb
+        configMap:
+          name: postgres-initdb
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: local-path
+      resources:
+        requests:
+          storage: ${POSTGRES_STORAGE}
