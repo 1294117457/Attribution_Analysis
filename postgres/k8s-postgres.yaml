@@ -12,7 +12,7 @@
 #   kubectl delete pvc postgres-data -n attribution
 #
 # 前置条件：
-#   - local-path-provisioner 已部署（提供 StorageClass: local-path）
+#   - nfs-provisioner 已部署（提供 StorageClass: nfs-client）
 #   - 镜像已推送到 ACR：${ACR_PREFIX}/postgres:${POSTGRES_VERSION}
 
 ---
@@ -175,7 +175,7 @@ spec:
       name: postgres-data
     spec:
       accessModes: ["ReadWriteOnce"]
-      storageClassName: local-path
+      storageClassName: nfs-client
       resources:
         requests:
           storage: ${POSTGRES_STORAGE}
