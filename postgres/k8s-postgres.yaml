@@ -9,10 +9,10 @@
 #   envsubst < postgres/k8s-postgres.yaml | kubectl delete -f -
 #
 # 卸载（删除数据）：
-#   kubectl delete pvc postgres-data -n attribution
+#   kubectl delete pvc postgres-data-postgres-0 -n attribution
 #
 # 前置条件：
-#   - nfs-provisioner 已部署（提供 StorageClass: nfs-client）
+#   - local-path-provisioner 已部署（提供 StorageClass: local-path，namespace: local-path-storage）
 #   - 镜像已推送到 ACR：${ACR_PREFIX}/postgres:${POSTGRES_VERSION}
 
 ---
@@ -175,7 +175,7 @@ spec:
       name: postgres-data
     spec:
       accessModes: ["ReadWriteOnce"]
-      storageClassName: nfs-client
+      storageClassName: local-path
       resources:
         requests:
           storage: ${POSTGRES_STORAGE}
