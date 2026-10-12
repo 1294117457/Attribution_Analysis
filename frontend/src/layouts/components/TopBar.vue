@@ -3,7 +3,7 @@
     <!-- Logo -->
     <div class="topbar-brand">
       <span class="brand-icon">📈</span>
-      <span class="brand-text">智能金融归因分析平台</span>
+      <span class="brand-text">智能金融归因分析平台222</span>
     </div>
 
     <!-- 右侧信息 -->
