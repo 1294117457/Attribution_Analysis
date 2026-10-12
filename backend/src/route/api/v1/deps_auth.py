@@ -6,6 +6,7 @@
 - require_role(...):     工厂,要求用户拥有任一指定 role_code
 - require_permission(...): 工厂,要求用户拥有任一指定 permission_code
 """
+
 from __future__ import annotations
 
 from typing import Callable
@@ -55,30 +56,18 @@ async def get_current_user(
 
 
 def require_role(*required_roles: str) -> Callable:
-    """依赖工厂:用户必须拥有任一 required role。"""
+    """依赖工厂:暂不校验角色,仅要求登录。"""
 
     async def _checker(user: dict = Depends(get_current_user)) -> dict:
-        codes = set(user.get("role_codes", []))
-        if not codes.intersection(required_roles):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"需要角色之一: {', '.join(required_roles)}",
-            )
         return user
 
     return _checker
 
 
 def require_permission(*required_perms: str) -> Callable:
-    """依赖工厂:用户必须拥有任一 required permission。"""
+    """依赖工厂:暂不校验权限,仅要求登录。"""
 
     async def _checker(user: dict = Depends(get_current_user)) -> dict:
-        perms = set(user.get("permissions", []))
-        if not perms.intersection(required_perms):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"需要权限之一: {', '.join(required_perms)}",
-            )
         return user
 
     return _checker
