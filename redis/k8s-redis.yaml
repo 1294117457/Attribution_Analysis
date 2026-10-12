@@ -1,12 +1,14 @@
 # Redis 7 — K8s 部署清单
 #
 # 部署：
-#   cd /home/project/attribution
+#   cd /home/project/Attribution_Analysis
 #   source deploy.env
-#   envsubst < redis/k8s-redis.yaml | kubectl apply -f -
+#   envsubst '${ACR_PREFIX} ${REDIS_VERSION} ${REDIS_PASSWORD}' < redis/k8s-redis.yaml | kubectl apply -f -
 #
 # 卸载：
-#   envsubst < redis/k8s-redis.yaml | kubectl delete -f -
+#   envsubst '${ACR_PREFIX} ${REDIS_VERSION} ${REDIS_PASSWORD}' < redis/k8s-redis.yaml | kubectl delete -f -
+#
+# 仅作缓存：不挂 PVC、不开 AOF，Pod 重建后数据清空
 #
 # 前置条件：
 #   - attribution namespace 已存在（postgres yaml 会创建）
@@ -72,9 +74,10 @@ spec:
         - redis-server
         args:
         - --appendonly
-        - "yes"
+        - "no"
+        # 低于 limits.memory，给进程自身开销留余量，避免 OOMKilled
         - --maxmemory
-        - 256mb
+        - 200mb
         - --maxmemory-policy
         - allkeys-lru
         - --requirepass
@@ -92,21 +95,28 @@ spec:
             secretKeyRef:
               name: redis-secret
               key: REDIS_PASSWORD
+        # redis-cli 自动读取，供 probe 和 kubectl exec 免 -a 使用
+        - name: REDISCLI_AUTH
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: REDIS_PASSWORD
         resources:
           requests:
             cpu: 50m
             memory: 64Mi
           limits:
             memory: 256Mi
+        # probe 不展开 $(VAR)；密码走 REDISCLI_AUTH，命令里不要引用密码变量（会被 envsubst 替换成明文）
         livenessProbe:
           exec:
-            command: ["redis-cli", "-a", "$(REDIS_PASSWORD)", "ping"]
+            command: ["sh", "-c", "redis-cli ping | grep -q PONG"]
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 3
         readinessProbe:
           exec:
-            command: ["redis-cli", "-a", "$(REDIS_PASSWORD)", "ping"]
+            command: ["sh", "-c", "redis-cli ping | grep -q PONG"]
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
