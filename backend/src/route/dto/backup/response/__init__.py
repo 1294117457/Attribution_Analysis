@@ -1,1 +1,0 @@
-"""Backup DTO - response package"""
