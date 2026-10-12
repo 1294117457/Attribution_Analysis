@@ -1,6 +1,6 @@
 # Frontend (Vue 3 + nginx) — K8s 部署清单
 #
-# 流量：公网 → node2:31080 (ingress-nginx) → frontend:80 → nginx
+# 流量：公网 → node2:31080 (Envoy Gateway) → frontend:80 → nginx
 #         ├── 静态页面：nginx 直接返回
 #         └── /api/：nginx proxy_pass http://backend:8000
 #
@@ -13,11 +13,11 @@
 #   kubectl -n attribution rollout restart deploy/frontend
 #
 # 卸载：
-#   kubectl -n attribution delete ingress/attribution svc/frontend deploy/frontend
+#   kubectl -n attribution delete httproute/attribution svc/frontend deploy/frontend
 #
 # 前置条件：
 #   - backend Service 已存在（nginx 启动时解析 backend，解析失败会起不来）
-#   - ingress-nginx 已部署（IngressClass: nginx）
+#   - Envoy Gateway 已部署，Gateway envoy-gateway-system/public 已就绪（k8s/manifests/gateway.yaml）
 
 ---
 # ===== Service =====
@@ -94,25 +94,25 @@ spec:
           timeoutSeconds: 3
 
 ---
-# ===== Ingress：无域名，所有 Host 都转发到前端 =====
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+# ===== HTTPRoute：无域名，所有 Host 都转发到前端 =====
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
 metadata:
   name: attribution
   namespace: attribution
-  annotations:
-    # 与 frontend/nginx.conf 中 /api/ 的 proxy_read_timeout 保持一致
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
 spec:
-  ingressClassName: nginx
+  parentRefs:
+  - name: public
+    namespace: envoy-gateway-system
+    sectionName: http
   rules:
-  - http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: frontend
-            port:
-              number: 80
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: frontend
+      port: 80
+    # 整个请求的总时长上限（不是两次读之间的间隔），与 frontend/nginx.conf 中 /api/ 的 proxy_read_timeout 对齐
+    timeouts:
+      request: 120s
