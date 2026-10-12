@@ -85,36 +85,6 @@ const homeRoutes: RouteRecordRaw = {
       props: true,
       meta: { title: '数据看板', icon: 'data-analysis', hidden: false },
     },
-
-    // ════════════════════════════════════════════════════════════════
-    //  数据备份与恢复
-    // ════════════════════════════════════════════════════════════════
-    {
-      path: 'backup',
-      component: () => import('@/views/backup/BackupLayout.vue'),
-      redirect: '/home/backup/create',
-      meta: { title: '数据备份', icon: 'folder-opened', requiresAuth: true },
-      children: [
-        {
-          path: 'create',
-          name: 'BackupCreate',
-          component: () => import('@/views/backup/BackupCreatePage.vue'),
-          meta: { title: '创建备份', hidden: true },
-        },
-        {
-          path: 'history',
-          name: 'BackupHistory',
-          component: () => import('@/views/backup/BackupHistoryPage.vue'),
-          meta: { title: '备份历史', hidden: true },
-        },
-      ],
-    },
-    {
-      path: 'restore',
-      name: 'Restore',
-      component: () => import('@/views/backup/RestorePage.vue'),
-      meta: { title: '数据恢复', icon: 'refresh-left', requiresAuth: true },
-    },
   ],
 }
 
