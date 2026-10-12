@@ -1,56 +1,33 @@
 # Backend (FastAPI) — K8s 部署清单
 #
-# 部署：
-#   cd /home/project/Attribution_Analysis
-#   source deploy.env
-#   envsubst '${ACR_PREFIX} ${BACKEND_VERSION} ${POSTGRES_USER} ${POSTGRES_PASSWORD} ${POSTGRES_DB} ${REDIS_PASSWORD} ${TUSHARE_TOKEN} ${SMTP_USERNAME} ${SMTP_PASSWORD} ${SYSTEM_ACCOUNTS}' < backend/k8s-backend.yaml | kubectl apply -f -
+# 部署（在仓库根目录）：
+#   1) 同步 backend/.env → ConfigMap / Secret（以 "# ---- secret ----" 分隔）
+#      kubectl -n attribution create configmap backend-config \
+#        --from-env-file=<(sed '/^# ---- secret ----/,$d' backend/.env) \
+#        --dry-run=client -o yaml | kubectl apply -f -
+#      kubectl -n attribution create secret generic backend-secret \
+#        --from-env-file=<(sed '1,/^# ---- secret ----/d' backend/.env | grep -vE '^(DATABASE_URL|REDIS_URL)=') \
+#        --dry-run=client -o yaml | kubectl apply -f -
+#   2) 部署
+#      source deploy.env
+#      envsubst '${ACR_PREFIX} ${BACKEND_VERSION}' < backend/k8s-backend.yaml | kubectl apply -f -
+#   只改了 backend/.env 时：执行 1) 后 kubectl -n attribution rollout restart deploy/backend
 #
-# 改了 ConfigMap / Secret 后需重启才生效（环境变量只在容器启动时读取）：
-#   kubectl -n attribution rollout restart deploy/backend
+# 配置来源（唯一数据源，不要在 Headlamp 里直接改 ConfigMap/Secret，下次部署会被覆盖）：
+#   - backend/.env 分隔行以上 → ConfigMap backend-config
+#   - backend/.env 分隔行以下 → Secret    backend-secret
+#   - DATABASE_URL / REDIS_URL → 下面 env 里用 postgres-secret / redis-secret 拼接，密码只存一份
 #
 # 卸载：
 #   kubectl -n attribution delete deploy/backend svc/backend configmap/backend-config secret/backend-secret
 #
 # 前置条件：
-#   - postgres / redis 已部署（同 namespace，Service 名 postgres / redis）
+#   - postgres / redis 已部署（同 namespace，Service 名 postgres / redis，Secret 名 postgres-secret / redis-secret）
 #   - 镜像已推送到 ACR：${ACR_PREFIX}/backend:${BACKEND_VERSION}
 #
 # 注意：
-#   - 镜像内无 .env（.dockerignore 已排除），全部配置走下面的 ConfigMap / Secret
+#   - 镜像内无 .env（.dockerignore 已排除），配置全部来自环境变量
 #   - 密码若含 @ : / ? # 等字符，需 URL 编码后才能拼进连接串
-
----
-# ===== Secret: 敏感配置 =====
-apiVersion: v1
-kind: Secret
-metadata:
-  name: backend-secret
-  namespace: attribution
-type: Opaque
-stringData:
-  DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
-  REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/0"
-  TUSHARE_TOKEN: "${TUSHARE_TOKEN}"
-  SMTP_USERNAME: "${SMTP_USERNAME}"
-  SMTP_PASSWORD: "${SMTP_PASSWORD}"
-
----
-# ===== ConfigMap: 普通配置 =====
-# 未列出的项使用 settings.py 默认值
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: backend-config
-  namespace: attribution
-data:
-  DEBUG: "false"
-  API_V1_PREFIX: /api/v1
-  COLLECT_SCHEDULER_ENABLED: "true"
-  COLLECT_SCHEDULER_TIMEZONE: Asia/Shanghai
-  SMTP_HOST: smtp.qq.com
-  SMTP_PORT: "465"
-  SMTP_USE_SSL: "true"
-  SYSTEM_ACCOUNTS: "${SYSTEM_ACCOUNTS}"
 
 ---
 # ===== Service: 名字必须是 backend（frontend/nginx.conf 里 proxy_pass http://backend:8000）=====
@@ -108,6 +85,24 @@ spec:
             name: backend-config
         - secretRef:
             name: backend-secret
+        # env 优先级高于 envFrom；$(VAR) 只能引用列在它前面的变量
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef: { name: postgres-secret, key: POSTGRES_USER }
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef: { name: postgres-secret, key: POSTGRES_PASSWORD }
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef: { name: postgres-secret, key: POSTGRES_DB }
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef: { name: redis-secret, key: REDIS_PASSWORD }
+        - name: DATABASE_URL
+          value: "postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)"
+        - name: REDIS_URL
+          value: "redis://:$(REDIS_PASSWORD)@redis:6379/0"
         resources:
           requests:
             cpu: 100m
