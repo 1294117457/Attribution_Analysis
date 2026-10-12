@@ -1,0 +1,118 @@
+# Frontend (Vue 3 + nginx) — K8s 部署清单
+#
+# 流量：公网 → node2:31080 (ingress-nginx) → frontend:80 → nginx
+#         ├── 静态页面：nginx 直接返回
+#         └── /api/：nginx proxy_pass http://backend:8000
+#
+# 部署：
+#   cd /home/project/Attribution_Analysis
+#   source deploy.env
+#   envsubst '${ACR_PREFIX} ${FRONTEND_VERSION}' < frontend/k8s-frontend.yaml | kubectl apply -f -
+#
+# 更新镜像（latest 标签）：
+#   kubectl -n attribution rollout restart deploy/frontend
+#
+# 卸载：
+#   kubectl -n attribution delete ingress/attribution svc/frontend deploy/frontend
+#
+# 前置条件：
+#   - backend Service 已存在（nginx 启动时解析 backend，解析失败会起不来）
+#   - ingress-nginx 已部署（IngressClass: nginx）
+
+---
+# ===== Service =====
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: attribution
+  labels:
+    app: frontend
+spec:
+  type: ClusterIP
+  selector:
+    app: frontend
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80
+    protocol: TCP
+
+---
+# ===== Deployment =====
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: attribution
+  labels:
+    app: frontend
+spec:
+  # 无状态，可多副本；滚动更新时不中断访问
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: ${ACR_PREFIX}/frontend:${FRONTEND_VERSION}
+        # 兼容 latest 标签：每次启动都向 ACR 校验 digest，镜像没变不会重复下载
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        resources:
+          requests:
+            cpu: 20m
+            memory: 32Mi
+          limits:
+            memory: 128Mi
+        # /health 由 nginx.conf 直接返回 200，不依赖后端
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          periodSeconds: 10
+          timeoutSeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 20
+          timeoutSeconds: 3
+
+---
+# ===== Ingress：无域名，所有 Host 都转发到前端 =====
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: attribution
+  namespace: attribution
+  annotations:
+    # 与 frontend/nginx.conf 中 /api/ 的 proxy_read_timeout 保持一致
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend
+            port:
+              number: 80
