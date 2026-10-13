@@ -198,6 +198,7 @@ route/
 
 ## 6. 文档索引
 
+- [00-当前实现总结.md](./00-当前实现总结.md)：P1–P6 完成后代码的实际结构（**先看这篇**；下列 01–07 为设计方案）
 - [01-核心骨架.md](./01-核心骨架.md)：DataPort / XxxPort / AdapterBase / Registry / Gateway / DataCommand / 参数约定与时间参数 / BO 位置 / 错误分类 / 选源规则
 - [02-底层实现拆分.md](./02-底层实现拆分.md)：Client + Adapter 拆分，18 个协议到 23 个 Port 的对照表
 - [03-横向装饰器.md](./03-横向装饰器.md)：Metrics / Retry / Throttle 的顺序、限流分组、可取消等待

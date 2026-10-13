@@ -29,7 +29,7 @@ from infrastructure.persistence.models.concept import (
 from infrastructure.persistence.models.pool import StockPoolDB, StockPoolMemberDB
 from infrastructure.persistence.models.stock_info import StockInfoDB
 from infrastructure.persistence.models.fin_daily_basic import FinDailyBasicDB
-from route.dto.request.concept import ConceptIndexTHBO, ConceptListBO
+from application.port.data.concept import ConceptIndexTHBO, ConceptListBO
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,7 @@
 
 依赖通过构造注入（DDD.md §4）：
 - repo:        概念仓储
-- realtime:    实时行情端口（可选，实时不可用时降级为最近收盘）
+- realtime:    概念实时行情读取（可选，实时不可用时降级为最近收盘）
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import logging
 from datetime import date
 from typing import Optional
 
-from application.port.realtime_query_port import RealtimeQueryPort
+from application.service.concept_realtime import ConceptRealtimeReader
 from domain.entitys.concept.repository import ConceptRepository
 from route.dto.request.concept_board import (
     ConceptBoardQueryRequest,
@@ -58,7 +58,7 @@ class ConceptBoardService:
         self,
         *,
         repo: ConceptRepository,
-        realtime: Optional[RealtimeQueryPort] = None,
+        realtime: Optional[ConceptRealtimeReader] = None,
     ):
         self._repo = repo
         self._realtime = realtime
@@ -68,7 +68,7 @@ class ConceptBoardService:
     async def query_board(self, req: ConceptBoardQueryRequest) -> dict:
         """概念大盘：分页 + 实时行情补齐 + 排序
 
-        性能：1 DB 查询（分页）+ 1 实时接口批量调用（page_size≤500 时一次性 query_many）
+        性能：1 DB 查询（分页）+ 1 实时接口批量调用（page_size≤500 时一次性 fetch_many）
         """
         rows, total = await self._repo.list_board_rows(
             type_filter=req.type_filter,
@@ -81,14 +81,11 @@ class ConceptBoardService:
         index_codes = [r.index_code for r in rows]
         names = {r.index_code: r.name for r in rows}
         if self._realtime and index_codes:
-            quotes = await self._realtime.query_many(
-                "concept_minute",
-                [{"index_code": c} for c in index_codes],
-            )
+            quotes = await self._realtime.minutes(index_codes)
             quote_map = {
-                r.index_code: _to_quote(r.index_code, names.get(r.index_code, ""), res)
-                for r, res in zip(rows, quotes)
-                if getattr(res, "data", None)
+                code: _to_quote(code, names.get(code, ""), res)
+                for code, res in quotes.items()
+                if res.data
             }
         else:
             quote_map = {}
@@ -135,7 +132,7 @@ class ConceptBoardService:
     # ── 概念成分股 ───────────────────────────────────────────
 
     async def query_board_members(self, req: ConceptMembersQueryRequest) -> dict:
-        """概念成分股：分页 + 池信息 + 实时涨幅（仅前 50 只调实时）"""
+        """概念成分股：分页 + 池信息（实时涨幅暂不提供，pct_change 恒为 None）"""
         rows, total = await self._repo.list_members_by_concept(
             concept_id=req.concept_id,
             sort_by=req.sort_by,
@@ -148,25 +145,6 @@ class ConceptBoardService:
         if req.with_pools and symbols:
             pool_map = await self._repo.list_membership_by_symbols(symbols)
 
-        realtime_map: dict[str, dict] = {}
-        if self._realtime and symbols and len(symbols) <= 50:
-            results = await self._realtime.query_many(
-                "stock_minute_kline",
-                [{"symbol": s, "interval": "1d"} for s in symbols],
-            )
-            for s, res in zip(symbols, results):
-                if res and getattr(res, "data", None) and not getattr(res, "stale", False):
-                    d = res.data
-                    pct = d.get("pct_change")
-                    realtime_map[s] = {
-                        "pct_change": pct,
-                        "color": (
-                            "up" if (pct or 0) > 0
-                            else "down" if (pct or 0) < 0
-                            else "flat"
-                        ),
-                    }
-
         items = [
             {
                 "symbol": r["symbol"],
@@ -176,8 +154,8 @@ class ConceptBoardService:
                 "latest_close": r.get("latest_close"),
                 "total_mv": r.get("total_mv"),
                 "pe_ttm": r.get("pe_ttm"),
-                "pct_change": realtime_map.get(r["symbol"], {}).get("pct_change"),
-                "color": realtime_map.get(r["symbol"], {}).get("color", "flat"),
+                "pct_change": None,
+                "color": "flat",
                 "pools": pool_map.get(r["symbol"], []),
             }
             for r in rows
@@ -227,14 +205,10 @@ class ConceptBoardService:
         # 2) 实时
         realtime = None
         if self._realtime and index_code:
-            results = await self._realtime.query_many(
-                "concept_minute", [{"index_code": index_code}],
-            )
-            if results and getattr(results[0], "data", None):
+            res = (await self._realtime.minutes([index_code])).get(index_code)
+            if res is not None and res.data:
                 names = await self._repo.get_names([index_code])
-                realtime = _to_quote(
-                    index_code, names.get(index_code, ""), results[0],
-                )
+                realtime = _to_quote(index_code, names.get(index_code, ""), res)
 
         # 3) meta
         entity = await self._repo.get_concept_by_index_code(index_code)

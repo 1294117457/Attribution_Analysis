@@ -1,7 +1,7 @@
 """池操作派发器 port
 
 DDD.md §2.2 / §4：application 定义 port 接口，由 infrastructure 实现。
-实现位于 `infrastructure.adapter.scheduler.operation_dispatcher.OperationDispatcher`。
+实现位于 `infrastructure.adapter.background.operation_dispatcher.OperationDispatcher`。
 """
 from __future__ import annotations
 

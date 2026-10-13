@@ -106,7 +106,7 @@ import {
   getConceptTabForSymbol,
   getConceptQuotes,
 } from '@/views/stock-info/api'
-import type { Kline, MinuteKline, ConceptSnapshot } from '@/views/stock-info/api'
+import type { Kline, MinuteKline, MinuteInterval, ConceptSnapshot } from '@/views/stock-info/api'
 import { useRealtimePoll } from '@/composables/useRealtimePoll'
 
 const props = defineProps<{
@@ -114,7 +114,7 @@ const props = defineProps<{
 }>()
 
 // ── 分K 选项（周期 + 天数 两个独立选择器） ────────────
-const intervalOptions = [
+const intervalOptions: { label: string; value: MinuteInterval }[] = [
   { label: '1min',  value: '1min' },
   { label: '5min',  value: '5min' },
   { label: '15min', value: '15min' },
@@ -122,7 +122,7 @@ const intervalOptions = [
   { label: '60min', value: '60min' },
 ]
 // 1 分钟只看当天；其他周期最多 5 日（多日走势看日 K）
-const minuteInterval = ref('5min')
+const minuteInterval = ref<MinuteInterval>('5min')
 const minuteDays = ref(1)
 const minuteDayOptions = computed(() =>
   minuteInterval.value === '1min'

@@ -26,17 +26,18 @@ from domain.entitys.stock_pool.entity import (
     CannotDeleteDefaultPoolError,
 )
 from infrastructure.config.settings import get_settings
-from infrastructure.config.di import setup_default_registry
+from infrastructure.config.di import (
+    get_collect_manage_service,
+    set_scheduler,
+    setup_default_registry,
+)
 from infrastructure.persistence.connection import async_engine, close_db
 # 注册全部 ORM 模型（schema_init 用 Base.metadata 比对 init.sql）
 import infrastructure.persistence.models  # noqa: F401
 from infrastructure.persistence.schema_init import ensure_schema
 from application.service import cancel_background
-from infrastructure.adapter.scheduler.collect_scheduler import (
-    start_collect_scheduler,
-    stop_collect_scheduler,
-)
-from infrastructure.adapter.scheduler.collect import (
+from infrastructure.adapter.scheduler.apscheduler_adapter import ApschedulerAdapter
+from infrastructure.adapter.collect import (
     ConceptIndexTHCollectTask,
     ConceptListCollectTask,
     ConceptMembershipCollectTask,
@@ -60,11 +61,6 @@ from infrastructure.adapter.scheduler.collect import (
     CapHolderNumCollectTask,
     all_planned_tasks,
     setup_collect_task_registry,
-)
-from infrastructure.adapter.realtime import (
-    ConceptMinuteQuery,
-    StockMinuteKlineQuery,
-    setup_realtime_registry,
 )
 from route.api.router import api_router
 from infrastructure.security import key_manager
@@ -125,20 +121,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # ── 剩余 planned（2 个：分钟 K 入库版 + news_article 权限未开通）──
         *all_planned_tasks(),
     ])
-    # 实时接口（按需查询 + Redis 缓存，与采集任务共用目录）
-    setup_realtime_registry([ConceptMinuteQuery(), StockMinuteKlineQuery()])
 
-    # 对账 DB 侧的 collect_fetchers（依赖上面两个注册表，必须在其后）
+    # 对账 DB 侧的 collect_fetchers（采集任务 + 声明了 cache 的实时 Port，必须在注册之后）
     await _sync_fetcher_catalog()
 
+    scheduler: ApschedulerAdapter | None = None
     if settings.COLLECT_SCHEDULER_ENABLED:
-        await start_collect_scheduler(settings.COLLECT_SCHEDULER_TIMEZONE)
+        scheduler = ApschedulerAdapter(settings.COLLECT_SCHEDULER_TIMEZONE)
+        set_scheduler(scheduler)
+        scheduler.on_fire(lambda payload: get_collect_manage_service().handle_job(payload))
+        count = await get_collect_manage_service().restore_schedules()
+        scheduler.start()
+        logging.info("采集调度器已启动: %d 个方案", count)
     else:
         logging.info("采集调度器未启用（COLLECT_SCHEDULER_ENABLED=false）")
 
     yield
 
-    stop_collect_scheduler()
+    if scheduler is not None:
+        scheduler.shutdown()
+        set_scheduler(None)
     await cancel_background()
     await close_db()
 
@@ -167,10 +169,10 @@ async def _sync_fetcher_catalog() -> None:
     - DB 有 / 代码无 → 标 status='orphan'（**不删**，保留现场 + 避免 CASCADE 掉方案项）
     - 两边都有但元数据变了 → UPDATE + warning
 
-    ⚠️ 必须在 setup_collect_task_registry / setup_realtime_registry 之后调用。
+    ⚠️ 必须在 setup_default_registry / setup_collect_task_registry 之后调用。
     """
-    from infrastructure.adapter.realtime import get_realtime_registry
-    from infrastructure.adapter.scheduler.collect import get_collect_task_registry
+    from infrastructure.adapter.collect import get_collect_task_registry
+    from infrastructure.adapter.collect.registry import realtime_ports
     from sqlalchemy import text
 
     registry = get_collect_task_registry()
@@ -190,8 +192,7 @@ async def _sync_fetcher_catalog() -> None:
             "sort_order": h.sort_order,
         }
 
-    rt = get_realtime_registry()
-    for q in rt.all():
+    for q in realtime_ports():
         code_side[q.name] = {
             "label": q.label or q.name,
             "facet": q.facet or "",

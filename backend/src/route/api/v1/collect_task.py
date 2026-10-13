@@ -1,7 +1,7 @@
 """采集任务管理 API（业务模块：collect-manage/）
 
 router 仅负责 HTTP 协议：创建任务 / 方案 / 任务组走 CollectManageService，
-采集逻辑在 `infrastructure.adapter.scheduler.collect.*` 子类中实现。
+采集逻辑在 `infrastructure.adapter.collect.*` 子类中实现。
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from application.port.data.base import InvalidParams, NotSupported, RateLimited, SourceUnavailable
 from application.service import (
     CollectManageService,
     PlanNotFound,
@@ -20,13 +21,13 @@ from application.service import (
     UnknownTaskType,
     task_to_dict,
 )
+from application.service.data_query_service import DataQueryService
 from infrastructure.adapter.cache.redis_client import get_redis
-from infrastructure.adapter.realtime import RealtimeQueryError, get_realtime_query_framework
-from infrastructure.adapter.scheduler.collect import (
+from infrastructure.adapter.collect import (
     get_collect_task_registry,
     request_cancel,
 )
-from infrastructure.config.di import get_collect_manage_service, get_db
+from infrastructure.config.di import get_collect_manage_service, get_data_query_service, get_db
 from infrastructure.persistence.models.sys_collect_task import SysCollectTaskDB
 from route.api import _response as R
 from route.dto.request.collect import CollectPlanSaveRequest
@@ -77,25 +78,40 @@ async def get_collect_catalog():
 
 
 @router.post("/realtime/{name}/query", summary="调用实时接口（试查 / 通用入口）")
-async def query_realtime(name: str, body: Optional[dict] = None):
-    svc = get_realtime_query_framework()
+async def query_realtime(
+    name: str,
+    body: Optional[dict] = None,
+    svc: DataQueryService = Depends(get_data_query_service),
+):
+    """响应 {data: BO 列表, cached, stale(恒 false), fetched_at, latency_ms, error}"""
+    if not svc.is_realtime(name):
+        return R.err(f"未知实时接口: {name}", 404)
     try:
         res = await svc.query(name, body or {})
-    except KeyError as e:
-        return R.err(str(e), 404)
-    except ValueError as e:
+    except (InvalidParams, NotSupported) as e:
         return R.err(str(e), 400)
-    except RealtimeQueryError as e:
+    except (RateLimited, SourceUnavailable) as e:
         return R.err(str(e), 502)
-    return R.ok(res.to_dict())
+    d = res.to_dict()
+    return R.ok({
+        "data": d["items"],
+        "cached": d["cached"],
+        "stale": False,
+        "fetched_at": d["fetched_at"],
+        "latency_ms": d["latency_ms"],
+        "error": None,
+    })
 
 
 @router.get("/realtime/{name}/stats", summary="实时接口调用统计（按天）")
-async def realtime_stats(name: str, days: int = Query(1, ge=1, le=7)):
-    try:
-        return R.ok(await get_realtime_query_framework().stats(name, days))
-    except KeyError as e:
-        return R.err(str(e), 404)
+async def realtime_stats(
+    name: str,
+    days: int = Query(1, ge=1, le=7),
+    svc: DataQueryService = Depends(get_data_query_service),
+):
+    if not svc.is_realtime(name):
+        return R.err(f"未知实时接口: {name}", 404)
+    return R.ok(await svc.stats(name, days))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

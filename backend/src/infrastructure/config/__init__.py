@@ -14,7 +14,6 @@ def __getattr__(name):
         "get_concept_brief_service",
         "get_indicator_calculator",
         "get_kline_app_service",
-        "get_kline_fetcher",
         "get_panel_app_service",
         "get_pool_app_service",
         "get_pool_operation_app_service",
