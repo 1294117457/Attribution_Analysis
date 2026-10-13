@@ -1,4 +1,4 @@
-﻿"""前十大流通股东采集任务（Tushare top10_floatholders）
+"""前十大流通股东采集任务（Tushare top10_floatholders）
 
 单元 = 单只股票。
 """
@@ -16,9 +16,11 @@ from infrastructure.adapter.scheduler.collect.base import (
     Cancelled,
     UnitResult,
     UnitTally,
+    existing_symbols,
     is_cancelled,
 )
 from infrastructure.persistence.connection import AsyncSessionLocal
+from infrastructure.persistence.models.fin_top10_float import FinTop10FloatHolderDB
 from infrastructure.persistence.models.stock_info import StockInfoDB
 from infrastructure.persistence.repositories.fin_top10_float_repository import (
     FinTop10FloatRepoImpl,
@@ -51,6 +53,9 @@ class FinTop10FloatHoldersCollectTask(BaseCollectTask):
             symbols = [r[0] for r in rows.all()]
         limit = params.get("limit")
         return symbols[: int(limit)] if limit else symbols
+
+    async def existing_units(self, units: list[str], params: dict) -> set[str]:
+        return await existing_symbols(FinTop10FloatHolderDB.symbol, units)
 
     async def collect_one(self, unit: str, params: dict) -> UnitResult:
         fetcher = get_registry().get(Top10FloatHoldersFetcher)

@@ -6,34 +6,38 @@
 -->
 <template>
   <div class="realtime-panel">
-    <header class="panel-block">
-      <h3>
-        {{ taskDef.label }}
-        <el-tag size="small" type="danger" effect="plain" class="ml-1">实时</el-tag>
-      </h3>
-      <p class="desc">{{ taskDef.description }}</p>
-      <el-descriptions :column="3" size="small" border>
-        <el-descriptions-item label="数据源">{{ taskDef.source_label || taskDef.source || '—' }}</el-descriptions-item>
-        <el-descriptions-item label="缓存策略">
-          交易时段 {{ taskDef.ttl_trading ?? 15 }} 秒，非交易时段缓存到开盘
-        </el-descriptions-item>
-        <el-descriptions-item label="业务调用方">
-          {{ taskDef.consumers?.length ? taskDef.consumers.join('、') : '—' }}
-        </el-descriptions-item>
-      </el-descriptions>
-    </header>
+    <CollectCard :title="taskDef.label" :description="taskDef.description">
+      <template #tags>
+        <el-tag size="small" type="danger" effect="plain">实时</el-tag>
+      </template>
 
-    <section class="panel-block">
-      <div class="block-title">试查</div>
-      <el-form inline size="small" @submit.prevent="runQuery">
-        <el-form-item v-for="key in paramKeys" :key="key" :label="key">
-          <el-input v-model="form[key]" style="width: 120px" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" :loading="querying" @click="runQuery">查询</el-button>
-        </el-form-item>
-      </el-form>
+      <CollectCardRow label="接口信息">
+        <span class="info-item"><span class="muted">数据源</span>{{ taskDef.source_label || taskDef.source || '—' }}</span>
+        <span class="info-item">
+          <span class="muted">缓存</span>交易时段 {{ taskDef.ttl_trading ?? 15 }} 秒，非交易时段缓存到开盘
+        </span>
+        <span class="info-item">
+          <span class="muted">调用方</span>{{ taskDef.consumers?.length ? taskDef.consumers.join('、') : '—' }}
+        </span>
+      </CollectCardRow>
 
+      <CollectCardRow label="查询参数">
+        <template v-if="paramKeys.length > 0">
+          <div v-for="key in paramKeys" :key="key" class="param">
+            <span class="param__label">{{ key }}</span>
+            <el-input v-model="form[key]" size="small" style="width: 120px" @keyup.enter="runQuery" />
+          </div>
+        </template>
+        <span v-else class="muted">无需参数</span>
+      </CollectCardRow>
+
+      <template #footer>
+        <el-button type="primary" size="small" :loading="querying" @click="runQuery">试查</el-button>
+      </template>
+    </CollectCard>
+
+    <section v-if="queryError || result" class="panel-block">
+      <div class="block-title">试查结果</div>
       <el-alert v-if="queryError" :title="queryError" type="error" :closable="false" show-icon />
       <template v-else-if="result">
         <div class="result-meta">
@@ -80,6 +84,8 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { getRealtimeStats, queryRealtime, type RealtimeResult, type RealtimeStats, type TaskDef } from '../api'
+import CollectCard from './CollectCard.vue'
+import CollectCardRow from './CollectCardRow.vue'
 
 const PREVIEW_ROWS = 20
 
@@ -150,15 +156,21 @@ watch(
   padding: 12px 16px;
   margin-bottom: 12px;
 }
-.panel-block h3 {
-  margin: 0 0 4px;
-  font-size: 16px;
-  color: #1e293b;
-}
-.desc {
-  margin: 0 0 12px;
+.info-item {
+  display: inline-flex;
+  gap: 6px;
   font-size: 13px;
-  color: #64748b;
+  color: #334155;
+}
+.param {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.param__label {
+  font-size: 13px;
+  color: #475569;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 .block-title {
   display: flex;

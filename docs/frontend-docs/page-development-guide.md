@@ -251,12 +251,19 @@ function colW(px: number): number {
   --my-middle-density: calc(var(--my-page-density));
   --my-bottom-density: calc(var(--my-page-density));
 
-  /* ── 派生 token：顶部 ── */
-  --my-top-gap:        calc(0.5rem * var(--my-top-density));
-  --my-top-button-h:   calc(2rem   * var(--my-top-density));
+  /* ── 派生 token：顶部（基准值见 §7.6，所有列表页统一）── */
+  --my-top-gap:        calc(0.6rem  * var(--my-top-density));
+  --my-top-button-h:   calc(2rem    * var(--my-top-density));
   --my-top-button-fs:  calc(0.95rem * var(--my-top-density));
-  --my-top-input-w:    calc(220px  * var(--my-top-density));
-  /* … */
+  --my-top-button-px:  calc(0.75rem * var(--my-top-density));
+  --my-top-icon-fs:    calc(0.95rem * var(--my-top-density));
+  --my-top-icon-mr:    calc(0.25rem * var(--my-top-density));
+  --my-top-filter-py:  calc(0.55rem * var(--my-top-density));
+  --my-top-filter-px:  calc(0.85rem * var(--my-top-density));
+  --my-top-control-h:  calc(2rem    * var(--my-top-density));
+  --my-top-input-fs:   calc(0.95rem * var(--my-top-density));
+  --my-top-input-w:    calc(220px   * var(--my-top-density));
+  --my-top-select-fs:  calc(0.95rem * var(--my-top-density));
 
   /* ── 派生 token：中部（表格）── */
   --my-middle-row-h:        calc(2.5rem   * var(--my-middle-density));
@@ -462,6 +469,64 @@ EP 大量 sass 变量在编译时写成 px，**`--el-table-row-height` 等 token
 | 高级筛选默认折叠 | 大部分用户用不到 |
 | 高级筛选有激活条件时按钮显示 badge | 视觉提示 |
 | 重置按钮**始终可见且一键全清** | 降低挫败感 |
+
+### 7.6 顶部控件尺寸基准（所有列表统一）
+
+**所有带「搜索 + 高级筛选」的列表**——无论是独立页面，还是 Tab 内 / 抽屉内的嵌入列表——
+顶部按钮、输入框、下拉、日期选择器的尺寸**必须与 `StockInfoList` 一致**。
+不允许直接用 EP 默认尺寸或 `size="small"`，否则同一站点里"高级筛选"按钮大小不一。
+
+| token | 基准值（density = 1） | 作用对象 |
+|-------|----------------------|---------|
+| `--x-top-gap` | `0.6rem` | toolbar-row / toolbar-search / toolbar-actions / advanced-filters 的 gap |
+| `--x-top-button-h` | `2rem` | toolbar 内所有 `el-button` 高度 |
+| `--x-top-button-fs` | `0.95rem` | 按钮字号（含内部 span） |
+| `--x-top-button-px` | `0.75rem` | 按钮左右 padding |
+| `--x-top-icon-fs` / `--x-top-icon-mr` | `0.95rem` / `0.25rem` | 按钮内图标 |
+| `--x-top-control-h` | `2rem` | `el-input` / `el-select` / `el-input-number` / `el-date-editor` 高度 |
+| `--x-top-input-fs` / `--x-top-select-fs` | `0.95rem` | 输入类控件字号（含 placeholder、日期范围输入） |
+| `--x-top-filter-py` / `--x-top-filter-px` | `0.55rem` / `0.85rem` | 高级筛选展开区内边距 |
+| 主搜索宽度 | `220px` | 主搜索 `el-input` / 主筛选 `el-select` |
+
+**无密度面板的子区域**（如 `collect-manage/components/CollectHistory.vue`）：
+token 照抄上表，只是 density 固定为 1，前缀换成自己的（如 `--ch-*`）：
+
+```css
+.collect-history {
+  --ch-top-density: 1;
+  --ch-top-gap:        calc(0.6rem  * var(--ch-top-density));
+  --ch-top-button-h:   calc(2rem    * var(--ch-top-density));
+  --ch-top-button-fs:  calc(0.95rem * var(--ch-top-density));
+  --ch-top-button-px:  calc(0.75rem * var(--ch-top-density));
+  --ch-top-control-h:  calc(2rem    * var(--ch-top-density));
+  --ch-top-control-fs: calc(0.95rem * var(--ch-top-density));
+  /* … icon / filter token 同上表 */
+}
+
+/* 按钮：EP sass 固化 height / font-size，必须 :deep 直接覆盖 */
+.toolbar-row :deep(.el-button) {
+  --el-button-size: var(--ch-top-button-h);
+  height: var(--ch-top-button-h);
+  padding-left: var(--ch-top-button-px);
+  padding-right: var(--ch-top-button-px);
+  font-size: var(--ch-top-button-fs);
+  line-height: 1;
+}
+
+/* 输入类控件：主筛选 select + 高级筛选里的 select / 日期范围 */
+.toolbar-search :deep(.el-select__wrapper),
+.advanced-filters :deep(.el-select__wrapper),
+.advanced-filters :deep(.el-date-editor.el-input__wrapper) {
+  height: var(--ch-top-control-h);
+  min-height: var(--ch-top-control-h);
+  padding: 4px 11px;
+  line-height: calc(var(--ch-top-control-h) - 8px);
+  box-sizing: border-box;
+}
+```
+
+> 日期范围选择器的可见盒子是 `.el-date-editor.el-input__wrapper`，内部文字在
+> `.el-range-input` / `.el-range-separator`，字号要单独覆盖。
 
 ---
 
@@ -1203,6 +1268,7 @@ onMounted(load)
 | 表格列宽写死像素 | density 拖不动表格宽度 | 列宽用 `colW(px)` 函数缩放 |
 | 中部内容 `<div height: 600px>` | 表格被压扁、底部留白 | 让 flex 自动撑满 |
 | 顶部搜索框有多个 `<el-input>` | UX 混乱 | 统一一个主搜索 + 高级筛选 |
+| Tab / 嵌入列表的 toolbar 用 EP 默认尺寸或 `size="small"` | 「高级筛选」等按钮与其他列表大小不一 | 照抄 §7.6 顶部 token 基准值（density 固定 1） |
 | **内联展开区用 `<div v-if="data">`** | **数据态切换时外层高度从 0→N 抖动** | **外层 div 始终渲染 + 三连锁高度锁死（详见 §十.6）** |
 | **内联区只设 `min-height`，缺 `max-height`** | **数据多时撑高外层，破坏锁高** | **`height` + `min-height` + `max-height` 三连锁** |
 
@@ -1238,6 +1304,7 @@ onMounted(load)
 - [ ] `.top-area__header` 改为自适应（页面级有 density-inline 时）
 - [ ] `.top-area__title` 加 `min-width: 0`
 - [ ] toolbar-row / toolbar-search / toolbar-actions 三件套
+- [ ] 顶部按钮 / 输入框 / 下拉 / 日期选择器尺寸符合 §7.6 基准（含无密度面板的 Tab / 嵌入列表）
 - [ ] advanced-wrapper 用 grid-rows 动画，不用 transition+v-if
 - [ ] 表格 .my-table 五条不变式齐全
 - [ ] 分页器 .my-pagination 内部 px 覆盖齐全

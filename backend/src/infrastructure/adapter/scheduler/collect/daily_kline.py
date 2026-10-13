@@ -10,16 +10,18 @@ POST /klines/collect、/klines/collect/batch 与池操作经它复用。
   exchange              交易所过滤（列表），仅批量
   symbols               指定股票列表，仅批量（不给则全部上市股票）
   concurrency           并发数，上限 COLLECT_MAX_CONCURRENCY
+  mode                  full / condition（采集管理页面下发）：按库中每只股票已有的
+                        日期区间裁剪采集窗口，已覆盖的股票直接跳过
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from route.dto.request.kline import KlineCollectRequest
 from application.port.collector_port import KlineFetcher, RateLimitError
@@ -28,6 +30,7 @@ from infrastructure.adapter import get_registry
 from infrastructure.config.settings import get_settings
 from infrastructure.persistence.connection import AsyncSessionLocal
 from infrastructure.persistence.models.stock_info import StockInfoDB
+from infrastructure.persistence.models.tech_kline import TechKlineDailyDB
 from infrastructure.adapter.scheduler.collect.base import (
     BaseCollectTask,
     TaskSummary,
@@ -37,6 +40,8 @@ from infrastructure.adapter.scheduler.collect.base import (
 logger = logging.getLogger(__name__)
 
 UNIT_TIMEOUT = 120
+# mode=full 且库中无数据时的起始日
+FULL_START = date(2015, 1, 1)
 
 
 def _parse_date(value: Any) -> Optional[date]:
@@ -48,7 +53,17 @@ def _parse_date(value: Any) -> Optional[date]:
     return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
 
 
-def build_request(symbol: str, params: dict) -> KlineCollectRequest:
+def _last_weekday(d: date) -> date:
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d
+
+
+def build_request(
+    symbol: str, params: dict, window: Optional[tuple[date, date]] = None,
+) -> KlineCollectRequest:
+    if window:
+        return KlineCollectRequest(symbol=symbol, start_date=window[0], end_date=window[1])
     start = _parse_date(params.get("start_date"))
     end = _parse_date(params.get("end_date"))
     if start and end:
@@ -72,6 +87,8 @@ class DailyKlineCollectTask(BaseCollectTask):
         self._concurrency: int = 1
         self._api_interval: float = 0.3
         self._fetcher_pool: asyncio.Queue | None = None
+        # mode 下每只股票裁剪后的采集窗口（pending_units 计算）
+        self._windows: dict[str, tuple[date, date]] = {}
 
     # ── 单元接口 ──────────────────────────────────────────────────────
 
@@ -86,6 +103,65 @@ class DailyKlineCollectTask(BaseCollectTask):
             result = await session.execute(stmt.order_by(StockInfoDB.symbol))
             return [r[0] for r in result.all()]
 
+    async def pending_units(self, params: dict) -> list[str]:
+        """带 mode 时按库中已有日期区间裁剪每只股票的窗口，已覆盖的跳过
+
+        - full:      已有数据 → 从最新一天之后补到今天；无数据 → FULL_START 起
+        - condition: 请求区间（不早于上市日）已被覆盖 → 跳过；
+                     起点落在已有区间内 → 从最新一天之后补
+        """
+        symbols = await self.list_units(params)
+        self._windows = {}
+        mode = params.get("mode")
+        if not mode:
+            return symbols
+
+        today = date.today()
+        if mode == "full":
+            req_start, req_end = FULL_START, today
+        else:
+            req_start = _parse_date(params.get("start_date"))
+            req_end = _parse_date(params.get("end_date"))
+            if not (req_start and req_end):
+                req_end = today
+                req_start = today - timedelta(days=int(params.get("days", 7)) - 1)
+        last_day = _last_weekday(min(req_end, today))
+
+        async with AsyncSessionLocal() as session:
+            cov_rows = await session.execute(
+                select(
+                    TechKlineDailyDB.symbol,
+                    func.min(TechKlineDailyDB.date),
+                    func.max(TechKlineDailyDB.date),
+                )
+                .where(TechKlineDailyDB.symbol.in_(symbols))
+                .group_by(TechKlineDailyDB.symbol)
+            )
+            coverage = {r[0]: (r[1], r[2]) for r in cov_rows.all()}
+            list_rows = await session.execute(
+                select(StockInfoDB.symbol, StockInfoDB.list_date)
+                .where(StockInfoDB.symbol.in_(symbols))
+            )
+            list_dates = {r[0]: r[1] for r in list_rows.all()}
+
+        pending: list[str] = []
+        for s in symbols:
+            start = max(req_start, list_dates.get(s) or req_start)
+            cov = coverage.get(s)
+            if cov:
+                cov_min, cov_max = cov
+                if mode == "full" or cov_min <= start <= cov_max:
+                    start = max(start, cov_max + timedelta(days=1))
+            if start > last_day:
+                continue
+            self._windows[s] = (start, req_end)
+            pending.append(s)
+        logger.info(
+            "日K %s 模式: 共 %d 只，跳过已覆盖 %d 只",
+            mode, len(symbols), len(symbols) - len(pending),
+        )
+        return pending
+
     async def collect_one(self, unit: str, params: dict) -> UnitResult:
         return await self._collect_symbol(unit, params, get_registry().get(KlineFetcher))
 
@@ -96,8 +172,9 @@ class DailyKlineCollectTask(BaseCollectTask):
         async with AsyncSessionLocal() as session:
             try:
                 svc = build_stock_info_service(session)
+                window = self._windows.get(symbol) if params.get("mode") else None
                 resp = await asyncio.wait_for(
-                    svc.collect(build_request(symbol, params), fetcher),
+                    svc.collect(build_request(symbol, params, window), fetcher),
                     timeout=UNIT_TIMEOUT,
                 )
                 await session.commit()
@@ -154,7 +231,7 @@ class DailyKlineCollectTask(BaseCollectTask):
         rate_limit_backoff = 1.0
         rate_limit_max_backoff = 60.0
 
-        symbols = await self.list_units(params)
+        symbols = await self.pending_units(params)
         total = len(symbols)
         exchange_filter = params.get("exchange")
         exchange_desc = ",".join(exchange_filter) if exchange_filter else "全部"

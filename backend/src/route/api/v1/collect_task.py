@@ -6,7 +6,7 @@ router 仅负责 HTTP 协议：创建任务 / 方案 / 任务组走 CollectManag
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import date, datetime, time, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -219,21 +219,28 @@ async def list_tasks(
     task_type: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     plan_run_id: Optional[int] = Query(None, description="只看某次采集方案执行的各项"),
+    trigger_type: Optional[str] = Query(None, description="manual / schedule"),
+    started_from: Optional[date] = Query(None, description="开始时间 ≥ 该日 00:00"),
+    started_to: Optional[date] = Query(None, description="开始时间 ≤ 该日 23:59:59"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(SysCollectTaskDB)
-    count_stmt = select(func.count()).select_from(SysCollectTaskDB)
+    conds = []
     if task_type:
-        stmt = stmt.where(SysCollectTaskDB.task_type == task_type)
-        count_stmt = count_stmt.where(SysCollectTaskDB.task_type == task_type)
+        conds.append(SysCollectTaskDB.task_type == task_type)
     if status:
-        stmt = stmt.where(SysCollectTaskDB.status == status)
-        count_stmt = count_stmt.where(SysCollectTaskDB.status == status)
+        conds.append(SysCollectTaskDB.status == status)
     if plan_run_id is not None:
-        stmt = stmt.where(SysCollectTaskDB.plan_run_id == plan_run_id)
-        count_stmt = count_stmt.where(SysCollectTaskDB.plan_run_id == plan_run_id)
+        conds.append(SysCollectTaskDB.plan_run_id == plan_run_id)
+    if trigger_type:
+        conds.append(SysCollectTaskDB.trigger_type == trigger_type)
+    if started_from:
+        conds.append(SysCollectTaskDB.started_at >= datetime.combine(started_from, time.min))
+    if started_to:
+        conds.append(SysCollectTaskDB.started_at < datetime.combine(started_to + timedelta(days=1), time.min))
+    stmt = select(SysCollectTaskDB).where(*conds)
+    count_stmt = select(func.count()).select_from(SysCollectTaskDB).where(*conds)
     total = (await db.execute(count_stmt)).scalar_one()
     rows = (
         (await db.execute(

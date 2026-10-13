@@ -26,18 +26,10 @@
           /><PieChart v-else-if="facet.facet === 'fundamental'"
           /><Document v-else /></el-icon>
         <b>{{ facet.label }}</b>
-        <el-badge
-          v-if="countReady(facet) > 0"
-          :value="countReady(facet)"
-          type="success"
-          class="ml-1"
-        />
-        <el-badge
-          v-if="countPlanned(facet) > 0"
-          :value="countPlanned(facet)"
-          type="info"
-          class="ml-1"
-        />
+        <span class="facet-badges">
+          <el-badge v-if="countReady(facet) > 0" :value="countReady(facet)" type="success" />
+          <el-badge v-if="countPlanned(facet) > 0" :value="countPlanned(facet)" type="info" />
+        </span>
       </div>
       <div v-show="!isCollapsed(facet.facet)" class="sub-facet-list">
         <div
@@ -111,7 +103,7 @@ function toggleCollapsed(key: string) {
   localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...next]))
 }
 
-/** 任务按钮的 hover 提示：描述 + 默认参数（描述已内联显示，tooltip 补充参数细节） */
+/** 任务按钮的 hover 提示：描述 + 默认参数（树里只显示名称，细节都在 tooltip） */
 function tooltipText(t: TaskDef): string {
   const lines: string[] = []
   if (t.description) lines.push(t.description)
@@ -141,7 +133,7 @@ function tooltipText(t: TaskDef): string {
 }
 
 /*
-  三层同比递减：高度 32 / 28 / 24，字号 14 / 13 / 12，
+  三层高度统一 26，字号递减 14 / 13 / 12，
   背景由深到浅、边框由深到浅，逐层缩进 8px
 */
 .facet-block + .facet-block {
@@ -153,7 +145,7 @@ function tooltipText(t: TaskDef): string {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 32px;
+  height: 26px;
   padding: 0 8px;
   font-size: 14px;
   color: #1e293b;
@@ -167,6 +159,28 @@ function tooltipText(t: TaskDef): string {
 
 .facet-header:hover {
   background: #cbd5e1;
+}
+
+.facet-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+/* 无默认插槽的 el-badge 气泡是 <sup>：Tailwind preflight 给 sup 设了
+   position: relative; top: -0.5em; line-height: 0，会把气泡整体上移 */
+.facet-header :deep(.el-badge) {
+  display: flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.facet-header :deep(.el-badge__content) {
+  position: static;
+  top: auto;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 .collapse-arrow {
@@ -194,7 +208,7 @@ function tooltipText(t: TaskDef): string {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 28px;
+  height: 26px;
   padding: 0 8px;
   font-size: 13px;
   font-weight: 600;
@@ -221,11 +235,11 @@ function tooltipText(t: TaskDef): string {
 .task-btn {
   display: block;
   width: calc(100% - 8px);
-  height: 24px;
+  height: 26px;
   margin: 2px 0 0 8px;
   padding: 0 8px;
   font-size: 12px;
-  line-height: 22px;
+  line-height: 24px;
   color: #475569;
   background: #fff;
   border: 1px solid #e2e8f0;

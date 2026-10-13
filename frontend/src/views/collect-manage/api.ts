@@ -100,6 +100,11 @@ export const listTasks = (params?: {
   task_type?: string
   status?: string
   plan_run_id?: number
+  trigger_type?: string
+  /** YYYY-MM-DD，开始时间 ≥ 该日 */
+  started_from?: string
+  /** YYYY-MM-DD，开始时间 ≤ 该日 */
+  started_to?: string
   page?: number
   page_size?: number
 }) => http.get<ApiResponse<TaskPage>>('/collect/tasks', { params }).then(unwrap)
