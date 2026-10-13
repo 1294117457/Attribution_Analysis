@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, timedelta
 
 from application.port.collector_port import MarginDetailFetcher, RateLimitError
 from infrastructure.adapter import get_registry
@@ -16,9 +15,12 @@ from infrastructure.adapter.scheduler.collect.base import (
     Cancelled,
     UnitResult,
     UnitTally,
+    existing_dates,
     is_cancelled,
+    resolve_trade_dates,
 )
 from infrastructure.persistence.connection import AsyncSessionLocal
+from infrastructure.persistence.models.cap_margin_detail import CapMarginDetailDB
 from infrastructure.persistence.repositories.cap_margin_detail_repository import (
     CapMarginDetailRepoImpl,
 )
@@ -36,10 +38,14 @@ class CapMarginDetailCollectTask(BaseCollectTask):
     label = "个股融资融券"
     description = "融资余额 / 融券余额（tushare margin_detail）"
     default_params = {"days": 1}
+    full_params = {"days": 365}
     sort_order = 20
 
     async def list_units(self, params: dict) -> list[str]:
-        return self._resolve_dates(params)
+        return resolve_trade_dates(params)
+
+    async def existing_units(self, units: list[str], params: dict) -> set[str]:
+        return await existing_dates(CapMarginDetailDB.trade_date, units)
 
     async def collect_one(self, unit: str, params: dict) -> UnitResult:
         fetcher = get_registry().get(MarginDetailFetcher)
@@ -79,12 +85,3 @@ class CapMarginDetailCollectTask(BaseCollectTask):
             step = min(1.0, remaining)
             await asyncio.sleep(step)
             remaining -= step
-
-    @staticmethod
-    def _resolve_dates(params: dict) -> list[str]:
-        trade_date = params.get("trade_date")
-        if trade_date:
-            return [str(trade_date).replace("-", "")]
-        days = int(params.get("days", 1))
-        today = date.today()
-        return [(today - timedelta(days=i)).strftime("%Y%m%d") for i in range(days)]

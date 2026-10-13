@@ -131,6 +131,21 @@ body {
   --density-title-min:   2rem;       /* top-area__header 最小高度（原 32px，避免文字截断） */
 }
 
+/* ── 信息卡片 InfoCard 设计变量（规范见 docs/frontend-docs/card-guide.md） ── */
+:root {
+  --info-card-radius:        8px;
+  --info-card-border:        #e2e8f0;
+  --info-card-header-h:      35px;        /* 含底边框 */
+  --info-card-header-bg:     #e2e8f0;
+  --info-card-header-border: #cbd5e1;
+  --info-card-header-pl:     12px;
+  --info-card-header-pr:     8px;
+  --info-card-title-fs:      13px;
+  --info-card-title-color:   #1e293b;
+  --info-card-body-padding:  6px 8px;
+  --info-card-gap:           6px;
+}
+
 /* ── 按钮组/搜索组竖线装饰 ───────────────────── */
 .btn-group,
 .search-group {

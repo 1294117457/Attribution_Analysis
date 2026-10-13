@@ -250,7 +250,7 @@ import {
   type CollectFetcher,
   type CollectPlan,
   type CollectTask,
-} from './api'
+} from '../api'
 
 interface ItemForm {
   key: number

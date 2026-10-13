@@ -16,9 +16,11 @@ from infrastructure.adapter.scheduler.collect.base import (
     Cancelled,
     UnitResult,
     UnitTally,
+    existing_symbols,
     is_cancelled,
 )
 from infrastructure.persistence.connection import AsyncSessionLocal
+from infrastructure.persistence.models.base_adj_factor import BaseAdjFactorDB
 from infrastructure.persistence.models.stock_info import StockInfoDB
 from infrastructure.persistence.repositories.base_adj_factor_repository import (
     BaseAdjFactorRepoImpl,
@@ -51,6 +53,9 @@ class BaseAdjFactorCollectTask(BaseCollectTask):
             symbols = [r[0] for r in rows.all()]
         limit = params.get("limit")
         return symbols[: int(limit)] if limit else symbols
+
+    async def existing_units(self, units: list[str], params: dict) -> set[str]:
+        return await existing_symbols(BaseAdjFactorDB.symbol, units)
 
     async def collect_one(self, unit: str, params: dict) -> UnitResult:
         fetcher = get_registry().get(AdjFactorFetcher)

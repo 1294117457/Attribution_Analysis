@@ -79,7 +79,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { getRealtimeStats, queryRealtime, type RealtimeResult, type RealtimeStats, type TaskDef } from './api'
+import { getRealtimeStats, queryRealtime, type RealtimeResult, type RealtimeStats, type TaskDef } from '../api'
 
 const PREVIEW_ROWS = 20
 

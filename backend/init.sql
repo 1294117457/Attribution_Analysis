@@ -889,49 +889,6 @@ CREATE TABLE public.collect_fetchers (
 ALTER TABLE public.collect_fetchers OWNER TO zhouch;
 
 --
--- Name: collect_groups; Type: TABLE; Schema: public; Owner: zhouch
---
-
-CREATE TABLE public.collect_groups (
-    id integer NOT NULL,
-    name character varying(64) NOT NULL,
-    items json NOT NULL,
-    enabled boolean NOT NULL,
-    cron character varying(64),
-    trading_day_only boolean NOT NULL,
-    stop_on_fail boolean NOT NULL,
-    last_run_at timestamp without time zone,
-    last_group_run_id integer,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
-ALTER TABLE public.collect_groups OWNER TO zhouch;
-
---
--- Name: collect_groups_id_seq; Type: SEQUENCE; Schema: public; Owner: zhouch
---
-
-CREATE SEQUENCE public.collect_groups_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE public.collect_groups_id_seq OWNER TO zhouch;
-
---
--- Name: collect_groups_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: zhouch
---
-
-ALTER SEQUENCE public.collect_groups_id_seq OWNED BY public.collect_groups.id;
-
-
---
 -- Name: collect_plan_items; Type: TABLE; Schema: public; Owner: zhouch
 --
 
@@ -2068,46 +2025,6 @@ ALTER SEQUENCE public.stock_pools_id_seq OWNED BY public.stock_pools.id;
 
 
 --
--- Name: sys_collect_task_details; Type: TABLE; Schema: public; Owner: zhouch
---
-
-CREATE TABLE public.sys_collect_task_details (
-    id integer NOT NULL,
-    task_id integer NOT NULL,
-    symbol character varying(10) NOT NULL,
-    status character varying(16) NOT NULL,
-    saved_count integer NOT NULL,
-    error_message text,
-    duration_ms integer,
-    created_at timestamp without time zone DEFAULT now() NOT NULL
-);
-
-
-ALTER TABLE public.sys_collect_task_details OWNER TO zhouch;
-
---
--- Name: sys_collect_task_details_id_seq; Type: SEQUENCE; Schema: public; Owner: zhouch
---
-
-CREATE SEQUENCE public.sys_collect_task_details_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE public.sys_collect_task_details_id_seq OWNER TO zhouch;
-
---
--- Name: sys_collect_task_details_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: zhouch
---
-
-ALTER SEQUENCE public.sys_collect_task_details_id_seq OWNED BY public.sys_collect_task_details.id;
-
-
---
 -- Name: sys_collect_tasks; Type: TABLE; Schema: public; Owner: zhouch
 --
 
@@ -2127,8 +2044,7 @@ CREATE TABLE public.sys_collect_tasks (
     message text,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    plan_run_id integer,
-    group_run_id integer
+    plan_run_id integer
 );
 
 
@@ -2429,13 +2345,6 @@ ALTER TABLE ONLY public.cap_top_lists ALTER COLUMN id SET DEFAULT nextval('publi
 
 
 --
--- Name: collect_groups id; Type: DEFAULT; Schema: public; Owner: zhouch
---
-
-ALTER TABLE ONLY public.collect_groups ALTER COLUMN id SET DEFAULT nextval('public.collect_groups_id_seq'::regclass);
-
-
---
 -- Name: collect_plan_items id; Type: DEFAULT; Schema: public; Owner: zhouch
 --
 
@@ -2545,13 +2454,6 @@ ALTER TABLE ONLY public.stock_infos ALTER COLUMN id SET DEFAULT nextval('public.
 --
 
 ALTER TABLE ONLY public.stock_pools ALTER COLUMN id SET DEFAULT nextval('public.stock_pools_id_seq'::regclass);
-
-
---
--- Name: sys_collect_task_details id; Type: DEFAULT; Schema: public; Owner: zhouch
---
-
-ALTER TABLE ONLY public.sys_collect_task_details ALTER COLUMN id SET DEFAULT nextval('public.sys_collect_task_details_id_seq'::regclass);
 
 
 --
@@ -2697,14 +2599,6 @@ ALTER TABLE ONLY public.cap_top_lists
 
 ALTER TABLE ONLY public.collect_fetchers
     ADD CONSTRAINT collect_fetchers_pkey PRIMARY KEY (task_type);
-
-
---
--- Name: collect_groups collect_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: zhouch
---
-
-ALTER TABLE ONLY public.collect_groups
-    ADD CONSTRAINT collect_groups_pkey PRIMARY KEY (id);
 
 
 --
@@ -2865,14 +2759,6 @@ ALTER TABLE ONLY public.stock_pool_members
 
 ALTER TABLE ONLY public.stock_pools
     ADD CONSTRAINT stock_pools_pkey PRIMARY KEY (id);
-
-
---
--- Name: sys_collect_task_details sys_collect_task_details_pkey; Type: CONSTRAINT; Schema: public; Owner: zhouch
---
-
-ALTER TABLE ONLY public.sys_collect_task_details
-    ADD CONSTRAINT sys_collect_task_details_pkey PRIMARY KEY (id);
 
 
 --
@@ -3577,20 +3463,6 @@ CREATE INDEX ix_stock_pools_pool_type ON public.stock_pools USING btree (pool_ty
 --
 
 CREATE INDEX ix_stock_pools_updated_at ON public.stock_pools USING btree (updated_at);
-
-
---
--- Name: ix_sys_collect_task_details_task_id; Type: INDEX; Schema: public; Owner: zhouch
---
-
-CREATE INDEX ix_sys_collect_task_details_task_id ON public.sys_collect_task_details USING btree (task_id);
-
-
---
--- Name: ix_sys_collect_tasks_group_run_id; Type: INDEX; Schema: public; Owner: zhouch
---
-
-CREATE INDEX ix_sys_collect_tasks_group_run_id ON public.sys_collect_tasks USING btree (group_run_id);
 
 
 --

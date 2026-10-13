@@ -35,7 +35,7 @@ const homeRoutes: RouteRecordRaw = {
     {
       path: 'collect-manage',
       name: 'CollectManage',
-      component: () => import('@/views/collect-manage/CollectManage.vue'),
+      component: () => import('@/views/collect-manage/CollectManageList.vue'),
       meta: { title: '采集管理', icon: 'upload' },
     },
     {

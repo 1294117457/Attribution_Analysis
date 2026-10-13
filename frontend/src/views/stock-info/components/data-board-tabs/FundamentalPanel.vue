@@ -11,10 +11,8 @@
  -->
 <template>
   <div class="fundamental-panel" :class="`cols-${columns}`">
-    <el-card shadow="never">
-      <template #header>
-        <span class="font-bold">日频估值（最新 {{ dailyBasic.length }} 天）</span>
-      </template>
+    <InfoCard title="日频估值">
+      <template #extra><el-tag size="small" type="info">最新 {{ dailyBasic.length }} 天</el-tag></template>
       <div v-loading="loadingBasic" class="mini-table">
         <el-table :data="dailyBasic.slice(0, 30)" size="small" stripe :max-height="tableMaxH">
           <el-table-column prop="trade_date" label="日期" width="110" fixed />
@@ -38,13 +36,10 @@
           </el-table-column>
         </el-table>
       </div>
-    </el-card>
+    </InfoCard>
 
-    <el-card shadow="never">
-      <template #header>
-        <span class="font-bold">季报财务</span>
-        <el-tag size="small" type="info" class="ml-2">{{ finReport.length }} 期</el-tag>
-      </template>
+    <InfoCard title="季报财务">
+      <template #extra><el-tag size="small" type="info">{{ finReport.length }} 期</el-tag></template>
       <div v-loading="loadingReport" class="mini-table">
         <el-table :data="finReport.slice(0, 30)" size="small" stripe max-height="240">
           <el-table-column prop="end_date" label="报告期" width="110" fixed />
@@ -64,13 +59,10 @@
           </el-table-column>
         </el-table>
       </div>
-    </el-card>
+    </InfoCard>
 
-    <el-card shadow="never">
-      <template #header>
-        <span class="font-bold">前十大股东</span>
-        <el-tag size="small" type="warning" class="ml-2">{{ top10Holders.length }} 条</el-tag>
-      </template>
+    <InfoCard title="前十大股东">
+      <template #extra><el-tag size="small" type="warning">{{ top10Holders.length }} 条</el-tag></template>
       <div v-loading="loadingHolders" class="mini-table">
         <el-table :data="top10Holders.slice(0, 30)" size="small" stripe max-height="240">
           <el-table-column prop="end_date" label="报告期" width="110" />
@@ -88,13 +80,10 @@
           </el-table-column>
         </el-table>
       </div>
-    </el-card>
+    </InfoCard>
 
-    <el-card shadow="never">
-      <template #header>
-        <span class="font-bold">前十大流通股东</span>
-        <el-tag size="small" type="warning" class="ml-2">{{ top10Float.length }} 条</el-tag>
-      </template>
+    <InfoCard title="前十大流通股东">
+      <template #extra><el-tag size="small" type="warning">{{ top10Float.length }} 条</el-tag></template>
       <div v-loading="loadingFloat" class="mini-table">
         <el-table :data="top10Float.slice(0, 30)" size="small" stripe max-height="240">
           <el-table-column prop="end_date" label="报告期" width="110" />
@@ -109,13 +98,10 @@
           </el-table-column>
         </el-table>
       </div>
-    </el-card>
+    </InfoCard>
 
-    <el-card shadow="never">
-      <template #header>
-        <span class="font-bold">分红送股</span>
-        <el-tag size="small" type="success" class="ml-2">{{ dividend.length }} 条</el-tag>
-      </template>
+    <InfoCard title="分红送股">
+      <template #extra><el-tag size="small" type="success">{{ dividend.length }} 条</el-tag></template>
       <div v-loading="loadingDividend" class="mini-table">
         <el-table :data="dividend.slice(0, 30)" size="small" stripe max-height="240">
           <el-table-column prop="end_date" label="报告期" width="110" fixed />
@@ -129,12 +115,13 @@
           <el-table-column prop="div_proc" label="进度" width="100" />
         </el-table>
       </div>
-    </el-card>
+    </InfoCard>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import InfoCard from '@/components/InfoCard.vue'
 import * as API from '@/views/concept-board/api-data-board'
 
 const props = withDefaults(defineProps<{
@@ -207,7 +194,6 @@ function colorClass(v: number | null | undefined): string {
   .fundamental-panel.cols-2 { grid-template-columns: 1fr; }
 }
 
-.mini-table { padding: 0.25rem; }
 .mono { font-family: ui-monospace, monospace; font-weight: 600; }
 .font-bold { font-weight: 700; }
 </style>
