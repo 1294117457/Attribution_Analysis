@@ -1,8 +1,9 @@
 <template>
   <div ref="rootRef" class="candle-chart" :style="{ height: `${height}px` }">
     <!-- 顶部工具提示（十字光标 + OHLC + 指标） -->
-    <div v-if="hoverInfo" class="absolute z-10 bg-white/95 border border-gray-200 rounded px-2 py-1 text-xs shadow pointer-events-none"
-         :style="{ left: `${hoverInfo.x + 12}px`, top: `${hoverInfo.y}px` }">
+    <div v-if="hoverInfo" ref="tipRef"
+         class="absolute z-10 bg-white/95 border border-gray-200 rounded px-2 py-1 text-xs shadow pointer-events-none whitespace-nowrap"
+         :style="tipStyle">
       <div class="font-semibold">{{ hoverInfo.date }}</div>
       <div class="text-gray-700">
         开 <span :class="hoverInfo.up ? 'text-red-500' : 'text-green-500'">{{ hoverInfo.open.toFixed(2) }}</span>
@@ -48,12 +49,15 @@ interface Props {
   /** 副图指标：MACD / RSI / KDJ / ''（空=不显示） */
   showSub?: string
   height?: number
+  /** 紧凑模式：刻度画在图内，左右只留窄边（小卡片用） */
+  compact?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   height: 600,
   showMain: () => ['MA5', 'MA20'],
   showSub: 'MACD',
+  compact: false,
 })
 
 const rootRef = ref<HTMLDivElement>()
@@ -65,6 +69,28 @@ const hoverInfo = ref<{
   up: boolean; change_pct: number | null; volume: number
   indicators: Record<string, number | null> | null
 } | null>(null)
+
+// ── 悬浮框定位：过中线翻到鼠标左侧，并限制在图表区域内（溢出会撑出外层滚动条导致图表变形） ──
+const TIP_GAP = 12
+const tipRef = ref<HTMLDivElement>()
+const tipSize = ref({ w: 0, h: 0 })
+const tipStyle = computed(() => {
+  const h = hoverInfo.value
+  if (!h) return {}
+  const { width, height } = dims.value
+  const { w: tw, h: th } = tipSize.value
+  const rawLeft = h.x > width / 2 ? h.x - TIP_GAP - tw : h.x + TIP_GAP
+  const left = Math.min(Math.max(0, rawLeft), Math.max(0, width - tw))
+  const top = Math.min(Math.max(0, h.y), Math.max(0, height - th))
+  return { left: `${left}px`, top: `${top}px` }
+})
+
+function measureTip() {
+  const el = tipRef.value
+  if (el && (el.offsetWidth !== tipSize.value.w || el.offsetHeight !== tipSize.value.h)) {
+    tipSize.value = { w: el.offsetWidth, h: el.offsetHeight }
+  }
+}
 
 // ── ResizeObserver ─────────────────────────────────────────────
 let ro: ResizeObserver | null = null
@@ -88,21 +114,24 @@ function updateSize() {
 const MAIN_PCT = 0.62
 const VOL_PCT  = 0.13   // 成交量条（在主图下方）
 const SUB_PCT  = 0.22
-const PAD_L    = 56
-const PAD_R    = 12
 const PAD_T    = 12
 const PAD_B    = 24
 
 const layout = computed(() => {
-  const w = dims.value.width - PAD_L - PAD_R
-  const total = dims.value.height - PAD_T - PAD_B - 16  // 16 = 主图与副图间距 ×2
-  const mainH = total * MAIN_PCT
-  const volH  = total * VOL_PCT
-  const subH  = total * SUB_PCT
+  const padL = props.compact ? 8 : 56
+  const padR = props.compact ? 8 : 12
+  const w = dims.value.width - padL - padR
+  const hasSub = !!props.showSub
+  // 无副图时主图与成交量按原比例分掉副图的空间
+  const total = dims.value.height - PAD_T - PAD_B - (hasSub ? 16 : 4)
+  const scale = hasSub ? 1 : 1 / (MAIN_PCT + VOL_PCT)
+  const mainH = total * MAIN_PCT * scale
+  const volH  = total * VOL_PCT * scale
+  const subH  = hasSub ? total * SUB_PCT : 0
   return {
-    main: { x: PAD_L, y: PAD_T, w, h: mainH },
-    vol:  { x: PAD_L, y: PAD_T + mainH + 4, w, h: volH },
-    sub:  { x: PAD_L, y: PAD_T + mainH + volH + 12, w, h: subH },
+    main: { x: padL, y: PAD_T, w, h: mainH },
+    vol:  { x: padL, y: PAD_T + mainH + 4, w, h: volH },
+    sub:  { x: padL, y: PAD_T + mainH + volH + 12, w, h: subH },
   }
 })
 
@@ -289,7 +318,9 @@ function buildMainGrid(): string {
     const yy = y + (i / 4) * h
     const price = max - (i / 4) * (max - min)
     lines.push(`<line x1="${x}" y1="${yy}" x2="${x + w}" y2="${yy}" stroke="${chartTheme.grid.line}" stroke-width="0.5"/>`)
-    lines.push(`<text x="${x - 4}" y="${yy + 4}" text-anchor="end" fill="${chartTheme.axis.text}" font-size="10">${price.toFixed(2)}</text>`)
+    lines.push(props.compact
+      ? `<text x="${x + 2}" y="${yy - 2}" text-anchor="start" fill="${chartTheme.axis.text}" font-size="10">${price.toFixed(2)}</text>`
+      : `<text x="${x - 4}" y="${yy + 4}" text-anchor="end" fill="${chartTheme.axis.text}" font-size="10">${price.toFixed(2)}</text>`)
   }
   return lines.join('')
 }
@@ -297,7 +328,9 @@ function buildMainGrid(): string {
 function buildVolGrid(): string {
   const { x, y, w, h } = layout.value.vol
   return [
-    `<text x="${x - 4}" y="${y + 10}" text-anchor="end" fill="${chartTheme.axis.text}" font-size="10">VOL</text>`,
+    props.compact
+      ? `<text x="${x + 2}" y="${y + 10}" text-anchor="start" fill="${chartTheme.axis.text}" font-size="10">VOL</text>`
+      : `<text x="${x - 4}" y="${y + 10}" text-anchor="end" fill="${chartTheme.axis.text}" font-size="10">VOL</text>`,
     `<line x1="${x}" y1="${y}" x2="${x + w}" y2="${y}" stroke="${chartTheme.grid.line}" stroke-width="0.5"/>`,
     `<line x1="${x}" y1="${y + h}" x2="${x + w}" y2="${y + h}" stroke="${chartTheme.grid.line}" stroke-width="0.5"/>`,
   ].join('')
@@ -354,8 +387,13 @@ function buildSubContent(): string {
 
   // Y 轴标尺
   const { min, max } = yRangeSub.value
-  lines.push(`<text x="${x - 4}" y="${y + 8}" text-anchor="end" fill="${chartTheme.axis.text}" font-size="10">${max.toFixed(2)}</text>`)
-  lines.push(`<text x="${x - 4}" y="${y + h}" text-anchor="end" fill="${chartTheme.axis.text}" font-size="10">${min.toFixed(2)}</text>`)
+  if (props.compact) {
+    lines.push(`<text x="${x + w - 2}" y="${y + 10}" text-anchor="end" fill="${chartTheme.axis.text}" font-size="10">${max.toFixed(2)}</text>`)
+    lines.push(`<text x="${x + w - 2}" y="${y + h - 2}" text-anchor="end" fill="${chartTheme.axis.text}" font-size="10">${min.toFixed(2)}</text>`)
+  } else {
+    lines.push(`<text x="${x - 4}" y="${y + 8}" text-anchor="end" fill="${chartTheme.axis.text}" font-size="10">${max.toFixed(2)}</text>`)
+    lines.push(`<text x="${x - 4}" y="${y + h}" text-anchor="end" fill="${chartTheme.axis.text}" font-size="10">${min.toFixed(2)}</text>`)
+  }
 
   return lines.join('')
 }
@@ -369,8 +407,12 @@ const dateLabels = computed(() => {
   for (let i = 0; i < n; i++) {
     indices.push(Math.floor((i / (n - 1)) * (klines.length - 1)))
   }
+  // 首尾标签贴边对齐，避免被容器裁掉
+  const anchor = (j: number) => (j === 0 ? 'start' : j === indices.length - 1 ? 'end' : 'middle')
+  const xLabel = (i: number, j: number) =>
+    j === 0 ? layout.value.main.x : j === indices.length - 1 ? layout.value.main.x + layout.value.main.w : xAt(i)
   return indices
-    .map(i => `<text x="${xAt(i)}" y="${dims.value.height - 8}" text-anchor="middle" fill="${chartTheme.axis.text}" font-size="10">${klines[i].date.slice(5)}</text>`)
+    .map((i, j) => `<text x="${xLabel(i, j)}" y="${dims.value.height - 8}" text-anchor="${anchor(j)}" fill="${chartTheme.axis.text}" font-size="10">${klines[i].date.slice(5)}</text>`)
     .join('')
 })
 
@@ -416,6 +458,7 @@ function onMove(ev: MouseEvent) {
     up, change_pct: k.change_pct, volume: k.volume,
     indicators: buildIndicators(k),
   }
+  nextTick(measureTip)
 }
 
 function buildIndicators(k: Kline) {
@@ -447,6 +490,6 @@ function formatVolume(v: number): string {
 </script>
 
 <style scoped>
-.candle-chart { position: relative; user-select: none; }
+.candle-chart { position: relative; user-select: none; overflow: hidden; }
 .candle-chart svg { display: block; }
 </style>

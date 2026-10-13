@@ -194,8 +194,10 @@
       highlight-current-row
       empty-text="没有匹配的股票"
       row-key="symbol"
+      :row-class-name="rowClassName"
       @row-click="openDetailDrawer"
       @selection-change="onSelectionChange"
+      @expand-change="onExpandChange"
     >
       <!-- 固定列（左侧钉住） -->
       <el-table-column type="selection" :width="colW(50)" fixed="left" />
@@ -703,6 +705,15 @@ function onPageSizeChange(s: number) {
 // ── 选择 ──────────────────────────────────────────────────
 function onSelectionChange(rows: StockInfo[]) {
   selectedStocks.value = rows
+}
+
+// 已展开行：给被展开行打 class，与展开内容同底色（EP 不会给被展开行加 class）
+const expandedSymbols = ref(new Set<string>())
+function onExpandChange(_row: StockInfo, expandedRows: StockInfo[]) {
+  expandedSymbols.value = new Set(expandedRows.map(r => r.symbol))
+}
+function rowClassName({ row }: { row: StockInfo }) {
+  return expandedSymbols.value.has(row.symbol) ? 'is-expanded-row' : ''
 }
 
 function clearSelection() {
@@ -1376,12 +1387,25 @@ onMounted(async () => {
   height: calc(23px * var(--sil-middle-density));
 }
 
-/* 展开内容 cell：EP 写死 padding 20px 50px
- * 这里的 50px 横向 padding 会显著占用展开行宽度，我们改成更小且跟密度
- * 但不强制 0，避免无 padding 导致内容贴到边缘。 */
+/* 展开内容 cell：EP 写死 padding 20px 50px，这里收紧并跟密度 */
 .sil-table :deep(.el-table__expanded-cell) {
-  padding: calc(16px * var(--sil-middle-density)) calc(20px * var(--sil-middle-density));
-  background: #f8fafc;
+  padding: calc(6px * var(--sil-middle-density)) calc(8px * var(--sil-middle-density));
+}
+
+/* 被展开行 + 展开内容同底色，中间不画分隔线，视觉上是一个整体。
+ * 需压过 stripe / hover / current-row / 固定列的底色，以及 EP 的
+ * .el-table__expanded-cell:hover { background: transparent !important } */
+.sil-table {
+  --sil-expanded-bg: #f1f5f9;
+}
+.sil-table :deep(.el-table__body tr.is-expanded-row > td.el-table__cell),
+.sil-table :deep(.el-table__body tr.is-expanded-row:hover > td.el-table__cell),
+.sil-table :deep(.el-table__expanded-cell),
+.sil-table :deep(.el-table__expanded-cell:hover) {
+  background-color: var(--sil-expanded-bg) !important;
+}
+.sil-table :deep(.el-table__body tr.is-expanded-row > td.el-table__cell) {
+  border-bottom-color: transparent;
 }
 
 /* 表头排序图标区域 */

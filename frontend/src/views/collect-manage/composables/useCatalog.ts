@@ -12,6 +12,42 @@
 import { ref, computed } from 'vue'
 import { getCatalog, type FacetGroup, type TaskDef } from '../api'
 
+/** 统计 ready 数 */
+export function countReady(facet: FacetGroup): number {
+  let n = 0
+  for (const tasks of Object.values(facet.sub_groups)) {
+    n += tasks.filter((t) => t.status === 'ready').length
+  }
+  return n
+}
+
+/** 统计 planned 数 */
+export function countPlanned(facet: FacetGroup): number {
+  let n = 0
+  for (const tasks of Object.values(facet.sub_groups)) {
+    n += tasks.filter((t) => t.status === 'planned').length
+  }
+  return n
+}
+
+/** sub_facet 中文标签表（UI 副标题用，无则显示 key） */
+export const SUB_FACET_LABELS: Record<string, string> = {
+  kline: 'K 线',
+  base: '基础数据',
+  valuation: '估值',
+  core: '核心实体',
+  report: '财务报告',
+  holder: '股东结构',
+  dividend: '分红',
+  margin: '两融',
+  moneyflow: '资金流向',
+  dragon_tiger: '龙虎榜',
+  block_trade: '大宗交易',
+  chip: '筹码',
+  article: '资讯',
+  concept: '概念',
+}
+
 export function useCatalog() {
   const catalog = ref<FacetGroup[]>([])
   const loading = ref(false)
@@ -40,42 +76,6 @@ export function useCatalog() {
       }
     }
     return null
-  }
-
-  /** 统计 ready 数 */
-  function countReady(facet: FacetGroup): number {
-    let n = 0
-    for (const tasks of Object.values(facet.sub_groups)) {
-      n += tasks.filter((t) => t.status === 'ready').length
-    }
-    return n
-  }
-
-  /** 统计 planned 数 */
-  function countPlanned(facet: FacetGroup): number {
-    let n = 0
-    for (const tasks of Object.values(facet.sub_groups)) {
-      n += tasks.filter((t) => t.status === 'planned').length
-    }
-    return n
-  }
-
-  /** sub_facet 中文标签表（UI 副标题用，无则显示 key） */
-  const SUB_FACET_LABELS: Record<string, string> = {
-    kline: 'K 线',
-    base: '基础数据',
-    valuation: '估值',
-    core: '核心实体',
-    report: '财务报告',
-    holder: '股东结构',
-    dividend: '分红',
-    margin: '两融',
-    moneyflow: '资金流向',
-    dragon_tiger: '龙虎榜',
-    block_trade: '大宗交易',
-    chip: '筹码',
-    article: '资讯',
-    concept: '概念',
   }
 
   const totalReady = computed(() =>

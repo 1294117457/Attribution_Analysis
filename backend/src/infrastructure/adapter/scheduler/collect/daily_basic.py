@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, timedelta
 
 from infrastructure.adapter import get_registry
 from application.port.collector_port import DailyBasicFetcher
 from infrastructure.persistence.connection import AsyncSessionLocal
+from infrastructure.persistence.models.fin_daily_basic import FinDailyBasicDB
 from infrastructure.persistence.repositories.fin_daily_basic_repository import (
     FinDailyBasicRepoImpl,
 )
@@ -20,6 +20,8 @@ from infrastructure.adapter.scheduler.collect.base import (
     BaseCollectTask,
     UnitResult,
     UnitTally,
+    existing_dates,
+    resolve_trade_dates,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,9 +36,13 @@ class DailyBasicCollectTask(BaseCollectTask):
     label = "日频估值"
     description = "PE / PB / PS / 股息率 + 股本市值 + 换手率 / 量比"
     default_params = {"days": 1}
+    full_params = {"days": 365}
 
     async def list_units(self, params: dict) -> list[str]:
-        return self._resolve_dates(params)
+        return resolve_trade_dates(params)
+
+    async def existing_units(self, units: list[str], params: dict) -> set[str]:
+        return await existing_dates(FinDailyBasicDB.trade_date, units)
 
     async def collect_one(self, unit: str, params: dict) -> UnitResult:
         fetcher = get_registry().get(DailyBasicFetcher)
@@ -58,16 +64,3 @@ class DailyBasicCollectTask(BaseCollectTask):
             f"完成: {tally.success} 天（非交易日 {tally.skip}），"
             f"失败 {tally.fail}；写入 {tally.saved} 条"
         )
-
-    @staticmethod
-    def _resolve_dates(params: dict) -> list[str]:
-        """按 trade_date / days 解析需要采集的日期列表"""
-        trade_date = params.get("trade_date")
-        if trade_date:
-            return [str(trade_date).replace("-", "")]
-        days = int(params.get("days", 1))
-        today = date.today()
-        return [
-            (today - timedelta(days=i)).strftime("%Y%m%d")
-            for i in range(days)
-        ]

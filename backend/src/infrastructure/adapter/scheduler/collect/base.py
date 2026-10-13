@@ -27,8 +27,10 @@ import logging
 import time
 from abc import ABC
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Awaitable, Callable, ClassVar, Optional
+
+from sqlalchemy import select
 
 from infrastructure.persistence.connection import AsyncSessionLocal
 from infrastructure.persistence.models.sys_collect_task import SysCollectTaskDB
@@ -175,6 +177,60 @@ async def run_units(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# 增量采集工具（mode=full / condition 时跳过库中已有单元）
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def parse_date(value: Any) -> Optional[date]:
+    """YYYYMMDD / YYYY-MM-DD / date → date"""
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    s = str(value).replace("-", "")
+    return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+
+
+def resolve_trade_dates(params: dict) -> list[str]:
+    """按 trade_date / start_date+end_date / days 解析交易日单元（YYYYMMDD，倒序）
+
+    带 mode 时剔除周末（非交易日无数据，也永远不会"已存在"）。
+    """
+    trade_date = params.get("trade_date")
+    if trade_date:
+        return [str(trade_date).replace("-", "")]
+    start = parse_date(params.get("start_date"))
+    end = parse_date(params.get("end_date"))
+    if not (start and end):
+        end = date.today()
+        start = end - timedelta(days=int(params.get("days", 1)) - 1)
+    days = [end - timedelta(days=i) for i in range((end - start).days + 1)]
+    if params.get("mode"):
+        days = [d for d in days if d.weekday() < 5]
+    return [d.strftime("%Y%m%d") for d in days]
+
+
+async def existing_dates(column, units: list[str]) -> set[str]:
+    """units（YYYYMMDD）中库里已有数据的交易日"""
+    if not units:
+        return set()
+    async with AsyncSessionLocal() as session:
+        rows = await session.execute(
+            select(column).where(column.in_([parse_date(u) for u in units])).distinct()
+        )
+        return {r[0].strftime("%Y%m%d") for r in rows.all()}
+
+
+async def existing_symbols(column, units: list[str]) -> set[str]:
+    """units（股票代码）中库里已有数据的股票"""
+    if not units:
+        return set()
+    async with AsyncSessionLocal() as session:
+        rows = await session.execute(select(column).where(column.in_(units)).distinct())
+        return {r[0] for r in rows.all()}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # 抽象基类
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -229,6 +285,12 @@ class BaseCollectTask(ABC):
     concurrency: ClassVar[int] = 1
     retry_delay: ClassVar[float] = RETRY_DELAY
 
+    # ── 采集模式（采集管理页面下发 params.mode；不带 mode 时保持原行为）──
+    #   full:      全量，full_params 覆盖 default_params，忽略其它条件
+    #   condition: 按用户条件
+    #   两种模式都经 existing_units 跳过库中已有的单元（增量）
+    full_params: ClassVar[dict] = {}
+
     def __init__(self) -> None:
         # 由 execute_task() 在调用 run() 之前注入
         self._task_id: int = -1
@@ -243,6 +305,18 @@ class BaseCollectTask(ABC):
         """采一个单元并落库；失败抛异常"""
         raise NotImplementedError(f"{type(self).__name__} 未实现 collect_one")
 
+    async def existing_units(self, units: list[str], params: dict) -> set[str]:
+        """units 中库里已有数据的单元（带 mode 时跳过）；默认无"""
+        return set()
+
+    async def pending_units(self, params: dict) -> list[str]:
+        """list_units 去掉已有单元（仅带 mode 时）"""
+        units = await self.list_units(params)
+        if not params.get("mode"):
+            return units
+        existing = await self.existing_units(units, params)
+        return [u for u in units if u not in existing]
+
     @property
     def supports_collect_one(self) -> bool:
         return type(self).collect_one is not BaseCollectTask.collect_one
@@ -251,7 +325,7 @@ class BaseCollectTask(ABC):
 
     async def estimate_total(self, params: dict) -> int:
         """预估单元总数（router 同步 await）"""
-        return len(await self.list_units(params))
+        return len(await self.pending_units(params))
 
     async def run(
         self,
@@ -259,7 +333,7 @@ class BaseCollectTask(ABC):
         on_unit_done: Callable[[UnitResult, str], Awaitable[None]],
     ) -> TaskSummary:
         """业务主循环；完成一个单元立即调用 on_unit_done(result, label)"""
-        units = await self.list_units(params)
+        units = await self.pending_units(params)
 
         async def work(unit: str, delay: Optional[float]) -> UnitResult:
             if delay:
@@ -487,6 +561,10 @@ __all__ = [
     "Cancelled",
     "run_units",
     "execute_task",
+    "parse_date",
+    "resolve_trade_dates",
+    "existing_dates",
+    "existing_symbols",
     "request_cancel",
     "is_cancelled",
     "clear_cancel",

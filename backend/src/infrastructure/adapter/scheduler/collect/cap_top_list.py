@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, timedelta
 
 from application.port.collector_port import TopListFetcher, RateLimitError
 from infrastructure.adapter import get_registry
@@ -16,9 +15,12 @@ from infrastructure.adapter.scheduler.collect.base import (
     Cancelled,
     UnitResult,
     UnitTally,
+    existing_dates,
     is_cancelled,
+    resolve_trade_dates,
 )
 from infrastructure.persistence.connection import AsyncSessionLocal
+from infrastructure.persistence.models.cap_top_list import CapTopListDB
 from infrastructure.persistence.repositories.cap_top_list_repository import (
     CapTopListRepoImpl,
 )
@@ -36,10 +38,14 @@ class CapTopListCollectTask(BaseCollectTask):
     label = "龙虎榜每日"
     description = "上榜汇总 + 净买卖额（tushare top_list）"
     default_params = {"days": 1}
+    full_params = {"days": 365}
     sort_order = 10
 
     async def list_units(self, params: dict) -> list[str]:
-        return self._resolve_dates(params)
+        return resolve_trade_dates(params)
+
+    async def existing_units(self, units: list[str], params: dict) -> set[str]:
+        return await existing_dates(CapTopListDB.trade_date, units)
 
     async def collect_one(self, unit: str, params: dict) -> UnitResult:
         fetcher = get_registry().get(TopListFetcher)
@@ -79,12 +85,3 @@ class CapTopListCollectTask(BaseCollectTask):
             step = min(1.0, remaining)
             await asyncio.sleep(step)
             remaining -= step
-
-    @staticmethod
-    def _resolve_dates(params: dict) -> list[str]:
-        trade_date = params.get("trade_date")
-        if trade_date:
-            return [str(trade_date).replace("-", "")]
-        days = int(params.get("days", 1))
-        today = date.today()
-        return [(today - timedelta(days=i)).strftime("%Y%m%d") for i in range(days)]

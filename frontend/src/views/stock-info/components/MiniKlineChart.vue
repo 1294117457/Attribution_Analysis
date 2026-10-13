@@ -1,6 +1,6 @@
 <template>
   <div class="mini-kline">
-    <div v-if="title || loading || klines.length" class="mini-kline-header">
+    <div v-if="!hideHeader && (title || loading || klines.length)" class="mini-kline-header">
       <span v-if="title" class="mini-kline-title">{{ title }}</span>
       <span v-if="loading" class="text-xs text-gray-400">加载中...</span>
       <span v-else-if="klines.length" class="text-xs text-gray-400">{{ klines.length }} 根</span>
@@ -14,6 +14,7 @@
       :show-main="showMain"
       :show-sub="showSub"
       :height="height"
+      compact
     />
     <div v-else class="mini-kline-placeholder" :style="{ height: `${height}px` }">
       <span class="text-xs text-gray-400">暂无数据</span>
@@ -34,8 +35,11 @@ const props = withDefaults(defineProps<{
   height?: number
   showMain?: string[]
   showSub?: string
+  /** 不显示头部（标题 / 加载中 / 根数），由外部工具栏展示 */
+  hideHeader?: boolean
 }>(), {
   loading: false,
+  hideHeader: false,
   height: 160,
   showMain: () => [],
   showSub: '',
