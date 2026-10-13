@@ -74,7 +74,7 @@ flowchart LR
 
 | task_type | 分类 | 单元 | `collect_one` | 默认参数 | 写入表 |
 |---|---|---|---|---|---|
-| `daily_kline` | tech / kline | 股票 | ✓（业务复用） | `days=7` | `tech_kline_dailys`（含 17 指标） |
+| `daily_kline` | tech / kline | 股票 | ✓（业务复用） | `days=7` | `tech_kline_dailys`（仅 OHLCV） |
 | `stock_basic` | fundamental / core | `all` | ✓ | `list_status=L` | `stock_infos` |
 | `daily_basic` | fundamental / valuation | 交易日 | ✓ | `days=1` | `fin_daily_basics` |
 | `fin_report` | fundamental / report | 股票 | ✓ | `years=1` | `fin_reports` |

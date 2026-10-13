@@ -1170,25 +1170,7 @@ CREATE TABLE public.tech_kline_dailys (
     amount double precision NOT NULL,
     change_pct double precision,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    ma5 double precision,
-    ma10 double precision,
-    ma20 double precision,
-    ma60 double precision,
-    ema12 double precision,
-    ema26 double precision,
-    macd_dif double precision,
-    macd_dea double precision,
-    macd_bar double precision,
-    rsi6 double precision,
-    rsi12 double precision,
-    rsi24 double precision,
-    kdj_k double precision,
-    kdj_d double precision,
-    kdj_j double precision,
-    boll_up double precision,
-    boll_mid double precision,
-    boll_dn double precision
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 

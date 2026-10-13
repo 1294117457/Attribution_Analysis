@@ -381,7 +381,7 @@ export const deleteStock = (symbol: string) =>
 
 // ── K 线采集 & 查询（响应含 17 个指标列）───────────────────────
 
-/** POST /klines/collect  采集 K 线（后端会一并算指标） */
+/** POST /klines/collect  采集 K 线（只存 OHLCV） */
 export const collectKlines = (body: { symbol: string; days?: number }) =>
   http.post<CollectResult>('/klines/collect', body).then(unwrap)
 
@@ -395,7 +395,7 @@ export const collectBatch = (symbols: string[], days = 30) =>
         .join('&'),
   }).then(unwrap)
 
-/** GET /klines/{symbol}  查询 K 线列表（含指标列） */
+/** GET /klines/{symbol}  查询 K 线列表（指标由后端实时计算） */
 export const getKlines = (
   symbol: string,
   params: { start_date?: string; end_date?: string; limit?: number; order_desc?: boolean } = {}
