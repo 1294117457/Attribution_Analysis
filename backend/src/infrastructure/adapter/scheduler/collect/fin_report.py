@@ -1,4 +1,4 @@
-﻿"""季报财务采集任务（Tushare income · 利润表）
+"""季报财务采集任务（Tushare income · 利润表）
 
 单元 = 1 只股票（按单只调用 income；按报告期拉全市场的 income_vip 需 5000 积分，当前账号无权限）。
 只采合并报表 report_type=1，写 fin_reports 的利润表列；面板净利润率 = n_income / revenue × 100。
@@ -28,10 +28,12 @@ from infrastructure.adapter.scheduler.collect.base import (
     Cancelled,
     UnitResult,
     UnitTally,
+    existing_symbols,
     is_cancelled,
 )
 from infrastructure.adapter.fetcher.tushare import symbol_to_ts_code
 from infrastructure.persistence.connection import AsyncSessionLocal
+from infrastructure.persistence.models.fin_report import FinReportDB
 from infrastructure.persistence.models.stock_info import StockInfoDB
 from infrastructure.persistence.repositories.fin_report_repository import FinReportRepoImpl
 
@@ -53,9 +55,13 @@ class FinReportCollectTask(BaseCollectTask):
     description = "利润表：营收 / 净利润 / EPS（tushare income，合并报表），面板净利润率数据来源"
 
     default_params = {"years": 1}
+    full_params = {"years": 3}
 
     async def list_units(self, params: dict) -> list[str]:
         return await self._symbols(params)
+
+    async def existing_units(self, units: list[str], params: dict) -> set[str]:
+        return await existing_symbols(FinReportDB.symbol, units)
 
     async def collect_one(self, unit: str, params: dict) -> UnitResult:
         fetcher: FinReportFetcher = get_registry().get(FinReportFetcher)

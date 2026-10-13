@@ -1,4 +1,4 @@
-﻿"""股东户数采集任务（Tushare stk_holdernumber）
+"""股东户数采集任务（Tushare stk_holdernumber）
 
 单元 = 单只股票；按 stock_basic 列表逐个 fetch。
 季频数据，所以只 missing 才采（only_missing 模式）。
@@ -17,6 +17,7 @@ from infrastructure.adapter.scheduler.collect.base import (
     Cancelled,
     UnitResult,
     UnitTally,
+    existing_symbols,
     is_cancelled,
 )
 from infrastructure.adapter.fetcher.tushare import symbol_to_ts_code
@@ -59,6 +60,10 @@ class CapHolderNumCollectTask(BaseCollectTask):
                 symbols = [s for s in symbols if s not in existing_set]
         limit = params.get("limit")
         return symbols[: int(limit)] if limit else symbols
+
+    async def existing_units(self, units: list[str], params: dict) -> set[str]:
+        from infrastructure.persistence.models.cap_holder_num import CapHolderNumDB
+        return await existing_symbols(CapHolderNumDB.symbol, units)
 
     async def collect_one(self, unit: str, params: dict) -> UnitResult:
         fetcher = get_registry().get(HolderNumberFetcher)

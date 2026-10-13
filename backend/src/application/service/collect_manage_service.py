@@ -291,14 +291,19 @@ class CollectManageService:
     ) -> dict:
         """参数合并：手动传入 > 方案项 params > default_params
 
+        mode=full 时忽略其它条件，改用 full_params（仅保留 mode / concurrency）。
         ⚠️ 不查 DB —— 方案项参数由调用方（run_plan）传入。
         """
         handler = self.handler(task_type)
-        return {
+        merged = {
             **handler.default_params,
             **(plan_item_params or {}),
             **(params or {}),
         }
+        if merged.get("mode") == "full":
+            keep = {k: merged[k] for k in ("mode", "concurrency") if k in merged}
+            merged = {**handler.default_params, **handler.full_params, **keep}
+        return merged
 
     # ── 后台执行 ────────────────────────────────────────────────────────
 

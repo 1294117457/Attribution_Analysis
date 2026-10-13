@@ -8,6 +8,7 @@
 > - **`page-development-guide.md`**：**页面内部**开发规范——模板结构、rem 锚点架构、四区实现、EP 集成、density-inline 横向滚动模式
 > - **`detail-drawer-guide.md`**：详情抽屉规范——top-button-area / baseinfo-area / main-area 三区结构，`DetailDrawer.vue` 用法
 > - **`card-guide.md`**：信息卡片规范——`InfoCard.vue` 用法，统一标题栏、内容区、表格 / K 线卡片
+> - **`tree-selector-guide.md`**：树形选择器规范——三层（分组 / 子分组 / 条目）样式、折叠、tooltip、左右独立滚动，参考 `CatalogTree.vue`
 
 ## 一、技术栈
 
