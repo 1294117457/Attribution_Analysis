@@ -3,10 +3,10 @@
 页面：`frontend/src/views/stock-info/StockInfoList.vue`
 接口：`GET /api/v1/stock-panel/`（`with_pools=true`）
 查询：`backend/src/infrastructure/persistence/repositories/panel_compose_repository.py`
-后端 DDD 现状（2026-10-02）：
-- `domain/market/` 提供交易时段规则（`MarketSessionService` + `is_trading_time` / `ttl_for` / `market_now`），被 `infrastructure/adapter/realtime/framework.py` 调用以决定实时接口缓存 TTL
-- `infrastructure/adapter/realtime/RealtimeQueryFramework` 替代旧的 `application/service/realtime_app_service.py`（技术框架下移到 infrastructure 层）
-- 业务侧 service 与实时接口的关系：`*_app_service` 调 `get_realtime_query_framework().query(...)` 拉行情数据，不持有缓存/限流/单飞等横切逻辑
+后端 DDD 现状（2026-10-13，底层采集优化后）：
+- `domain/service/market_session.py` 提供交易时段规则（`MarketSessionService` + `is_trading_time` / `ttl_for` / `market_now`），被 `infrastructure/adapter/data/core/cache.py` 的 `CacheDecorator` 调用以决定实时接口缓存 TTL
+- 实时接口 = 声明了 `cache` 的数据 Port（`application/port/data/`：`MinuteKlinePort` / `ConceptMinutePort`），统一经 `DataGateway` 取数；旧 `infrastructure/adapter/realtime/`（`RealtimeQueryFramework`）已删除
+- 业务侧 service 与实时接口的关系：`StockInfoService.get_minute_klines` 与 `ConceptRealtimeReader`（`ConceptService` / `ConceptBoardService` 共用）以 `CallPolicy.QUERY` 调 `gateway.fetch` / `fetch_many` 拉行情数据，不持有缓存/限流/单飞等横切逻辑；行情源失败时的降级（最近收盘、`stale=true`）由 `ConceptRealtimeReader` 负责
 
 ## 列 → 表
 
@@ -35,10 +35,10 @@
 | 展开行 · 分 K（`StockExpandRow.vue`） | 通达信分钟 K（实时接口 `stock_minute_kline`） | `GET /minute-klines/{symbol}?interval&days` | 交易时段 15 秒 |
 | 详情抽屉 · 概念 Tab（`ConceptTab.vue`） | 所属概念（`stock_concept_members` + `concepts`）+ 当日涨跌幅（实时接口 `concept_minute`） | `GET /concepts/tab-by-symbol/{symbol}`；行情刷新 `GET /concepts/quotes?codes=` | 交易时段 15 秒（只刷行情） |
 
-- 分 K 天数：1 分钟只有「当天」，其他周期「当天 / 3 日 / 5 日」；「当天」指最近一个交易日。北交所代码暂不支持。
+- 分 K 天数：1 分钟只有「当天」，其他周期「当天 / 3 日 / 5 日」；「当天」指最近一个交易日。接口参数 `interval=1min|5min|15min|30min|60min`、`days=1..5`（`count` 已移除）：非法 `interval` → 422，`1min` 且 `days>1` / 北交所代码 → 400，数据源失败 → 502。
 - 概念 Tab 各分组内按当日涨跌幅降序；行情源失败时显示最近一条日 K 收盘（`stale=true`，灰色，悬浮提示「行情源暂不可用」）。
 - 轮询用 `frontend/src/composables/useRealtimePoll.ts`：仅交易时段 + 页面可见时刷新，折叠 / 关闭即停止，连续失败 3 次暂停并显示「重试」。工具栏显示「实时 · 15 秒」/「已收盘」标记和最后更新时间。
-- 后端缓存 / 单飞 / 限流细节见 [`collectmanage摘要.md`](collectmanage摘要.md) §4 / §10。
+- 后端缓存 / 单飞 / 限流细节见 [`collectmanage摘要.md`](collectmanage摘要.md) §4 / §10，设计见 [`step5/02底层采集优化`](../dev/step5/02底层采集优化/README.md)。
 
 ## 表 → 采集任务
 
@@ -60,7 +60,7 @@
 | 同步股票 | `syncStocks` | `POST /stocks/sync` | `stock_basic`（`run_one(..., "all")`） |
 | K 线抽屉「采集」 | `collectKlines` / `collectBatch` | `POST /klines/collect`、`/collect/batch` | `daily_kline`（逐只 `run_one`） |
 
-这些路由已改为通过 `CollectAppService.run_one` 调用采集接口的 `collect_one`，与采集管理页共用一套采集 + 落库逻辑；响应字段不变，前端没有改动。大批量采集建议走采集管理（`POST /collect/tasks`，有进度、可取消）。整体情况见 [`collectmanage摘要.md`](collectmanage摘要.md)。
+这些路由已改为通过 `CollectManageService.run_one` 调用采集接口的 `collect_one`，与采集管理页共用一套采集 + 落库逻辑；响应字段不变，前端没有改动。大批量采集建议走采集管理（`POST /collect/tasks`，有进度、可取消）。整体情况见 [`collectmanage摘要.md`](collectmanage摘要.md)。
 
 ## 对应关系图
 

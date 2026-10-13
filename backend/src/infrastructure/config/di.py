@@ -7,7 +7,7 @@ application 层只接收已构造好的依赖（依赖反转）。
 约定：
 - 所有 service 工厂都集中在此；route 层只 Depends(...)
 - scheduler / 后台任务走 `build_*_service(session)` 显式工厂（带 session 注入仓储）
-- Fetcher 注册中心在 `setup_default_registry()` 内部注入（lifespan 时调用）
+- 数据源 Adapter 在 `setup_default_registry()` 内注册（lifespan 时调用）
 
 用法（route 层）：
     from infrastructure.config.di import get_stock_info_service
@@ -28,8 +28,6 @@ from typing import TYPE_CHECKING, AsyncIterator
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from application.port.collector_port import ConceptFetcher, KlineFetcher
-from application.port.registry import get_registry
 from domain.service import (
     ConceptBriefService,
     ConceptCollectionPolicy,
@@ -41,11 +39,12 @@ from infrastructure.adapter.auth_port_adapters import (
     EmailVerificationAdapter,
     JwtAdapter,
 )
-from infrastructure.adapter.realtime.framework import get_realtime_query_framework
-from infrastructure.adapter.realtime.registry import get_realtime_registry
-
 if TYPE_CHECKING:
     # 仅供 type hint,避免循环 import
+    from application.port.data import DataGatewayPort
+    from application.port.scheduler_port import SchedulerPort
+    from application.service.concept_realtime import ConceptRealtimeReader
+    from application.service.data_query_service import DataQueryService
     from application.service import (
         AuthService,
         CollectManageService,
@@ -108,13 +107,25 @@ def get_concept_collection_policy() -> ConceptCollectionPolicy:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Fetcher（注册中心取）
+#  数据统一入口
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def get_kline_fetcher() -> KlineFetcher:
-    """K线 fetcher（从注册中心取）"""
-    return get_registry().get(KlineFetcher)
+def get_data_gateway() -> "DataGatewayPort":
+    """数据统一入口（DataGateway 单例）"""
+    from infrastructure.adapter.data import get_data_gateway as _ggw
+    return _ggw()
+
+
+def get_data_query_service() -> "DataQueryService":
+    """按名调用入口（试查 / HTTP /data/* / Agent）"""
+    from application.service.data_query_service import DataQueryService
+    return DataQueryService(get_data_gateway())
+
+
+def _concept_realtime_reader(repo: ConceptRepoImpl) -> "ConceptRealtimeReader":
+    from application.service.concept_realtime import ConceptRealtimeReader
+    return ConceptRealtimeReader(get_data_gateway(), repo)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -161,19 +172,17 @@ async def _get_collect_redis() -> Any:
 
 def _get_collect_task_registry():
     """采集任务注册中心（lazy import 避免循环依赖）"""
-    from infrastructure.adapter.scheduler.collect import get_collect_task_registry as _gtr
+    from infrastructure.adapter.collect import get_collect_task_registry as _gtr
     return _gtr()
 
 
-def _get_collect_scheduler():
-    """采集调度器（lazy import 避免循环依赖）"""
-    from infrastructure.adapter.scheduler.collect_scheduler import get_collect_scheduler as _gcs
-    return _gcs()
+_scheduler: "SchedulerPort | None" = None
 
 
-def _get_realtime_registry():
-    """实时接口注册中心"""
-    return get_realtime_registry()
+def set_scheduler(scheduler: "SchedulerPort | None") -> None:
+    """lifespan 启动调度器后注入；未启用时保持 None（方案仍可手动执行）"""
+    global _scheduler
+    _scheduler = scheduler
 
 
 def get_collect_manage_service() -> "CollectManageService":
@@ -187,9 +196,9 @@ def get_collect_manage_service() -> "CollectManageService":
     return CollectManageService(
         redis=_LazyRedisPort(),   # 延迟到首次 await 时再连接 Redis，避免阻塞 sync 工厂
         task_registry=_get_collect_task_registry(),
-        scheduler=_get_collect_scheduler(),
+        scheduler=_scheduler,
         config_repo=CollectConfigRepoImpl(),  # session 由调用方在使用时注入
-        realtime_registry=_get_realtime_registry(),
+        gateway=get_data_gateway(),
         session_factory=_session_ctx,
     )
 
@@ -263,6 +272,7 @@ def get_stock_info_service(
         concept_repo=ConceptRepoImpl(session),
         brief_service=brief_service,
         indicator_calc=indicator_calc,
+        gateway=get_data_gateway(),
     )
 
 
@@ -271,14 +281,11 @@ def get_concept_service(
 ) -> "ConceptService":
     """概念基础查询服务（共享）"""
     from application.service import ConceptService
-    registry = get_registry()
-    if not registry.has(ConceptFetcher):
-        from fastapi import HTTPException
-        raise HTTPException(503, "概念采集器未注册")
+    repo = ConceptRepoImpl(session)
     return ConceptService(
-        repo=ConceptRepoImpl(session),
-        fetcher=registry.get(ConceptFetcher),
-        realtime=get_realtime_query_framework(),
+        repo=repo,
+        gateway=get_data_gateway(),
+        realtime=_concept_realtime_reader(repo),
     )
 
 
@@ -287,10 +294,8 @@ def get_concept_board_service(
 ) -> "ConceptBoardService":
     """概念大盘应用服务（大盘 + 概念 K 线）"""
     from application.service import ConceptBoardService
-    return ConceptBoardService(
-        repo=ConceptRepoImpl(session),
-        realtime=get_realtime_query_framework(),
-    )
+    repo = ConceptRepoImpl(session)
+    return ConceptBoardService(repo=repo, realtime=_concept_realtime_reader(repo))
 
 
 def get_stock_pool_service(
@@ -298,14 +303,16 @@ def get_stock_pool_service(
 ) -> "StockPoolService":
     """操作池应用服务（CRUD + 成员 + 池操作派发）"""
     from application.service import StockPoolService
-    from infrastructure.adapter.scheduler.operation_dispatcher import (
+    from infrastructure.adapter.background.operation_dispatcher import (
         OperationDispatcher,
     )
     return StockPoolService(
         pool_repo=StockPoolRepoImpl(session),
         stock_repo=StockRepoImpl(session),
         op_repo=PoolOperationRepoImpl(session),
-        dispatcher=OperationDispatcher(),
+        dispatcher=OperationDispatcher(
+            run_one=lambda t, u, p: get_collect_manage_service().run_one(t, u, p),
+        ),
     )
 
 
@@ -325,113 +332,22 @@ def build_stock_info_service(session: AsyncSession) -> "StockInfoService":
         concept_repo=ConceptRepoImpl(session),
         brief_service=ConceptBriefService(),
         indicator_calc=IndicatorCalculator(),
+        gateway=get_data_gateway(),
     )
 
 
 def build_concept_service(session: AsyncSession) -> "ConceptService":
     """为后台任务构造 ConceptService（采集任务 / 反查）"""
     from application.service import ConceptService
-    registry = get_registry()
-    return ConceptService(
-        repo=ConceptRepoImpl(session),
-        fetcher=registry.get(ConceptFetcher),
-    )
+    return ConceptService(repo=ConceptRepoImpl(session), gateway=get_data_gateway())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Fetcher 注册中心初始化
+#  数据源初始化
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
 def setup_default_registry() -> None:
-    """构造 Fetcher 实例并注册到全局注册中心
-
-    调用时机：FastAPI lifespan 启动时。
-    本函数只由 infrastructure 层持有（application 不知道 SDK 细节）。
-    """
-    from application.port.collector_port import (
-        AdjFactorFetcher,
-        BlockTradeFetcher,
-        ConceptFetcher,
-        DailyBasicFetcher,
-        DividendFetcher,
-        FinReportFetcher,
-        HolderNumberFetcher,
-        KlineFetcher,
-        MarginDetailFetcher,
-        MinuteKlineFetcher,
-        MoneyflowFetcher,
-        NameChangeFetcher,
-        StockBasicFetcher,
-        SuspendFetcher,
-        Top10FloatHoldersFetcher,
-        Top10HoldersFetcher,
-        TopInstFetcher,
-        TopListFetcher,
-    )
-    from infrastructure.adapter.fetcher.pytdx import PytdxFetcher
-    from infrastructure.adapter.fetcher.tushare import TushareFetcher
-    from route.dto.request.kline import KlineBO
-
-    reg = get_registry()
-
-    # ── TushareFetcher：单一实例覆盖全部 tushare 协议 ──
-    # 注意：Kline/StockBasic/DailyBasic/FinReport 之外，下面 13 个协议
-    # （资金面 6 + 基本面 3 + 基础面 4）也由同一个 TushareFetcher 实现。
-    # 早期版本漏注册，导致 base_*/cap_*/fin_top10_* 任务运行时报
-    # "fetcher 未注册"，全部 0 行 —— 详见 collect/registry 的任务列表。
-    tushare_singleton = TushareFetcher(KlineBO)
-    tushare_factory = lambda: TushareFetcher(KlineBO)  # noqa: E731
-
-    reg.register_instance(KlineFetcher, tushare_singleton)
-    reg.register_factory(KlineFetcher, tushare_factory)
-    reg.register_instance(StockBasicFetcher, tushare_singleton)
-    reg.register_factory(StockBasicFetcher, tushare_factory)
-    reg.register_instance(DailyBasicFetcher, tushare_singleton)
-    reg.register_factory(DailyBasicFetcher, tushare_factory)
-    reg.register_instance(FinReportFetcher, tushare_singleton)
-
-    # ── 资金面 6 个协议（cap_* 任务）──────────────────────────
-    for port in (
-        MoneyflowFetcher,        # cap_moneyflow
-        MarginDetailFetcher,     # cap_margin_detail
-        TopListFetcher,          # cap_top_list
-        TopInstFetcher,          # cap_top_inst
-        BlockTradeFetcher,       # cap_block_trade
-        HolderNumberFetcher,     # cap_holder_num
-    ):
-        reg.register_instance(port, tushare_singleton)
-        reg.register_factory(port, tushare_factory)
-
-    # ── 基本面 3 个协议（fin_* 任务）──────────────────────────
-    for port in (
-        Top10HoldersFetcher,      # fin_top10_holders
-        Top10FloatHoldersFetcher, # fin_top10_floatholders
-    ):
-        reg.register_instance(port, tushare_singleton)
-        reg.register_factory(port, tushare_factory)
-
-    # ── 基础面 4 个协议（base_* 任务）──────────────────────────
-    for port in (
-        AdjFactorFetcher,   # base_adj_factor
-        SuspendFetcher,     # base_suspend
-        NameChangeFetcher,  # base_name_change
-        DividendFetcher,    # base_dividend
-    ):
-        reg.register_instance(port, tushare_singleton)
-        reg.register_factory(port, tushare_factory)
-
-    # ── MinuteKlineFetcher（PytdxFetcher 有状态，单例复用 TCP 连接） ──
-    pytdx_fetcher = PytdxFetcher()
-    reg.register_instance(MinuteKlineFetcher, pytdx_fetcher)
-    reg.register_factory(MinuteKlineFetcher, PytdxFetcher)
-
-    # ── ConceptFetcher（adata 优先，缺包时降级） ──
-    try:
-        from infrastructure.adapter.fetcher.adata import AdataConceptFetcher
-        reg.register_instance(ConceptFetcher, AdataConceptFetcher())
-        reg.register_factory(ConceptFetcher, AdataConceptFetcher)
-    except Exception as e:
-        logger.warning("ConceptFetcher (Adata) 未注册: %s", e)
-
-    logger.info("FetcherRegistry 初始化完成: %s", reg)
+    """注册全部数据源 Adapter 到 DataPortRegistry（lifespan 启动时调用，幂等）"""
+    from infrastructure.adapter.data import setup_data
+    setup_data()

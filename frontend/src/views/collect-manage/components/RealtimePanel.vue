@@ -98,17 +98,22 @@ const queryError = ref('')
 const result = ref<RealtimeResult | null>(null)
 const stats = ref<RealtimeStats | null>(null)
 
+// data 为 BO 列表；单条且带 points（概念分时）时展开 points，其余字段作为头部
+const single = computed<Record<string, any> | null>(() => {
+  const d = result.value?.data
+  return Array.isArray(d) && d.length === 1 && Array.isArray(d[0]?.points) ? d[0] : null
+})
 const rows = computed<Record<string, any>[]>(() => {
   const d = result.value?.data
-  return (d?.items || d?.points || []) as Record<string, any>[]
+  if (single.value) return single.value.points
+  return (Array.isArray(d) ? d : []) as Record<string, any>[]
 })
 const previewTotal = computed(() => rows.value.length)
 const previewRows = computed(() => rows.value.slice(0, PREVIEW_ROWS))
 const previewColumns = computed(() => Object.keys(previewRows.value[0] || {}))
 const headerFields = computed(() => {
-  const d = result.value?.data
-  if (!d || typeof d !== 'object') return d == null ? '' : String(d)
-  const { items, points, ...rest } = d
+  if (!single.value) return ''
+  const { points, ...rest } = single.value
   return Object.keys(rest).length ? JSON.stringify(rest, null, 2) : ''
 })
 

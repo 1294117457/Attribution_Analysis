@@ -42,6 +42,8 @@ class Settings(BaseSettings):
 
     # 数据源
     TUSHARE_TOKEN: str = ""
+    # 禁用的采集工具（逗号分隔，如 "akshare,pytdx"）
+    DATA_SOURCE_DISABLED: str = ""
 
     # 采集并发
     COLLECT_CONCURRENCY: int = 3

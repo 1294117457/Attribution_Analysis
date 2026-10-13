@@ -18,8 +18,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from application.port.collector_port import ConceptFetcher
-from application.port.realtime_query_port import RealtimeQueryPort
+from application.port.data import DataGatewayPort
+from application.port.data.base import CallPolicy, InvalidParams, SourceUnavailable
+from application.port.data.concept import StockConceptsPort
+from application.service.concept_realtime import ConceptMinuteVO, ConceptRealtimeReader
 from domain.entitys.concept.entity import Concept, ConceptNotFoundError
 from domain.entitys.concept.repository import ConceptRepository
 from domain.entitys.concept.vo import CONCEPT_TYPE_PRIORITY, ConceptBriefVO
@@ -99,11 +101,11 @@ class ConceptService:
         self,
         *,
         repo: ConceptRepository,
-        fetcher: ConceptFetcher,
-        realtime: Optional[RealtimeQueryPort] = None,
+        gateway: DataGatewayPort,
+        realtime: Optional[ConceptRealtimeReader] = None,
     ):
         self._repo = repo
-        self._fetcher = fetcher
+        self._gateway = gateway
         self._realtime = realtime
 
     # ── 列表 / 详情 ─────────────────────────────────────────
@@ -148,20 +150,30 @@ class ConceptService:
             names = await self._repo.get_names(codes)
         if self._realtime is None:
             return {}
-        results = await self._realtime.query_many(
-            "concept_minute", [{"index_code": c} for c in codes],
-        )
+        results = await self._realtime.minutes(codes)
         return {
             code: _to_quote(code, names.get(code, ""), res)
-            for code, res in zip(codes, results)
+            for code, res in results.items()
             if res.data
         }
 
+    async def get_minute(self, index_code: str) -> ConceptMinuteVO:
+        """单概念当日分时；参数非法抛 InvalidParams，实时与降级都拿不到抛 SourceUnavailable"""
+        if not (index_code.isdigit() and len(index_code) == 6):
+            raise InvalidParams("index_code 需为 6 位同花顺指数编码（885xxx）")
+        if self._realtime is None:
+            raise SourceUnavailable("概念实时行情未配置")
+        vo = await self._realtime.minute(index_code)
+        if vo.data is None:
+            raise SourceUnavailable(f"概念实时行情获取失败: {vo.error}")
+        return vo
+
     # ── 实时反查 ─────────────────────────────────────────────
 
-    def fetch_concepts_by_stock(self, symbol: str) -> list[ConceptLiveVO]:
+    async def fetch_concepts_by_stock(self, symbol: str) -> list[ConceptLiveVO]:
         """按股票代码实时反查所属概念（同花顺 F10，带入选理由，约 0.5s/只，不入库）"""
-        bos = self._fetcher.fetch_concepts_by_stock(symbol)
+        res = await self._gateway.fetch(StockConceptsPort, {"symbol": symbol}, policy=CallPolicy.QUERY)
+        bos = res.items
         return [
             ConceptLiveVO(concept_code=bo.index_code, name=bo.name, source="ths", reason=bo.reason)
             for bo in bos
@@ -202,7 +214,7 @@ class ConceptService:
         grouped_vos = await self._repo.list_concepts_by_symbol_grouped(symbol)
         live_vos: list[ConceptLiveVO] = []
         try:
-            live_vos = self.fetch_concepts_by_stock(symbol)
+            live_vos = await self.fetch_concepts_by_stock(symbol)
         except Exception as e:
             logger.warning("实时反查 %s 失败，降级为仅 DB: %s", symbol, e)
         code_names = {v.index_code: v.name for v in grouped_vos if v.index_code}

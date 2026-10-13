@@ -714,11 +714,13 @@ export interface MinuteKline {
   amount:      number
 }
 
+export type MinuteInterval = '1min' | '5min' | '15min' | '30min' | '60min'
+
 /** GET /minute-klines/{symbol}  实时获取分钟 K 线（实时接口 stock_minute_kline，15 秒缓存）
  *  days：1min 仅 1（当天），其他周期 1–5 */
 export const getMinuteKlines = (
   symbol: string,
-  params: { interval?: string; days?: number } = {}
+  params: { interval?: MinuteInterval; days?: number } = {}
 ) =>
   http
     .get<{ total: number; items: MinuteKline[]; cached: boolean; fetched_at: string | null }>(

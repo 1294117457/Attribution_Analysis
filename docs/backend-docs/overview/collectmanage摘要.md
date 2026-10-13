@@ -2,12 +2,18 @@
 
 页面：`frontend/src/views/collect-manage/CollectManage.vue`（标签页：采集接口 / 采集方案）
 接口：`/api/v1/collect/*`（`backend/src/route/api/v1/collect_task.py`）
-应用服务：`backend/src/application/service/collect_app_service.py`
-框架：`backend/src/infrastructure/adapter/scheduler/collect/`；调度器：`scheduler/collect_scheduler.py`
-实时接口：`backend/src/infrastructure/adapter/realtime/`（含 `framework.py` 的 `RealtimeQueryFramework` + `BaseRealtimeQuery` 子类 + `domain/market/` 提供的交易时段规则）
-方案：[`04-修订方案`](../dev/step2/04采集管理优化/04-修订方案.md)（S0–S4 已实施）、[`05接口优化`](../dev/step2/04采集管理优化/05接口优化.md)、[`06实时数据接口`](../dev/step2/04采集管理优化/06实时数据接口.md)（已实施）
+应用服务：`backend/src/application/service/collect_manage_service.py`（`CollectManageService`，注入 `gateway`）
+框架：`backend/src/infrastructure/adapter/collect/`；调度器：`scheduler/apscheduler_adapter.py`（`SchedulerPort` 实现）
+数据入口：`backend/src/infrastructure/adapter/data/`（`DataGateway` + 装饰器 + tushare / adata / pytdx Adapter），接口约束 `backend/src/application/port/data/`
+实时接口：声明了 `cache` 的数据 Port（缓存由 `adapter/data/core/cache.py` 的 `CacheDecorator` 负责，交易时段规则来自 `domain/service/market_session.py`）；试查 / 统计走 `application/service/data_query_service.py` 的 `DataQueryService`
+方案：[`04-修订方案`](../dev/step2/04采集管理优化/04-修订方案.md)（S0–S4 已实施）、[`05接口优化`](../dev/step2/04采集管理优化/05接口优化.md)、[`06实时数据接口`](../dev/step2/04采集管理优化/06实时数据接口.md)（已实施）、[`step5/02底层采集优化`](../dev/step5/02底层采集优化/README.md)（P1–P6 已实施）
 
-> 最后更新：2026-10-05（**任务数对账 + 任务组移除**）
+> 最后更新：2026-10-13（**底层采集优化**）
+> - 取数统一走 `DataGateway`；旧 `XxxFetcher` / `get_registry()` / `adapter/fetcher/` / `adapter/realtime/`（`RealtimeQueryFramework` / `BaseRealtimeQuery`）已删除
+> - 14 个 tushare 任务改为 `DeclarativeCollectTask`（集中在 `tushare_tasks.py`，`task_type` 不变）
+> - 实时接口 Redis 键改为 `ds:cache:*` / `ds:lock:*` / `ds:stats:*`；概念行情降级移到 `ConceptRealtimeReader`
+>
+> 2026-10-05（**任务数对账 + 任务组移除**）
 > - §3 批量接口从「7 可用 + 14 占位」修正为 **21 ready + 2 planned**（原文档严重滞后）
 > - `concept_reason` / `concept_snapshot` **已实现**（原写「已去除」有误），快照表正常写入 390 行
 > - 「任务组」概念**已彻底移除**，统一为「采集方案 + 方案项」两表
@@ -18,8 +24,8 @@
 
 | 类型 | 基类 | 结果去向 | 管理方式 |
 |---|---|---|---|
-| 批量接口 `kind=batch` | `BaseCollectTask` | 入库 | 任务记录、采集方案（`collect_plans` + `collect_plan_items`） |
-| 实时接口 `kind=realtime` | `BaseRealtimeQuery` | 只写 Redis（15 秒） | 试查、调用统计；不建任务、不能加入采集方案 |
+| 批量接口 `kind=batch` | `BaseCollectTask`（tushare 14 个为 `DeclarativeCollectTask`） | 入库 | 任务记录、采集方案（`collect_plans` + `collect_plan_items`） |
+| 实时接口 `kind=realtime` | 声明了 `cache` 的数据 Port（`DataPort`） | 只写 Redis（交易时段 15 秒） | 试查、调用统计；不建任务、不能加入采集方案 |
 
 批量接口的三种用法共用一套采集 + 落库逻辑：
 
@@ -36,23 +42,23 @@ flowchart LR
     UI["CollectManage.vue<br/>QuickStartBar · PlanList"] -->|"/collect/*"| R["collect_task.py"]
     BIZ["业务路由<br/>/stocks/sync · /klines/collect ..."] -->|run_one| SVC
     POOL["池操作<br/>operation_dispatcher"] -->|run_one| SVC
-    SCH["CollectScheduler<br/>(APScheduler)"] -->|"submit / run_plan"| SVC
+    SCH["ApschedulerAdapter<br/>(SchedulerPort)"] -->|"handle_job → run_plan"| SVC
     R --> SVC["CollectManageService<br/>参数合并 · 防重 · 建记录 · Redis"]
     SVC -->|后台| E["execute_task<br/>进度 · 取消 · 收尾"]
     SVC -->|同步| ONE["collect_one(unit)"]
     E --> RUN["run()（默认遍历 list_units → collect_one）"]
     RUN --> ONE
-    ONE --> F["Fetcher · get_registry()"]
+    ONE --> F["DataGateway.fetch(XxxPort, params)<br/>Metrics → Retry → Throttle → Adapter"]
     ONE --> DB[("业务表")]
     E --> SYS[("sys_collect_tasks")]
     E --> RD[("Redis collect:progress:{id}")]
     SCH -. 读取 .-> PL[("collect_plans + collect_plan_items")]
-    REG["代码注册表<br/>CollectTaskRegistry / RealtimeRegistry"] -. 启动对账 .-> FT[("collect_fetchers")]
+    REG["代码注册表<br/>CollectTaskRegistry + realtime_ports()"] -. 启动对账 .-> FT[("collect_fetchers")]
 ```
 
 - **参数优先级**：调用方传入 > 方案项 `collect_plan_items.params` > 任务类 `default_params`（`run_one` 不读方案，只合并 `default_params`）。
 - **防重**：同 `task_type` 已有 `running` 记录时拒绝（手动、定时、方案执行共用）。启动时把残留的 `running` 记录标为 `failed`（单进程假设）。
-- **取消**：`POST /collect/tasks/{id}/cancel` 写进程内标志，单元之间检查；`force=true` 直接改记录。服务关闭时后台协程被取消，记录标 `cancelled`。
+- **取消**：`POST /collect/tasks/{id}/cancel` 写进程内标志，单元之间检查；`execute_task` 还会设置 `context.cancel_check`，装饰器里的限频 / 重试等待也会及时中断；`force=true` 直接改记录。服务关闭时后台协程被取消，记录标 `cancelled`。
 - **状态**：只有 `success == 0 且 fail > 0` 才算 `failed`。
 - **默认 `run()`**：按 `concurrency` 分批执行 `collect_one`，抛异常的单元在末尾间隔 `retry_delay` 重试一轮。
 
@@ -84,40 +90,44 @@ flowchart LR
 | `concept_reason` | fundamental / concept | 股票 | ✓ | `only_missing=true` | `stock_concept_members.reason` |
 | `concept_snapshot` | fundamental / concept | 概念 | — | | `concept_snapshots` |
 
-- `daily_kline` 批量时保留自定义 `run()`（fetcher 池 + chunk 限频），支持 `symbols` / `exchange` / `start_date`+`end_date` / `concurrency`。
+- 14 个 tushare 任务（`daily_basic` / `fin_report` / `cap_*` / `fin_top10_*` / `base_*`）为 `DeclarativeCollectTask`，集中声明在 `tushare_tasks.py`（Port + 规划器 `TradeDatePlanner` / `SymbolPlanner` + 仓储），限频 / 重试由 Gateway 装饰器统一处理。
+- `daily_kline` / `stock_basic` 经 `StockInfoService` → Gateway 取数；`daily_kline` 批量时保留自定义 `run()`（`run_units` 并发，限频交给 Gateway 的 `tushare` 限流组），支持 `symbols` / `exchange` / `start_date`+`end_date` / `concurrency`。
 - 概念全部来自同花顺（adata），以 `index_code`（885xxx）为键。依赖顺序：`concept` → `concept_membership` → `concept_reason`；`concept` → `concept_index_th`。可在同一采集方案内按 `sort_order` 串行执行。
 - ⚠️ **默认窗口偏小**：多数 `cap_*` 与 `daily_basic` 的 `default_params` 是 `{"days": 1}`，**首次使用必须显式传 `days=N` 回填**。
 - ⚠️ **`cap_holder_num` 覆盖度极低**：142 行 / 仅 1 只股票，需逐只全量回填。
 - **planned 占位任务 2 个**（`planned.py`，不能启用定时、不能加入方案）：
-  - `minute_kline`（分钟 K **入库**版）—— pytdx 源实测挂死 >3.7min；实时查询已由 `StockMinuteKlineQuery` 单独提供
+  - `minute_kline`（分钟 K **入库**版）—— pytdx 源实测挂死 >3.7min；实时查询已由 `MinuteKlinePort`（实时接口 `stock_minute_kline`）单独提供
   - `news_article` —— tushare news 权限未开通 + ORM 未建
   
-  实现一个 = fetcher 方法 + 子类（`list_units` + `collect_one`）+ 状态改 `ready`。
+  实现一个 = 数据 Port（`application/port/data/`）+ Adapter（`adapter/data/<工具>/`，在 `setup.py` 注册）+ 任务（优先 `DeclarativeCollectTask` 声明，或子类实现 `list_units` + `collect_one`）+ 状态改 `ready`。
 
 ## 4. 实时接口（2 个）
 
 | name | 分类 | 数据源 | 参数 | 数据 | 降级 |
 |---|---|---|---|---|---|
-| `concept_minute` | fundamental / concept | 同花顺 `get_market_concept_min_ths` | `index_code` | 当日分时 241 点 + 头部 `pre_close / price / change / change_pct / trade_time`（`pre_close = price - change`） | `concept_index_ths` 最近一条收盘（无分时） |
-| `stock_minute_kline` | tech / kline | 通达信 pytdx | `symbol, interval, days`（1min 仅 1 天，其他 1–5 天；兼容旧 `count` ≤ 1200） | 分钟 K 线 | 无 |
+| `concept_minute`（`ConceptMinutePort`） | fundamental / concept | 同花顺 `get_market_concept_min_ths`（`AdataConceptMinuteAdapter`） | `index_code` | 当日分时 `points` + 头部 `pre_close / price / change / change_pct / trade_time`（`pre_close = price - change`） | 业务侧由 `ConceptRealtimeReader` 回落 `concept_index_ths` 最近一条收盘（无分时，`stale=true`）；采集管理试查不降级 |
+| `stock_minute_kline`（`MinuteKlinePort`） | tech / kline | 通达信 pytdx（`PytdxMinuteKlineAdapter`） | `symbol, interval, days`（1min 仅 1 天，其他 1–5 天；`count` 已移除） | 分钟 K 线 | 无 |
 
 ```mermaid
 flowchart LR
-    BIZ["业务路由<br/>/concepts/quotes · /concepts/{code}/minute<br/>/concepts/tab-by-symbol · /minute-klines"] --> RT
-    CM["采集管理 RealtimePanel<br/>/collect/realtime/{name}/query · /stats"] --> RT
-    RT["RealtimeQueryFramework<br/>query / query_many"] -->|命中| C[("Redis rt:{name}:{key}")]
-    RT -->|未命中：单飞锁 + 同源信号量| Q["BaseRealtimeQuery.fetch"]
-    Q --> F["Fetcher（adata / pytdx）"]
-    Q -. 失败 .-> FB["fallback（stale=true，不缓存）"]
-    RT --> ST[("Redis rt:stats:{name}:{日期}")]
+    BIZ["业务路由<br/>/concepts/quotes · /concepts/{code}/minute<br/>/concepts/tab-by-symbol · /minute-klines"] --> APP["ConceptRealtimeReader（降级）<br/>StockInfoService.get_minute_klines"]
+    CM["采集管理 RealtimePanel<br/>/collect/realtime/{name}/query · /stats"] --> DQ["DataQueryService<br/>invoke / stats"]
+    APP -->|"fetch / fetch_many（QUERY）"| GW["DataGateway"]
+    DQ -->|"invoke（QUERY）"| GW
+    GW --> CA["CacheDecorator"]
+    CA -->|命中| C[("Redis ds:cache:{port}:{hash}")]
+    CA -->|未命中：单飞锁| D["Metrics → Retry → Throttle"]
+    D --> A["Adapter（adata / pytdx）"]
+    APP -. 失败 .-> FB["降级：最近收盘（stale=true，不缓存）"]
+    D --> ST[("Redis ds:stats:{port}:{tool}:{日期}")]
 ```
 
-- **缓存**：工作日 09:25–11:30、13:00–15:00 缓存 15 秒；午休缓存到 13:00；其余时段缓存到下个工作日 09:25（节假日按工作日处理）。
-- **单飞**：`SET rt:lock:{name}:{key} NX EX 5`，没抢到锁的请求最多等约 2 秒后重读缓存。
-- **限流**：进程内 `asyncio.Semaphore`，`ths=5`、`tdx=1`；单次 `fetch` 超时 10 秒。pytdx fetcher 内部另有 `threading.Lock`（单连接不线程安全）；北交所代码（8/4/92 开头）直接返回 400。
-- **统计**：`rt:stats:{name}:{yyyymmdd}` 哈希（calls / hits / misses / errors / latency_sum / last_error），保留 7 天。
+- **缓存**：工作日 09:25–11:30、13:00–15:00 缓存 15 秒（Port 的 `cache.ttl_trading`）；午休缓存到 13:00；其余时段缓存到下个工作日 09:25（节假日按工作日处理）。规则在 `domain/service/market_session.ttl_for`。
+- **单飞**：`SET ds:lock:{port}:{hash} NX EX 5`，没抢到锁的请求最多等约 2 秒后重读缓存。
+- **限流**：`ThrottleDecorator` 按限流组共享进程内信号量，`adata:ths=5`、`tdx=1`；QUERY 策略下只占并发、不排间隔，单次取数超时 10 秒（→ `SourceUnavailable` → 502）。`PytdxClient` 内部另有 `threading.Lock`（单连接不线程安全）；北交所代码（8/4/92 开头）直接返回 400。
+- **统计**：`MetricsDecorator` 写 `ds:stats:{port}:{tool}:{yyyymmdd}`（calls / errors / latency_sum / last_error），`CacheDecorator` 写 `ds:stats:{port}:cache:{yyyymmdd}`（hits / misses），保留 7 天；`GET /collect/realtime/{name}/stats` 由 `gateway.stats` 汇总出命中率、平均耗时、最近错误。
 - **Redis 不可用**时直连数据源、不缓存。
-- 新增实时接口 = `BaseRealtimeQuery` 子类（`normalize` / `cache_key` / `fetch` / 可选 `fallback`）+ 在 `main.py` 的 `setup_realtime_registry` 注册。
+- 新增实时接口 = 在数据 Port 上声明 `cache = CachePolicy(ttl_trading=..., consumers=...)` + 对应 Adapter；`realtime_ports()` 自动把它并入 catalog 与 `collect_fetchers` 对账，无需单独注册。需要降级时在应用层 Service 里处理（参考 `ConceptRealtimeReader`）。
 - 与 `planned.py` 的占位 `minute_kline`（分钟 K **入库**）是两回事。
 
 ## 5. 采集方案（三表架构，2026-10-05 重构）
@@ -131,11 +141,12 @@ flowchart LR
 | `collect_plan_items` | PK `id`、FK `plan_id`（CASCADE）、FK `task_type` → `collect_fetchers.task_type`、`params`、`enabled`、`sort_order`、唯一约束 `(plan_id, task_type)` | 方案 ↔ 接口的 **M:N 关联**，携带各接口参数与执行顺序 |
 | `sys_collect_tasks.plan_run_id` | 可空 | 同一次方案执行共享，取第一项的 `task_id`（由 `group_run_id` RENAME 改名而来，数据保留） |
 
-- **调度器**：APScheduler `AsyncIOScheduler`，时区 `Asia/Shanghai`。
+- **调度器**：规则在 domain `Schedule` 值对象（`domain/entitys/collect_plan/vo.py`，非法抛 `InvalidSchedule(ValueError)`）；Service 只依赖 `SchedulerPort`（`upsert` / `remove` / `next_run` / `on_fire`），key = `plan:{plan_id}`，payload = `{"plan_id": id}`。实现 `ApschedulerAdapter`（`AsyncIOScheduler`，`Asia/Shanghai`）：
   - 定时模式：每个时间点一个 job，`plan:{plan_id}@{HH:MM}` + `CronTrigger(hour, minute)`
   - 定频模式：单 job `plan:{plan_id}` + `IntervalTrigger(seconds)`，**下限 30 秒**
-  - `sync_plan()` 每次先 `_remove_prefix(f"plan:{plan_id}")` 清旧 job（前缀匹配精确到 `prefix + "@"`，`plan:1` 不会误删 `plan:11`）
-  - `next_run` = 该前缀下所有 job 最早的下次触发时间
+  - `upsert()` 每次先 `remove(key)` 清旧 job（匹配精确到 `key + "@"`，`plan:1` 不会误删 `plan:11`）
+  - `next_run` = 该 key 下所有 job 最早的下次触发时间（Service 传给 `plan_to_dict`）
+  - 启动：`restore_schedules()` 读方案表注册定时；到点 `handle_job()` → `run_plan(trigger="schedule")`
   - 开关：`.env` 设 `COLLECT_SCHEDULER_ENABLED=false` 可关闭定时（此时方案只能手动执行）
 - **触发方式**：`schedule_type=NULL` = 仅手动（不注册 job）；`time` 需 `times` 非空且格式严格 `HH:MM`（≤24 个）；`interval` 需 `interval_seconds ≥ 30`。
 - **方案执行规则**：按 `sort_order` 串行；某项已在运行 → 跳过继续；某项 `failed` / `cancelled`（或「零成功但有失败」）且 `stop_on_fail` → 停止后续项。实时接口不能加入方案（前端过滤 + `_validate_items` 校验）。
@@ -147,7 +158,7 @@ flowchart LR
 |---|---|
 | `GET /collect/catalog` | 四面目录树；每个接口带 `kind`、`default_params`、`supports_run_one`；实时接口另带 `source`、`ttl_trading`、`consumers` |
 | `GET /collect/fetchers` | 采集接口元数据列表（`collect_fetchers` 表镜像）—— 方案编排的接口选择器数据源 |
-| `POST /collect/realtime/{name}/query` | 调用实时接口，body 为参数；返回 `{data, cached, stale, fetched_at, latency_ms}` |
+| `POST /collect/realtime/{name}/query` | 调用实时接口（`DataQueryService.query`，最多 5000 条），body 为参数；返回 `{data: BO 列表, cached, stale（恒 false）, fetched_at, latency_ms}`；参数错误 400，数据源失败 502 |
 | `GET /collect/realtime/{name}/stats?days=1` | 实时接口按天调用统计（命中率、平均耗时、最近错误） |
 | `POST /collect/tasks` | 创建任务 `{task_type, params}`；冲突时 200 + `data.message`（无 `task_id`） |
 | `GET /collect/tasks` | 分页，可按 `task_type` / `status` / `plan_run_id` 过滤 |
@@ -168,10 +179,10 @@ flowchart LR
 | `POST /klines/collect` | `stock-info` K 线抽屉 | `run_one("daily_kline", symbol, {days / start_date / end_date})` |
 | `POST /klines/collect/batch` | — | 逐只 `run_one`，单只失败 `saved_count=-1`；大批量请用 `POST /collect/tasks` + `symbols` |
 | 池操作（`operation_dispatcher.py`） | 操作池页 | 逐只 `run_one("daily_kline", ...)` |
-| `GET /minute-klines/{symbol}?interval&days` | 股票列表展开行分 K（15 秒轮询） | `query("stock_minute_kline", ...)`；响应多 `cached`、`fetched_at` |
-| `GET /concepts/quotes?codes=`（≤100） | 详情抽屉概念 Tab（15 秒轮询） | `query_many("concept_minute", ...)`，返回 `{index_code: quote}` |
-| `GET /concepts/{index_code}/minute` | 概念分时图（后续） | `query("concept_minute", ...)` 整条数据 |
-| `GET /concepts/tab-by-symbol/{symbol}` | 详情抽屉概念 Tab | 各概念 `snapshot` 由 `concept_minute` 填充，组内按涨跌幅降序 |
+| `GET /minute-klines/{symbol}?interval&days` | 股票列表展开行分 K（15 秒轮询） | `StockInfoService.get_minute_klines` → `gateway.fetch(MinuteKlinePort, QUERY)`；响应多 `cached`、`fetched_at` |
+| `GET /concepts/quotes?codes=`（≤100） | 详情抽屉概念 Tab（15 秒轮询） | `ConceptRealtimeReader.minutes` → `gateway.fetch_many(ConceptMinutePort, QUERY)`，返回 `{index_code: quote}` |
+| `GET /concepts/{index_code}/minute` | 概念分时图（后续） | `ConceptRealtimeReader.minute` 整条数据 |
+| `GET /concepts/tab-by-symbol/{symbol}` | 详情抽屉概念 Tab | 各概念 `snapshot` 由 `ConceptRealtimeReader`（`concept_minute`）填充，组内按涨跌幅降序 |
 
 ## 8. 前端文件
 
@@ -187,10 +198,11 @@ flowchart LR
 
 ## 9. 已知问题
 
-- **🔴 `concept` 任务挂死会堵死整个后端**（2026-10-05 23:43 实测确认，**最高优先级**）：任务 id=85（`concept`，`schedule` 触发，23:25:56 启动）跑超 17 分钟未结束，期间 `GET /health` 与 `GET /collect/fetchers` **全部超时**（8s/60s），前端整体不可用。**DB 正常**（独立进程 `SELECT 1` 仅 628ms）→ 根因在后端进程内，疑为 `concept` 全量拉 390 个概念的 adata 调用未正确让出事件循环或 fetcher 内同步阻塞。**建议**：① 先重启后端；② 查 `scheduler/collect/concept.py` 的 `run()` 与 `AdataConceptFetcher`；③ 给采集任务加**看门狗超时**（超 N 分钟强制 cancel），或把采集挪到独立进程。
+- **🔴 `concept` 任务挂死会堵死整个后端**（2026-10-05 23:43 实测确认，**最高优先级**）：任务 id=85（`concept`，`schedule` 触发，23:25:56 启动）跑超 17 分钟未结束，期间 `GET /health` 与 `GET /collect/fetchers` **全部超时**（8s/60s），前端整体不可用。**DB 正常**（独立进程 `SELECT 1` 仅 628ms）→ 根因在后端进程内，疑为 `concept` 全量拉 390 个概念的 adata 调用未正确让出事件循环或数据源调用内同步阻塞（当时仍是旧 `AdataConceptFetcher`）。**建议**：① 先重启后端；② 查 `collect/concept.py` 的 `run()` 与 `adapter/data/adata/`（`AdataClient` / 概念 Adapter）；③ 给采集任务加**看门狗超时**（超 N 分钟强制 cancel），或把采集挪到独立进程。
 - **`concept` 定时触发连续失败**：23:18~23:25 `trigger_type=schedule` 的 `concept` 连续 3 条 `failed` + 1 条 `cancelled`（手动触发历史上可成功），与上一条很可能同源。
-- 取消标志、调度器、残留 `running` 清理、实时接口的同源信号量都假设**单进程**；多 worker 部署需要改为 Redis 锁 / 独立调度进程。
+- 取消标志、调度器、残留 `running` 清理、`ThrottleDecorator` 的限流组信号量都假设**单进程**；多 worker 部署需要改为 Redis 锁 / 独立调度进程。
 - 看板阶段计划用 SSE（`GET /realtime/stream?subs=...`）替代轮询，本期未做；pytdx 仍是单连接加锁，未做连接池。
+- **已完成（底层采集优化 P5 / P6）**：定时调度改造（Service 不再 import 调度器实现）；`/api/v1/data/catalog`、`/api/v1/data/{name}` 按名调用（未知 404 / 参数 422 / 无实现 400 / 全部源失败 503 带 `attempts`）与 Agent 工具目录。遗留：`collect_plan` 实体与仓储接口、多副本调度互斥未做。
 - 定频方案下限 30 秒：低于此值任务永远跑不完（每轮触发都 TaskConflict），且极易打爆数据源配额。
 - **⚠️ `PlanList.vue` 触发时间「添加」按钮曾完全失效**（2026-10-05 已修）：原模板把「添加时间」按钮放在 `v-if="!form.times.length"` 分支，而 `el-time-picker` 放在 `v-else` 分支——两者条件互斥，导致新建方案时按钮可见但选择器不可见、`addTime()` 永远静默 return。已改为选择器与按钮常驻、tag 列表按需渲染。
 - 前端 `stock-info/api.ts` 里的 `/moneyflows/*` 等接口后端尚未实现。
@@ -204,13 +216,15 @@ flowchart LR
 
 | 原位置 | 现位置 | 性质 |
 |---|---|---|
-| `realtime/base.py` 的 `market_now` / `is_trading_time` / `ttl_for` | `domain/market/market_session.py`（`MarketSessionService` 等） | 市场交易时段规则 |
-| `scheduler/collect/concept.py` 的 `LIST_SHRINK_GUARD` / `MEMBER_SHRINK_GUARD` / `MEMBER_SHRINK_MIN` 常量与内联表达式 | `domain/concept/collection_policy.py`（`ConceptCollectionPolicy.should_skip_list_update` / `should_skip_member_sync`） | 概念采集保护策略 |
+| `realtime/base.py` 的 `market_now` / `is_trading_time` / `ttl_for` | `domain/service/market_session.py`（`MarketSessionService` 等） | 市场交易时段规则 |
+| `collect/concept.py` 的 `LIST_SHRINK_GUARD` / `MEMBER_SHRINK_GUARD` / `MEMBER_SHRINK_MIN` 常量与内联表达式 | `domain/service/concept_collection_policy.py`（`ConceptCollectionPolicy.should_skip_list_update` / `should_skip_member_sync`） | 概念采集保护策略 |
 
-- `realtime/base.py` 仍保留 `is_trading_time` / `market_now` / `ttl_for` 的兼容 shim 重导出，旧 import 路径仍可用。
-- `scheduler/collect/concept.py` 仍保留同名模块级常量，便于历史 grep；实际判断改用注入的 `_COLLECTION_POLICY`。
+- 原 `realtime/base.py` 的兼容 shim 已随 `adapter/realtime/` 一并删除（2026-10-13），请直接从 `domain.service.market_session` 导入。
+- `collect/concept.py` 仍保留同名模块级常量，便于历史 grep；实际判断改用注入的 `_COLLECTION_POLICY`。
 
 ### 10.2 归位到 infrastructure（明确技术框架定位）
+
+> ⚠️ **已被底层采集优化取代（2026-10-13）**：下表中的 `infrastructure/adapter/realtime/`（`RealtimeQueryFramework` / `BaseRealtimeQuery` / `get_realtime_query_framework()`）已整体删除。缓存 / 单飞移到 `adapter/data/core/cache.py` 的 `CacheDecorator`，限流 / 超时 / 统计移到 `adapter/data/core/decorators.py`，降级移到应用层 `ConceptRealtimeReader`；路由与 Service 改为经 `StockInfoService` / `ConceptRealtimeReader` / `DataQueryService` 调 `DataGateway`。下表仅作历史记录。
 
 | 原位置 | 现位置 | 备注 |
 |---|---|---|
@@ -230,7 +244,8 @@ flowchart LR
 
 | 模块 | 性质 | 与 application/service 的关系 |
 |---|---|---|
-| `domain/market/MarketSessionService` | **领域服务**（纯规则，无 IO） | application/service 可直接调用，不依赖 infrastructure |
-| `domain/concept/ConceptCollectionPolicy` | **领域服务**（纯规则） | application/service / scheduler/collect 调用 |
-| `infrastructure/adapter/realtime/RealtimeQueryFramework` | **技术框架**（缓存 / 单飞 / 限流 / 降级 / 统计） | application/service 调它，但不持有任何业务规则 |
-| `infrastructure/adapter/realtime/BaseRealtimeQuery` 子类 | **领域行为**（cache_key / fallback / normalize） + **基础设施**（fetch）的混合，由子类实现 | 框架调子类的领域方法，子类调 fetcher 拿数据 |
+| `domain/service/market_session.py` `MarketSessionService` | **领域服务**（纯规则，无 IO） | application/service 可直接调用，不依赖 infrastructure；`CacheDecorator` 用它的 `ttl_for` 定 TTL |
+| `domain/service/concept_collection_policy.py` `ConceptCollectionPolicy` | **领域服务**（纯规则） | application/service / adapter/collect 调用 |
+| `application/port/data/` `XxxPort`（声明 `cache` 即为实时接口） | **接口约束**（名称 / 元数据 / 参数 / BO / 缓存策略） | application/service 类型化调 `gateway.fetch(XxxPort, params, policy=QUERY)` |
+| `infrastructure/adapter/data/core/` `DataGateway` + `CacheDecorator` + `Metrics/Retry/Throttle` | **技术框架**（缓存 / 单飞 / 限流 / 超时 / 重试 / 统计） | 不持有任何业务规则；降级不在这里 |
+| `application/service/concept_realtime.py` `ConceptRealtimeReader` | **应用层**（业务降级：失败回落最近收盘，标 `stale=true`） | `ConceptService` / `ConceptBoardService` 共用 |

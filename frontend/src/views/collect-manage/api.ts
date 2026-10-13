@@ -245,9 +245,10 @@ export function scheduleLabel(plan: Pick<CollectPlan, 'schedule_type' | 'times' 
 // ───────────────────────────────────────────────────────────────────────────
 
 export interface RealtimeResult {
-  data: any
+  /** 接口 Item（BO）列表 */
+  data: Record<string, any>[]
   cached: boolean
-  /** true：数据源失败，返回的是降级数据 */
+  /** 试查不做业务降级，恒为 false */
   stale: boolean
   fetched_at: string | null
   latency_ms: number

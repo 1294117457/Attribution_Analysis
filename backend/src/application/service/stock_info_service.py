@@ -15,11 +15,10 @@ import logging
 from datetime import date, timedelta
 from typing import Optional
 
-from application.port.collector_port import (
-    CollectParams,
-    KlineFetcher,
-    StockBasicFetcher,
-)
+from application.port.data import DataGatewayPort
+from application.port.data.base import CallPolicy, InvalidParams, NotSupported
+from application.port.data.reference import StockBasicPort
+from application.port.data.tech import DailyKlinePort, MinuteKlineBO, MinuteKlineParams, MinuteKlinePort
 from domain.entitys.kline.entity import CollectionError, Kline, KlineDataError, KlineNotFoundError
 from domain.entitys.kline.repository import KlineRepository
 from domain.entitys.kline.vo import IndicatorValues, StockCode
@@ -67,12 +66,24 @@ from domain.entitys.concept.vo import ConceptBriefVO, ConceptMainVO
 from domain.entitys.panel.repository import StockPanelComposeRepository
 from domain.entitys.panel.vo import StockPanelRow
 from domain.service import ConceptBriefService
-from application.port.realtime_query_port import RealtimeQueryPort
 
 logger = logging.getLogger(__name__)
 
 # 列表行内"主概念"列展示上限
 DEFAULT_MAIN_CONCEPT_TOP_K = 3
+
+
+def _format_minute_bar(bo: MinuteKlineBO) -> dict:
+    return {
+        "datetime": bo.dt.strftime("%Y-%m-%d %H:%M"),
+        "interval": bo.interval,
+        "open": bo.open,
+        "high": bo.high,
+        "low": bo.low,
+        "close": bo.close,
+        "volume": bo.volume,
+        "amount": bo.amount,
+    }
 
 
 class StockInfoService:
@@ -87,7 +98,7 @@ class StockInfoService:
     - brief_service:     概念摘要服务（domain）
     - signal:            技术信号检测器
     - indicator_calc:    指标计算器
-    - realtime:          实时行情（可选）
+    - gateway:           数据统一入口（采集 / 同步 / 分 K 实时查询）
     """
 
     def __init__(
@@ -101,7 +112,7 @@ class StockInfoService:
         brief_service: ConceptBriefService,
         signal: Optional[SignalDetector] = None,
         indicator_calc: Optional[IndicatorCalculator] = None,
-        realtime: Optional[RealtimeQueryPort] = None,
+        gateway: Optional[DataGatewayPort] = None,
         top_k: int = DEFAULT_MAIN_CONCEPT_TOP_K,
     ):
         self._stock_repo = stock_repo
@@ -112,7 +123,7 @@ class StockInfoService:
         self._brief_service = brief_service
         self._signal = signal or SignalDetector()
         self._calc = indicator_calc or IndicatorCalculator()
-        self._realtime = realtime
+        self._gateway = gateway
         self._top_k = top_k
 
     # ══════════════════════════════════════════════════════════════════════
@@ -189,12 +200,15 @@ class StockInfoService:
             list_date=stock.list_date, total_shares=stock.total_shares,
         )
 
-    async def sync_stocks(
-        self, fetcher: StockBasicFetcher, list_status: str = "L",
-    ) -> SyncStockResponse:
+    def _require_gateway(self) -> DataGatewayPort:
+        if self._gateway is None:
+            raise RuntimeError("StockInfoService 未注入 DataGateway")
+        return self._gateway
+
+    async def sync_stocks(self, list_status: str = "L") -> SyncStockResponse:
         """全量同步 A股 股票元数据"""
-        params = CollectParams(symbol=None, list_status=list_status)
-        raw_data = await asyncio.to_thread(fetcher.fetch_stock_basic, params)
+        result = await self._require_gateway().fetch(StockBasicPort, {"list_status": list_status})
+        raw_data = result.items
         if not raw_data:
             return SyncStockResponse(
                 synced_count=0, inserted=0, updated=0,
@@ -228,18 +242,19 @@ class StockInfoService:
     # K 线（原 KlineAppService）
     # ══════════════════════════════════════════════════════════════════════
 
-    async def collect(
-        self, request: KlineCollectRequest, fetcher: KlineFetcher,
-    ) -> KlineCollectResponse:
+    async def collect(self, request: KlineCollectRequest) -> KlineCollectResponse:
         """采集 K 线（只存 OHLCV，指标在查询时实时计算）"""
         try:
-            prefetched_name = await self._lookup_name(request.symbol)
-            params = CollectParams(
-                symbol=request.symbol, name=prefetched_name,
-                days=request.days,
-                start_date=request.start_date, end_date=request.end_date,
-            )
-            raw_data = await asyncio.to_thread(fetcher.fetch, params)
+            end_date = request.end_date or date.today()
+            start_date = request.start_date or (end_date - timedelta(days=request.days))
+            result = await self._require_gateway().fetch(DailyKlinePort, {
+                "symbol": request.symbol, "start_date": start_date, "end_date": end_date,
+            })
+            raw_data = result.items
+            if raw_data and not raw_data[0].name:
+                prefetched_name = await self._lookup_name(request.symbol)
+                for bo in raw_data:
+                    bo.name = prefetched_name or None
             if not raw_data:
                 return KlineCollectResponse(
                     symbol=request.symbol, name="", saved_count=0, total_count=0,
@@ -263,19 +278,19 @@ class StockInfoService:
         except Exception as e:
             raise CollectionError(request.symbol, str(e))
 
-    async def collect_batch(
-        self, symbols: list[str], days: int, fetcher: KlineFetcher,
-    ) -> dict[str, KlineCollectResponse]:
-        results: dict[str, KlineCollectResponse] = {}
-        for symbol in symbols:
-            try:
-                request = KlineCollectRequest(symbol=symbol, days=days)
-                results[symbol] = await self.collect(request, fetcher)
-            except Exception as e:
-                results[symbol] = KlineCollectResponse(
-                    symbol=symbol, name="", saved_count=-1, total_count=0, message=str(e),
-                )
-        return results
+    async def get_minute_klines(self, params: MinuteKlineParams) -> dict:
+        """实时分 K（不入库）；返回 {total, items, cached, fetched_at}"""
+        try:
+            res = await self._require_gateway().fetch(MinuteKlinePort, params, policy=CallPolicy.QUERY)
+        except NotSupported:
+            raise InvalidParams(f"{params.symbol} 为北交所代码，分K暂不支持")
+        items = [_format_minute_bar(b) for b in res.items]
+        return {
+            "total": len(items),
+            "items": items,
+            "cached": res.cached,
+            "fetched_at": res.fetched_at.isoformat() if res.fetched_at else None,
+        }
 
     async def _lookup_name(self, symbol: str) -> str:
         try:

@@ -5,10 +5,10 @@
 依赖通过 port 注入（DDD.md §4）：
 - redis:                Redis 端口
 - task_registry:        采集任务注册中心
-- scheduler:            定时调度器
+- scheduler:            定时调度（SchedulerPort；未启用时为 None）
 - session_factory:      session 工厂
 - config_repo:          采集配置仓储（方案 / 方案项 / 接口元数据）
-- realtime_registry:    实时接口注册中心（方案项校验用）
+- gateway:              数据统一入口（方案项校验"实时接口不能入方案"用 is_realtime）
 """
 from __future__ import annotations
 
@@ -21,15 +21,13 @@ from typing import Any, Coroutine, Optional, Protocol
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from infrastructure.adapter.scheduler.collect import (
+from application.port.data import DataGatewayPort
+from application.port.scheduler_port import SchedulerPort
+from domain.entitys.collect_plan.vo import Schedule, normalize_times
+from infrastructure.adapter.collect import (
     BaseCollectTask,
     UnitResult,
     execute_task,
-)
-from infrastructure.adapter.scheduler.collect_scheduler import (
-    get_collect_scheduler,
-    normalize_times,
-    validate_schedule,
 )
 from infrastructure.persistence.models.collect_config import (
     CollectFetcherDB,
@@ -58,18 +56,6 @@ class CollectTaskRegistryPort(Protocol):
     def supported_types(self) -> list[str]: ...
 
 
-class CollectSchedulerPort(Protocol):
-    def sync_plan(
-        self,
-        plan_id: int,
-        enabled: bool,
-        schedule_type: Optional[str],
-        times: Optional[list[str]] = None,
-        interval_seconds: Optional[int] = None,
-    ) -> None: ...
-    def next_run(self, prefix: str) -> Optional[datetime]: ...
-
-
 class CollectConfigRepositoryPort(Protocol):
     # 采集接口元数据
     async def list_fetchers(self, session: AsyncSession) -> list[CollectFetcherDB]: ...
@@ -95,10 +81,6 @@ class CollectConfigRepositoryPort(Protocol):
     async def replace_plan_items(
         self, session: AsyncSession, plan_id: int, items: list[dict],
     ) -> None: ...
-
-
-class RealtimeRegistryPort(Protocol):
-    def get(self, name: str) -> Any: ...
 
 
 class SessionFactoryPort(Protocol):
@@ -172,14 +154,19 @@ def fetcher_to_dict(f: CollectFetcherDB) -> dict:
     }
 
 
+def plan_key(plan_id: int) -> str:
+    """方案在调度器中的 key"""
+    return f"plan:{plan_id}"
+
+
 def plan_to_dict(
     plan: CollectPlanDB,
     items: list[CollectPlanItemDB],
     labels: Optional[dict[str, str]] = None,
+    next_run_at: Optional[datetime] = None,
 ) -> dict:
     """labels: task_type → label，由调用方从 fetchers/handler 补充"""
     labels = labels or {}
-    scheduler = get_collect_scheduler()
     return {
         "id": plan.id,
         "name": plan.name,
@@ -201,7 +188,7 @@ def plan_to_dict(
         ],
         "last_run_at": _iso(plan.last_run_at),
         "last_task_id": plan.last_task_id,
-        "next_run_at": _iso(scheduler.next_run(f"plan:{plan.id}")) if scheduler else None,
+        "next_run_at": _iso(next_run_at),
         "created_at": _iso(plan.created_at),
         "updated_at": _iso(plan.updated_at),
     }
@@ -241,37 +228,55 @@ class CollectManageService:
         *,
         redis: RedisPort,
         task_registry: CollectTaskRegistryPort,
-        scheduler: CollectSchedulerPort,
+        scheduler: Optional[SchedulerPort],
         config_repo: CollectConfigRepositoryPort,
-        realtime_registry: RealtimeRegistryPort,
+        gateway: DataGatewayPort,
         session_factory: SessionFactoryPort,
     ) -> None:
         self._redis = redis
         self._task_registry = task_registry
         self._scheduler = scheduler
         self._config_repo = config_repo
-        self._realtime_registry = realtime_registry
+        self._gateway = gateway
         self._session_factory = session_factory
 
-    # ── 调度器（未启用时为 None，全部操作降级为 no-op）──────────────────
+    # ── 定时（调度器未启用时为 None，全部降级为 no-op，方案仍可手动执行）──
 
-    def _sync_scheduler(
-        self,
-        plan_id: int,
-        enabled: bool,
-        schedule_type: Optional[str],
-        times: Optional[list[str]] = None,
-        interval_seconds: Optional[int] = None,
-    ) -> None:
-        """同步定时 job；调度器未启用（COLLECT_SCHEDULER_ENABLED=false）时静默跳过
-
-        这样手动触发方案在无调度器环境下依然可用。
-        """
+    def _sync_schedule(self, plan_id: int, enabled: bool, schedule: Optional[Schedule]) -> None:
+        """方案增删改后同步定时"""
         if self._scheduler is None:
             return
-        self._scheduler.sync_plan(
-            plan_id, enabled, schedule_type, times, interval_seconds,
-        )
+        key = plan_key(plan_id)
+        if enabled and schedule:
+            self._scheduler.upsert(key, schedule, {"plan_id": plan_id})
+        else:
+            self._scheduler.remove(key)
+
+    def _next_run(self, plan_id: int) -> Optional[datetime]:
+        return self._scheduler.next_run(plan_key(plan_id)) if self._scheduler else None
+
+    async def restore_schedules(self) -> int:
+        """启动时调用一次：恢复所有启用方案的定时；返回已注册定时的方案数"""
+        if self._scheduler is None:
+            return 0
+        async with self._session_factory() as session:
+            plans = await self._config_repo.list_plans(session)
+        count = 0
+        for p in plans:
+            try:
+                schedule = Schedule.from_form(p.schedule_type, p.times, p.interval_seconds)
+            except ValueError as e:
+                logger.error("采集方案 %d 定时配置无效，未注册: %s", p.id, e)
+                continue
+            self._sync_schedule(p.id, p.enabled, schedule)
+            count += bool(p.enabled and schedule)
+        return count
+
+    async def handle_job(self, payload: dict) -> None:
+        """到点回调：payload 来自 _sync_schedule 传入的命令"""
+        plan_id = payload["plan_id"]
+        run_id = await self.run_plan(plan_id, trigger="schedule")
+        logger.info("采集方案 %d 定时触发完成: plan_run_id=%s", plan_id, run_id)
 
     # ── 基础 ────────────────────────────────────────────────────────────
 
@@ -437,9 +442,8 @@ class CollectManageService:
             raise ValueError("方案名称不能超过 64 个字符")
 
         schedule_type = fields.get("schedule_type")
-        times = normalize_times(fields.get("times"))
         interval_seconds = fields.get("interval_seconds")
-        validate_schedule(schedule_type, times, interval_seconds)
+        schedule = Schedule.from_form(schedule_type, fields.get("times"), interval_seconds)
 
         enabled = bool(fields.get("enabled"))
         if enabled and not schedule_type:
@@ -455,10 +459,11 @@ class CollectManageService:
             "name": name,
             "enabled": enabled,
             "schedule_type": schedule_type,
-            "times": times,
+            "times": normalize_times(fields.get("times")),
             "interval_seconds": interval_seconds,
             "stop_on_fail": bool(fields.get("stop_on_fail", True)),
             "items": items,
+            "schedule": schedule,
         }
 
     def _validate_items(self, items: list[dict]) -> list[dict]:
@@ -473,7 +478,7 @@ class CollectManageService:
                 raise ValueError(f"方案内重复的采集接口: {task_type}")
             seen.add(task_type)
 
-            if self._realtime_registry.get(task_type) is not None:
+            if self._gateway.is_realtime(task_type):
                 raise ValueError(f"{task_type} 是实时接口，不能加入方案")
             handler = self.handler(task_type)           # 未注册 → UnknownTaskType
             if handler.status != "ready":
@@ -513,7 +518,7 @@ class CollectManageService:
         for it in all_items:
             items_by_plan.setdefault(it.plan_id, []).append(it)
         return [
-            plan_to_dict(p, items_by_plan.get(p.id, []), labels)
+            plan_to_dict(p, items_by_plan.get(p.id, []), labels, self._next_run(p.id))
             for p in plans
         ]
 
@@ -524,24 +529,24 @@ class CollectManageService:
                 raise PlanNotFound(f"采集方案 {plan_id} 不存在")
             items = await self._config_repo.list_all_plan_items(session, plan_id)
         labels = await self._label_map([it.task_type for it in items])
-        return plan_to_dict(plan, items, labels)
+        return plan_to_dict(plan, items, labels, self._next_run(plan_id))
 
     async def create_plan(self, fields: dict) -> dict:
         values = self._check_plan(fields)
         items = values.pop("items")
+        schedule = values.pop("schedule")
         async with self._session_factory() as session:
             plan = await self._config_repo.create_plan(session, **values)
             await self._config_repo.replace_plan_items(session, plan.id, items)
             await session.commit()
             await session.refresh(plan)
-        self._sync_scheduler(
-            plan.id, plan.enabled, plan.schedule_type, plan.times, plan.interval_seconds,
-        )
+        self._sync_schedule(plan.id, plan.enabled, schedule)
         return await self.get_plan(plan.id)
 
     async def update_plan(self, plan_id: int, fields: dict) -> dict:
         values = self._check_plan(fields)
         items = values.pop("items")
+        schedule = values.pop("schedule")
         async with self._session_factory() as session:
             plan = await self._config_repo.get_plan(plan_id, session)
             if plan is None:
@@ -550,9 +555,7 @@ class CollectManageService:
             await self._config_repo.replace_plan_items(session, plan_id, items)
             await session.commit()
             await session.refresh(plan)
-        self._sync_scheduler(
-            plan.id, plan.enabled, plan.schedule_type, plan.times, plan.interval_seconds,
-        )
+        self._sync_schedule(plan.id, plan.enabled, schedule)
         return await self.get_plan(plan_id)
 
     async def delete_plan(self, plan_id: int) -> None:
@@ -562,8 +565,7 @@ class CollectManageService:
                 raise PlanNotFound(f"采集方案 {plan_id} 不存在")
             await self._config_repo.delete_plan(session, plan)
             await session.commit()
-        # 停用所有 job
-        self._sync_scheduler(plan_id, False, None, [], None)
+        self._sync_schedule(plan_id, False, None)
 
     # ── 方案执行 ────────────────────────────────────────────────────────
 

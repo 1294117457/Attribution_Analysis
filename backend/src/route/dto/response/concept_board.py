@@ -39,7 +39,7 @@ class ConceptBoardItemVO(BaseModel):
     stock_count: int
     description: Optional[str] = None
 
-    # ── 实时行情（来自 RealtimeQueryFramework.query("concept_minute")）──
+    # ── 实时行情（来自 ConceptRealtimeReader，concept_minute）──
     price: Optional[float] = None
     prev_close: Optional[float] = None
     change: Optional[float] = None
@@ -77,8 +77,7 @@ class ConceptMemberItemVO(BaseModel):
     total_mv: Optional[float] = None
     pe_ttm: Optional[float] = None
 
-    # ── 实时（来自 RealtimeQueryFramework.query("stock_minute_kline")）──
-    # 注：单股实时需每只调一次，开销大；本期只对前 50 只按需触发
+    # ── 实时涨幅：暂不提供，恒为 None（概念看板后续下线）──
     pct_change: Optional[float] = None
     color: str = "flat"
 

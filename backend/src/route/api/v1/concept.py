@@ -14,8 +14,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from application.port.data.base import InvalidParams, RateLimited, SourceUnavailable
 from application.service import ConceptBoardService, ConceptService
-from infrastructure.adapter.realtime import RealtimeQueryError, get_realtime_query_framework
 from infrastructure.config.di import (
     get_concept_board_service,
     get_concept_service,
@@ -154,7 +154,7 @@ async def get_live_concepts_by_symbol(
     app: ConceptService = Depends(get_concept_service),
 ):
     """单股票所属概念列表（adata 实时拉取同花顺 F10，**带入选理由 reason**）"""
-    live_vos = app.fetch_concepts_by_stock(symbol)
+    live_vos = await app.fetch_concepts_by_stock(symbol)
     return R.ok([v.model_dump() for v in live_vos])
 
 
@@ -204,14 +204,15 @@ async def get_concept_quotes(
     response_model=None,
     summary="单概念当日分时（实时接口 concept_minute）",
 )
-async def get_concept_minute(index_code: str):
+async def get_concept_minute(
+    index_code: str,
+    app: ConceptService = Depends(get_concept_service),
+):
     try:
-        res = await get_realtime_query_framework().query(
-            "concept_minute", {"index_code": index_code},
-        )
-    except ValueError as e:
+        res = await app.get_minute(index_code)
+    except InvalidParams as e:
         return R.err(str(e), 400)
-    except RealtimeQueryError as e:
+    except (RateLimited, SourceUnavailable) as e:
         return R.err(str(e), 502)
     return R.ok({
         **(res.data or {}), "stale": res.stale,
