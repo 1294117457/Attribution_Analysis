@@ -175,6 +175,21 @@ function yVol(v: number): number {
   return y + h - (v / volMax.value) * h
 }
 
+/** 折线路径：null 处断开，下一个有效点重新起笔（指标在历史不足时为 null） */
+function linePath(values: (number | null | undefined)[], yFn: (v: number) => number): string {
+  const segs: string[] = []
+  let penDown = false
+  values.forEach((v, i) => {
+    if (v == null || Number.isNaN(v)) {
+      penDown = false
+      return
+    }
+    segs.push(`${penDown ? 'L' : 'M'} ${xAt(i)} ${yFn(v)}`)
+    penDown = true
+  })
+  return segs.join(' ')
+}
+
 const candleWidth = computed(() => {
   const n = sortedKlines.value.length
   if (n === 0) return 4
@@ -221,10 +236,7 @@ function buildSvg(): string {
   }
   for (const m of props.showMain.filter(x => x.startsWith('MA'))) {
     const key = m.toLowerCase() as 'ma5' | 'ma10' | 'ma20' | 'ma60'
-    const path = klines
-      .map((k, i) => `${i === 0 ? 'M' : 'L'} ${xAt(i)} ${yMain((k as any)[key] ?? 0)}`)
-      .filter(p => !p.includes(' NaN'))
-      .join(' ')
+    const path = linePath(klines.map(k => k[key]), yMain)
     if (path) {
       parts.push(`<path d="${path}" fill="none" stroke="${maColors[m]}" stroke-width="1.2"/>`)
     }
@@ -232,9 +244,9 @@ function buildSvg(): string {
 
   // ── 主图：BOLL ──
   if (props.showMain.includes('BOLL')) {
-    const upper = klines.map((k, i) => `${i === 0 ? 'M' : 'L'} ${xAt(i)} ${yMain(k.boll_up ?? 0)}`).join(' ')
-    const mid   = klines.map((k, i) => `${i === 0 ? 'M' : 'L'} ${xAt(i)} ${yMain(k.boll_mid ?? 0)}`).join(' ')
-    const lower = klines.map((k, i) => `${i === 0 ? 'M' : 'L'} ${xAt(i)} ${yMain(k.boll_dn ?? 0)}`).join(' ')
+    const upper = linePath(klines.map(k => k.boll_up), yMain)
+    const mid   = linePath(klines.map(k => k.boll_mid), yMain)
+    const lower = linePath(klines.map(k => k.boll_dn), yMain)
     parts.push(`<path d="${upper}" fill="none" stroke="${chartTheme.indicators.BOLL_UP}" stroke-width="1" stroke-dasharray="4,2"/>`)
     parts.push(`<path d="${mid}" fill="none" stroke="${chartTheme.indicators.BOLL_MID}" stroke-width="1"/>`)
     parts.push(`<path d="${lower}" fill="none" stroke="${chartTheme.indicators.BOLL_DN}" stroke-width="1" stroke-dasharray="4,2"/>`)
@@ -309,9 +321,10 @@ function buildSubContent(): string {
 
   if (props.showSub === 'MACD') {
     klines.forEach((k, i) => {
+      if (k.macd_bar == null) return
       const xc = xAt(i)
       const w = candleWidth.value
-      const bar = k.macd_bar ?? 0
+      const bar = k.macd_bar
       const yBar = ySub(Math.max(0, bar))
       const yBar2 = ySub(Math.min(0, bar))
       const isUp = bar >= 0

@@ -1,6 +1,6 @@
 """技术形态信号检测器
 
-输入：含有指标字段的 Kline 列表（按日期升序）
+输入：Kline 列表 + 等长的 IndicatorValues 列表（按日期升序）
 输出：TechnicalSummary（含金叉/死叉/超买/突破等形态判断）
 
 这个模块把"金叉/死叉/超买/突破"这种形态判断集中在后端做,
@@ -61,18 +61,21 @@ class TechnicalSummary:
 class SignalDetector:
     """技术形态摘要生成器
 
-    - 输入：按日期升序的 Kline 列表（必须含指标字段）
+    - 输入：按日期升序的 Kline 列表 + 一一对应的指标列表
     - 输出：基于最近一日 + 前 5 日判断形态
     """
 
-    def summarize(self, klines) -> TechnicalSummary:
-        """基于 K 线列表（含指标字段）生成技术形态摘要"""
+    def summarize(self, klines, indicators) -> TechnicalSummary:
+        """基于 K 线列表及其指标生成技术形态摘要"""
         if not klines:
             raise ValueError("K 线列表为空，无法生成摘要")
+        if len(klines) != len(indicators):
+            raise ValueError("K 线与指标数量不一致")
 
-        latest = klines[-1]
-        prev = klines[-2] if len(klines) > 1 else None
-        prev5 = klines[-6] if len(klines) >= 6 else None
+        latest = indicators[-1]
+        latest_close = klines[-1].close
+        prev = indicators[-2] if len(indicators) > 1 else None
+        prev5 = indicators[-6] if len(indicators) >= 6 else None
 
         signals: list[str] = []
 
@@ -149,27 +152,28 @@ class SignalDetector:
         # ── BOLL ────────────────────────────────────────
         boll_position = "middle"
         if latest.boll_up is not None and latest.boll_dn is not None and latest.boll_mid is not None:
-            if latest.close > latest.boll_up:
+            if latest_close > latest.boll_up:
                 boll_position = "above_upper"
                 signals.append("突破布林上轨")
-            elif latest.close < latest.boll_dn:
+            elif latest_close < latest.boll_dn:
                 boll_position = "below_lower"
                 signals.append("跌破布林下轨")
-            elif latest.close > latest.boll_mid:
+            elif latest_close > latest.boll_mid:
                 boll_position = "upper_half"
             else:
                 boll_position = "lower_half"
 
         # ── 涨跌幅 ─────────────────────────────────────
-        pct_1d = latest.change_pct if latest.change_pct is not None else 0.0
+        change_pct = klines[-1].change_pct
+        pct_1d = change_pct if change_pct is not None else 0.0
         pct_30d = 0.0
         if len(klines) >= 30:
             prev_30 = klines[-30]
             if prev_30.close and prev_30.close > 0:
-                pct_30d = (latest.close / prev_30.close - 1) * 100
+                pct_30d = (latest_close / prev_30.close - 1) * 100
 
         return TechnicalSummary(
-            latest_close=latest.close,
+            latest_close=latest_close,
             pct_change_1d=float(pct_1d),
             pct_change_30d=pct_30d,
             ma_alignment=ma_align,

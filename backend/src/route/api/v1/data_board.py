@@ -17,8 +17,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 
-from infrastructure.config.di import get_db
-from infrastructure.persistence.repositories.kline_repository import KlineRepoImpl
+from application.service import StockInfoService
+from infrastructure.config.di import get_db, get_stock_info_service
 from infrastructure.persistence.repositories.fin_daily_basic_repository import (
     FinDailyBasicRepoImpl,
 )
@@ -144,14 +144,13 @@ async def get_tech_kline(
     end_date: Optional[date] = Query(None),
     limit: int = Query(250, ge=10, le=3650),
     if_none_match: Optional[str] = Header(default=None),
-    db: AsyncSession = Depends(get_db),
+    svc: StockInfoService = Depends(get_stock_info_service),
 ):
-    repo = KlineRepoImpl(db)
     try:
-        sc = StockCode(code=symbol)
+        StockCode(code=symbol)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    rows = await repo.find_by_symbol(sc, start_date, end_date, limit=limit)
+    pairs = await svc.get_tech_kline(symbol, start_date, end_date, limit=limit)
     payload = {
         "symbol": symbol,
         "klines": [
@@ -160,14 +159,9 @@ async def get_tech_kline(
                 "open": r.open, "high": r.high, "low": r.low, "close": r.close,
                 "volume": r.volume, "amount": r.amount,
                 "change_pct": r.change_pct,
-                "ma5": r.ma5, "ma10": r.ma10, "ma20": r.ma20, "ma60": r.ma60,
-                "ema12": r.ema12, "ema26": r.ema26,
-                "macd_dif": r.macd_dif, "macd_dea": r.macd_dea, "macd_bar": r.macd_bar,
-                "rsi6": r.rsi6, "rsi12": r.rsi12, "rsi24": r.rsi24,
-                "kdj_k": r.kdj_k, "kdj_d": r.kdj_d, "kdj_j": r.kdj_j,
-                "boll_up": r.boll_up, "boll_mid": r.boll_mid, "boll_dn": r.boll_dn,
+                **ind.to_dict(),
             }
-            for r in rows
+            for r, ind in pairs
         ],
     }
     return _cached_response(if_none_match, payload)
