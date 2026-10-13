@@ -60,10 +60,14 @@ def _last_weekday(d: date) -> date:
 
 
 def build_request(
-    symbol: str, params: dict, window: Optional[tuple[date, date]] = None,
+    symbol: str,
+    params: dict,
+    window: Optional[tuple[date, date]] = None,
 ) -> KlineCollectRequest:
     if window:
-        return KlineCollectRequest(symbol=symbol, start_date=window[0], end_date=window[1])
+        return KlineCollectRequest(
+            symbol=symbol, start_date=window[0], end_date=window[1]
+        )
     start = _parse_date(params.get("start_date"))
     end = _parse_date(params.get("end_date"))
     if start and end:
@@ -139,8 +143,9 @@ class DailyKlineCollectTask(BaseCollectTask):
             )
             coverage = {r[0]: (r[1], r[2]) for r in cov_rows.all()}
             list_rows = await session.execute(
-                select(StockInfoDB.symbol, StockInfoDB.list_date)
-                .where(StockInfoDB.symbol.in_(symbols))
+                select(StockInfoDB.symbol, StockInfoDB.list_date).where(
+                    StockInfoDB.symbol.in_(symbols)
+                )
             )
             list_dates = {r[0]: r[1] for r in list_rows.all()}
 
@@ -158,17 +163,25 @@ class DailyKlineCollectTask(BaseCollectTask):
             pending.append(s)
         logger.info(
             "日K %s 模式: 共 %d 只，跳过已覆盖 %d 只",
-            mode, len(symbols), len(symbols) - len(pending),
+            mode,
+            len(symbols),
+            len(symbols) - len(pending),
         )
         return pending
 
     async def collect_one(self, unit: str, params: dict) -> UnitResult:
-        return await self._collect_symbol(unit, params, get_registry().get(KlineFetcher))
+        return await self._collect_symbol(
+            unit, params, get_registry().get(KlineFetcher)
+        )
 
     async def _collect_symbol(
-        self, symbol: str, params: dict, fetcher: KlineFetcher,
+        self,
+        symbol: str,
+        params: dict,
+        fetcher: KlineFetcher,
     ) -> UnitResult:
         from infrastructure.config.di import build_stock_info_service
+
         async with AsyncSessionLocal() as session:
             try:
                 svc = build_stock_info_service(session)
@@ -188,7 +201,9 @@ class DailyKlineCollectTask(BaseCollectTask):
             except asyncio.TimeoutError:
                 logger.warning("股票 %s 采集超时 (%ds)", symbol, UNIT_TIMEOUT)
                 return UnitResult(
-                    success=False, detail=symbol, error=f"timeout {UNIT_TIMEOUT}s",
+                    success=False,
+                    detail=symbol,
+                    error=f"timeout {UNIT_TIMEOUT}s",
                 )
             except CollectionError as e:
                 logger.warning("股票 %s 采集业务异常: %s", symbol, e)
@@ -199,7 +214,10 @@ class DailyKlineCollectTask(BaseCollectTask):
                 raise
             except Exception as e:
                 logger.error(
-                    "股票 %s 采集异常: %s", symbol, e, exc_info=True,
+                    "股票 %s 采集异常: %s",
+                    symbol,
+                    e,
+                    exc_info=True,
                 )
                 return UnitResult(success=False, detail=symbol, error=str(e)[:500])
 
@@ -219,7 +237,8 @@ class DailyKlineCollectTask(BaseCollectTask):
 
         logger.info(
             "DailyKline 预热完成: 并发=%d, api_interval=%.2fs",
-            self._concurrency, self._api_interval,
+            self._concurrency,
+            self._api_interval,
         )
 
     async def run(self, params: dict, on_unit_done) -> TaskSummary:
@@ -237,7 +256,12 @@ class DailyKlineCollectTask(BaseCollectTask):
         exchange_desc = ",".join(exchange_filter) if exchange_filter else "全部"
         logger.info(
             "日K采集 %d: 共 %d 只股票 (%s), 并发=%d, chunk=%d, interval=%.2fs",
-            self._task_id, total, exchange_desc, self._concurrency, chunk_size, self._api_interval,
+            self._task_id,
+            total,
+            exchange_desc,
+            self._concurrency,
+            chunk_size,
+            self._api_interval,
         )
 
         sem = asyncio.Semaphore(self._concurrency)
@@ -249,17 +273,21 @@ class DailyKlineCollectTask(BaseCollectTask):
                 try:
                     return await self._collect_symbol(symbol, params, fetcher)
                 except asyncio.TimeoutError:
-                    return UnitResult(success=False, detail=symbol, error=f"timeout {UNIT_TIMEOUT}s")
+                    return UnitResult(
+                        success=False, detail=symbol, error=f"timeout {UNIT_TIMEOUT}s"
+                    )
                 except RateLimitError as e:
                     # 限频：返回 fail，由 run() 统一 backoff
-                    return UnitResult(success=False, detail=symbol, error=f"限频: {str(e)[:200]}")
+                    return UnitResult(
+                        success=False, detail=symbol, error=f"限频: {str(e)[:200]}"
+                    )
                 except Exception as e:
                     return UnitResult(success=False, detail=symbol, error=str(e)[:500])
                 finally:
                     await pool.put(fetcher)
 
         for i in range(0, total, chunk_size):
-            chunk = symbols[i:i + chunk_size]
+            chunk = symbols[i : i + chunk_size]
             results = await asyncio.gather(*[one(s) for s in chunk])
 
             chunk_rate_limited = False
@@ -278,7 +306,8 @@ class DailyKlineCollectTask(BaseCollectTask):
             if chunk_rate_limited:
                 logger.warning(
                     "任务 %d: 本 chunk 触发限频，backoff %.1fs",
-                    self._task_id, rate_limit_backoff,
+                    self._task_id,
+                    rate_limit_backoff,
                 )
                 await asyncio.sleep(rate_limit_backoff)
                 rate_limit_backoff = min(rate_limit_backoff * 2, rate_limit_max_backoff)
