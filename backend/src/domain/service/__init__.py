@@ -17,6 +17,7 @@ from domain.service.concept_collection_policy import (
 )
 from domain.service.indicator_calculator import (
     INDICATOR_COLUMNS,
+    WARMUP_BARS,
     IndicatorCalculator,
 )
 from domain.service.market_session import (
@@ -39,6 +40,7 @@ __all__ = [
     "DEFAULT_TOP_K",
     # kline
     "INDICATOR_COLUMNS",
+    "WARMUP_BARS",
     "IndicatorCalculator",
     "SignalDetector",
     "TechnicalSummary",

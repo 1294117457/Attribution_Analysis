@@ -15,8 +15,6 @@ import logging
 from datetime import date, timedelta
 from typing import Optional
 
-import pandas as pd
-
 from application.port.collector_port import (
     CollectParams,
     KlineFetcher,
@@ -24,11 +22,11 @@ from application.port.collector_port import (
 )
 from domain.entitys.kline.entity import CollectionError, Kline, KlineDataError, KlineNotFoundError
 from domain.entitys.kline.repository import KlineRepository
-from domain.entitys.kline.vo import StockCode
+from domain.entitys.kline.vo import IndicatorValues, StockCode
 from domain.entitys.stock_info.entity import StockInfo, StockNotFoundError
 from domain.entitys.stock_info.repository import StockInfoRepository
 from domain.entitys.stock_pool.repository import StockPoolRepository
-from domain.service import IndicatorCalculator
+from domain.service import WARMUP_BARS, IndicatorCalculator
 from domain.service.signal_detector import SignalDetector
 from route.dto.request.kline import (
     KlineCollectRequest,
@@ -72,9 +70,6 @@ from domain.service import ConceptBriefService
 from application.port.realtime_query_port import RealtimeQueryPort
 
 logger = logging.getLogger(__name__)
-
-# 指标最大窗口：MA60 / BOLL20 / KDJ9 → 取 60 天作安全边界
-INDICATOR_WINDOW = 60
 
 # 列表行内"主概念"列展示上限
 DEFAULT_MAIN_CONCEPT_TOP_K = 3
@@ -236,7 +231,7 @@ class StockInfoService:
     async def collect(
         self, request: KlineCollectRequest, fetcher: KlineFetcher,
     ) -> KlineCollectResponse:
-        """采集 K 线 + 自动算指标"""
+        """采集 K 线（只存 OHLCV，指标在查询时实时计算）"""
         try:
             prefetched_name = await self._lookup_name(request.symbol)
             params = CollectParams(
@@ -257,7 +252,6 @@ class StockInfoService:
                 klines.append(kline)
                 if not name:
                     name = kline.name
-            await asyncio.to_thread(self._enrich_with_indicators, request.symbol, klines)
             saved_count = await self._kline_repo.save_batch(klines)
             if name:
                 await self._upsert_stock_info(request.symbol, name)
@@ -307,86 +301,63 @@ class StockInfoService:
         )
         await self._stock_repo.upsert(stock)
 
-    def _enrich_with_indicators(self, symbol: str, klines: list[Kline]) -> None:
-        """给 K 线列表补齐指标字段"""
-        if not klines:
-            return
-        klines.sort(key=lambda k: k.trade_date.date)
-        df = pd.DataFrame([{
-            "date":  k.trade_date.date,
-            "close": k.close,
-            "high":  k.high,
-            "low":   k.low,
-        } for k in klines])
-        indicators = self._calc.calculate_all(df)
-        kline_by_date = {k.trade_date.date: k for k in klines}
-        for idx, row in indicators.iterrows():
-            d = _row_idx_to_date(df, idx)
-            if d is None or d not in kline_by_date:
-                continue
-            k = kline_by_date[d]
-            k.ma5 = _safe_float(row.get("ma5"))
-            k.ma10 = _safe_float(row.get("ma10"))
-            k.ma20 = _safe_float(row.get("ma20"))
-            k.ma60 = _safe_float(row.get("ma60"))
-            k.ema12 = _safe_float(row.get("ema12"))
-            k.ema26 = _safe_float(row.get("ema26"))
-            k.macd_dif = _safe_float(row.get("macd_dif"))
-            k.macd_dea = _safe_float(row.get("macd_dea"))
-            k.macd_bar = _safe_float(row.get("macd_bar"))
-            k.rsi6 = _safe_float(row.get("rsi6"))
-            k.rsi12 = _safe_float(row.get("rsi12"))
-            k.rsi24 = _safe_float(row.get("rsi24"))
-            k.kdj_k = _safe_float(row.get("kdj_k"))
-            k.kdj_d = _safe_float(row.get("kdj_d"))
-            k.kdj_j = _safe_float(row.get("kdj_j"))
-            k.boll_up = _safe_float(row.get("boll_up"))
-            k.boll_mid = _safe_float(row.get("boll_mid"))
-            k.boll_dn = _safe_float(row.get("boll_dn"))
-
-    async def recalculate(self, symbol: str, days: int = INDICATOR_WINDOW) -> int:
-        """增量重算最近 N 天指标"""
-        end_date = date.today()
-        start_date = end_date - timedelta(days=days + INDICATOR_WINDOW)
-        full_klines = await self._kline_repo.find_by_symbol(
-            symbol=StockCode(symbol),
-            start_date=start_date, end_date=end_date,
-            limit=days + INDICATOR_WINDOW + 30, order_desc=False,
+    async def _load_klines_with_indicators(
+        self,
+        symbol: str,
+        start_date: Optional[date],
+        end_date: Optional[date],
+        limit: int,
+        order_desc: bool,
+    ) -> list[tuple[Kline, IndicatorValues]]:
+        """读取 K 线 + 前置 WARMUP_BARS 根预热，实时算指标后只返回主窗口"""
+        code = StockCode(symbol)
+        main = await self._kline_repo.find_by_symbol(
+            code, start_date=start_date, end_date=end_date,
+            limit=limit, order_desc=order_desc,
         )
-        if len(full_klines) < 2:
-            return 0
-        await asyncio.to_thread(self._enrich_with_indicators, symbol, full_klines)
-        return await self._kline_repo.save_batch(full_klines)
-
-    async def recalculate_pool(
-        self, symbols: list[str], days: int = INDICATOR_WINDOW,
-    ) -> dict[str, int]:
-        results: dict[str, int] = {}
-        for sym in symbols:
-            try:
-                results[sym] = await self.recalculate(sym, days=days)
-            except Exception:
-                results[sym] = -1
-        return results
+        if not main:
+            return []
+        first_day = min(k.trade_date.date for k in main)
+        warm = await self._kline_repo.find_by_symbol(
+            code, end_date=first_day - timedelta(days=1),
+            limit=WARMUP_BARS, order_desc=True,
+        )
+        series = sorted(warm + main, key=lambda k: k.trade_date.date)
+        values = await asyncio.to_thread(self._calc.calculate, series)
+        offset = len(warm)
+        pairs = list(zip(series[offset:], values[offset:]))
+        return list(reversed(pairs)) if order_desc else pairs
 
     async def get_klines(self, request: KlineQueryRequest) -> KlineListResponse:
-        stock_code = StockCode(request.symbol)
-        klines = await self._kline_repo.find_by_symbol(
-            symbol=stock_code,
-            start_date=request.start_date, end_date=request.end_date,
+        pairs = await self._load_klines_with_indicators(
+            request.symbol, request.start_date, request.end_date,
             limit=request.limit, order_desc=request.order_desc,
         )
-        items = [self._kline_to_item(k) for k in klines]
+        items = [self._kline_to_item(k, ind) for k, ind in pairs]
         return KlineListResponse(total=len(items), items=items)
+
+    async def get_tech_kline(
+        self,
+        symbol: str,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        limit: int = 250,
+    ) -> list[tuple[Kline, IndicatorValues]]:
+        """数据看板技术面：按日期倒序返回 K 线 + 实时指标"""
+        return await self._load_klines_with_indicators(
+            symbol, start_date, end_date, limit=limit, order_desc=True,
+        )
 
     async def get_kline_by_date(
         self, symbol: str, trade_date: date,
     ) -> KlineItemResponse:
-        stock_code = StockCode(symbol)
-        kline = await self._kline_repo.find_by_symbol_date(stock_code, trade_date)
-        if not kline:
+        pairs = await self._load_klines_with_indicators(
+            symbol, trade_date, trade_date, limit=1, order_desc=False,
+        )
+        if not pairs:
             raise KlineNotFoundError(symbol, str(trade_date))
-        return self._kline_to_item(kline)
+        kline, ind = pairs[0]
+        return self._kline_to_item(kline, ind)
 
     async def get_stats(self, symbol: str) -> KlineStatsResponse:
         stock_code = StockCode(symbol)
@@ -426,17 +397,12 @@ class StockInfoService:
         )
 
     @staticmethod
-    def _kline_to_item(k: Kline) -> KlineItemResponse:
+    def _kline_to_item(k: Kline, ind: IndicatorValues) -> KlineItemResponse:
         return KlineItemResponse(
             symbol=k.symbol.code, name=k.name, date=k.trade_date.date,
             open=k.open, high=k.high, low=k.low, close=k.close,
             volume=k.volume, amount=k.amount, change_pct=k.change_pct,
-            ma5=k.ma5, ma10=k.ma10, ma20=k.ma20, ma60=k.ma60,
-            ema12=k.ema12, ema26=k.ema26,
-            macd_dif=k.macd_dif, macd_dea=k.macd_dea, macd_bar=k.macd_bar,
-            rsi6=k.rsi6, rsi12=k.rsi12, rsi24=k.rsi24,
-            kdj_k=k.kdj_k, kdj_d=k.kdj_d, kdj_j=k.kdj_j,
-            boll_up=k.boll_up, boll_mid=k.boll_mid, boll_dn=k.boll_dn,
+            **ind.to_dict(),
         )
 
     # ══════════════════════════════════════════════════════════════════════
@@ -455,14 +421,14 @@ class StockInfoService:
         )
         end = date.today()
         start = end - timedelta(days=days)
-        klines = await self._kline_repo.find_by_symbol(
-            StockCode(symbol),
-            start_date=start, end_date=end,
-            limit=days + 30, order_desc=False,
+        pairs = await self._load_klines_with_indicators(
+            symbol, start, end, limit=days + 30, order_desc=False,
         )
-        if not klines:
+        if not pairs:
             raise KlineDataError(symbol, f"暂无 K 线数据, 请先采集（days={days}）")
-        summary_entity = self._signal.summarize(klines)
+        klines = [k for k, _ in pairs]
+        indicators = [ind for _, ind in pairs]
+        summary_entity = self._signal.summarize(klines, indicators)
         summary = TechnicalSummaryVO(
             latest_close=summary_entity.latest_close,
             pct_change_1d=summary_entity.pct_change_1d,
@@ -488,22 +454,17 @@ class StockInfoService:
             )
             for p in pool_entities
         ]
-        kline_vos = [self._analysis_kline_to_vo(k) for k in klines]
+        kline_vos = [self._analysis_kline_to_vo(k, ind) for k, ind in pairs]
         return StockAnalysisResponse(
             stock=stock_info, summary=summary, klines=kline_vos, pools=pools,
         )
 
     @staticmethod
-    def _analysis_kline_to_vo(k: Kline) -> KlineWithIndicatorVO:
+    def _analysis_kline_to_vo(k: Kline, ind: IndicatorValues) -> KlineWithIndicatorVO:
         return KlineWithIndicatorVO(
             date=k.trade_date.date, open=k.open, high=k.high, low=k.low, close=k.close,
             volume=k.volume, amount=k.amount, change_pct=k.change_pct,
-            ma5=k.ma5, ma10=k.ma10, ma20=k.ma20, ma60=k.ma60,
-            ema12=k.ema12, ema26=k.ema26,
-            macd_dif=k.macd_dif, macd_dea=k.macd_dea, macd_bar=k.macd_bar,
-            rsi6=k.rsi6, rsi12=k.rsi12, rsi24=k.rsi24,
-            kdj_k=k.kdj_k, kdj_d=k.kdj_d, kdj_j=k.kdj_j,
-            boll_up=k.boll_up, boll_mid=k.boll_mid, boll_dn=k.boll_dn,
+            **ind.to_dict(),
         )
 
     # ══════════════════════════════════════════════════════════════════════
@@ -539,28 +500,7 @@ class StockInfoService:
         return StockPanelListVO.from_list(items, total, req.page, req.page_size)
 
 
-# ── 模块级工具函数（被 service 内部引用 + scheduler 复用） ────────────
-
-def _safe_float(v) -> Optional[float]:
-    if v is None:
-        return None
-    try:
-        if pd.isna(v):
-            return None
-    except (TypeError, ValueError):
-        pass
-    return float(v)
-
-
-def _row_idx_to_date(df: pd.DataFrame, idx) -> Optional[date]:
-    try:
-        d = df.iloc[idx]["date"]
-    except Exception:
-        return None
-    if isinstance(d, pd.Timestamp):
-        return d.date()
-    return d
-
+# ── 模块级工具函数 ────────────────────────────────────────────────────
 
 def _panel_row_to_vo(
     r: StockPanelRow,

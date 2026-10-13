@@ -40,7 +40,7 @@ class KlineBO(BaseModel):
     """K线采集层 BO（由 fetcher/parser 输出，应用层消费）
 
     字段与 kline 聚合 entity.py 字段一一对应；
-    fetcher 在此处做归一化（指标列填充、字段标准化）后传给 AppService。
+    fetcher 在此处做字段标准化后传给 AppService。
     """
     symbol: str = Field(..., description="股票代码")
     trade_date: date = Field(..., description="交易日")
@@ -57,7 +57,7 @@ class KlineBO(BaseModel):
     model_config = {"from_attributes": True}
 
     def to_entity_args(self) -> dict:
-        """返回用于 Kline.create(**) 的字段；entity 层负责指标计算与持久化。"""
+        """返回用于 Kline.create(**) 的字段。"""
         return {
             "symbol": self.symbol,
             "trade_date": self.trade_date,

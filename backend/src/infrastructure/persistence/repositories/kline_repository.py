@@ -1,4 +1,4 @@
-"""K线仓储实现（含 17 个技术指标字段）"""
+"""K线仓储实现（仅 OHLCV）"""
 
 from __future__ import annotations
 
@@ -14,16 +14,6 @@ from domain.entitys.kline.repository import KlineRepository
 from domain.entitys.kline.vo import StockCode
 from infrastructure.persistence.models.tech_kline import TechKlineDailyDB
 
-
-# 一行 = 一只股票一天的所有 K 线 + 指标字段（方案 A 展宽结构）
-_INDICATOR_COLUMNS = [
-    "ma5", "ma10", "ma20", "ma60",
-    "ema12", "ema26",
-    "macd_dif", "macd_dea", "macd_bar",
-    "rsi6", "rsi12", "rsi24",
-    "kdj_k", "kdj_d", "kdj_j",
-    "boll_up", "boll_mid", "boll_dn",
-]
 
 
 class KlineRepoImpl:
@@ -51,24 +41,6 @@ class KlineRepoImpl:
             volume=row.volume,
             amount=row.amount,
             change_pct=row.change_pct,
-            ma5=row.ma5,
-            ma10=row.ma10,
-            ma20=row.ma20,
-            ma60=row.ma60,
-            ema12=row.ema12,
-            ema26=row.ema26,
-            macd_dif=row.macd_dif,
-            macd_dea=row.macd_dea,
-            macd_bar=row.macd_bar,
-            rsi6=row.rsi6,
-            rsi12=row.rsi12,
-            rsi24=row.rsi24,
-            kdj_k=row.kdj_k,
-            kdj_d=row.kdj_d,
-            kdj_j=row.kdj_j,
-            boll_up=row.boll_up,
-            boll_mid=row.boll_mid,
-            boll_dn=row.boll_dn,
         )
 
     @staticmethod
@@ -85,24 +57,6 @@ class KlineRepoImpl:
             "volume": kline.volume,
             "amount": kline.amount,
             "change_pct": kline.change_pct,
-            "ma5":  kline.ma5,
-            "ma10": kline.ma10,
-            "ma20": kline.ma20,
-            "ma60": kline.ma60,
-            "ema12": kline.ema12,
-            "ema26": kline.ema26,
-            "macd_dif": kline.macd_dif,
-            "macd_dea": kline.macd_dea,
-            "macd_bar": kline.macd_bar,
-            "rsi6":  kline.rsi6,
-            "rsi12": kline.rsi12,
-            "rsi24": kline.rsi24,
-            "kdj_k": kline.kdj_k,
-            "kdj_d": kline.kdj_d,
-            "kdj_j": kline.kdj_j,
-            "boll_up":  kline.boll_up,
-            "boll_mid": kline.boll_mid,
-            "boll_dn":  kline.boll_dn,
         }
 
     # ── KlineRepository 接口实现 ─────────────────────────────
@@ -116,15 +70,13 @@ class KlineRepoImpl:
         return kline
 
     async def save_batch(self, klines: list[Kline]) -> int:
-        """批量保存 K 线 + 指标，使用 ON CONFLICT DO UPDATE。"""
+        """批量保存 K 线，使用 ON CONFLICT DO UPDATE。"""
         if not klines:
             return 0
         rows = [self._to_row(k) for k in klines]
 
-        # DO UPDATE 全部字段（含指标），保证重复采集时指标被覆盖
         excluded = pg_insert(TechKlineDailyDB).excluded
-        upsert_set = {col: getattr(excluded, col) for col in _INDICATOR_COLUMNS}
-        upsert_set.update({
+        upsert_set = {
             "name": excluded.name,
             "open": excluded.open,
             "high": excluded.high,
@@ -133,7 +85,7 @@ class KlineRepoImpl:
             "volume": excluded.volume,
             "amount": excluded.amount,
             "change_pct": excluded.change_pct,
-        })
+        }
 
         stmt = (
             pg_insert(TechKlineDailyDB)
