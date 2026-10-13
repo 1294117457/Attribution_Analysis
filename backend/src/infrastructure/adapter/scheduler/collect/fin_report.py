@@ -35,7 +35,9 @@ from infrastructure.adapter.fetcher.tushare import symbol_to_ts_code
 from infrastructure.persistence.connection import AsyncSessionLocal
 from infrastructure.persistence.models.fin_report import FinReportDB
 from infrastructure.persistence.models.stock_info import StockInfoDB
-from infrastructure.persistence.repositories.fin_report_repository import FinReportRepoImpl
+from infrastructure.persistence.repositories.fin_report_repository import (
+    FinReportRepoImpl,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +54,9 @@ class FinReportCollectTask(BaseCollectTask):
     facet = "fundamental"
     sub_facet = "report"
     label = "季报财务"
-    description = "利润表：营收 / 净利润 / EPS（tushare income，合并报表），面板净利润率数据来源"
+    description = (
+        "利润表：营收 / 净利润 / EPS（tushare income，合并报表），面板净利润率数据来源"
+    )
 
     default_params = {"years": 1}
     full_params = {"years": 3}
@@ -69,7 +73,9 @@ class FinReportCollectTask(BaseCollectTask):
         if not bos:
             return UnitResult(success=True, skipped=True, detail=unit)
         async with AsyncSessionLocal() as session:
-            saved = await FinReportRepoImpl(session).save_batch([b.to_entity() for b in bos])
+            saved = await FinReportRepoImpl(session).save_batch(
+                [b.to_entity() for b in bos]
+            )
         return UnitResult(success=True, detail=unit, saved_count=saved)
 
     def summary_message(self, tally: UnitTally) -> str:
@@ -85,16 +91,23 @@ class FinReportCollectTask(BaseCollectTask):
             raise Cancelled()
 
     async def _fetch_with_rate_limit(
-        self, fetcher: FinReportFetcher, symbol: str, start_date: Optional[str],
+        self,
+        fetcher: FinReportFetcher,
+        symbol: str,
+        start_date: Optional[str],
     ) -> list:
         ts_code = symbol_to_ts_code(symbol)
         for attempt in range(RATE_LIMIT_RETRIES + 1):
             try:
-                return await asyncio.to_thread(fetcher.fetch_income, ts_code, start_date)
+                return await asyncio.to_thread(
+                    fetcher.fetch_income, ts_code, start_date
+                )
             except RateLimitError:
                 if attempt == RATE_LIMIT_RETRIES:
                     raise
-                logger.info("Tushare income 限频，等待 %.0fs 后重试 %s", RATE_LIMIT_WAIT, symbol)
+                logger.info(
+                    "Tushare income 限频，等待 %.0fs 后重试 %s", RATE_LIMIT_WAIT, symbol
+                )
                 await self._sleep_cancellable(RATE_LIMIT_WAIT)
         return []
 
@@ -111,7 +124,9 @@ class FinReportCollectTask(BaseCollectTask):
         years = params.get("years", 1)
         if not years:
             return None
-        return (date.today() - timedelta(days=int(float(years) * 365))).strftime("%Y%m%d")
+        return (date.today() - timedelta(days=int(float(years) * 365))).strftime(
+            "%Y%m%d"
+        )
 
     @staticmethod
     async def _symbols(params: dict) -> list[str]:

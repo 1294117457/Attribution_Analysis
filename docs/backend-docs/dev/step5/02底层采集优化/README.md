@@ -7,7 +7,7 @@
 | 问题 | 现状 |
 | :-- | :-- |
 | 同一份数据三套"接口" | `collector_port.py` 18 个 `XxxFetcher` Protocol、`scheduler/collect/` 21 个 `BaseCollectTask`、`realtime/` 2 个 `BaseRealtimeQuery`，元数据（facet / label / description）各写一遍 |
-| 实现按 SDK 堆成大类 | `TushareFetcher` 约 1050 行实现 17 个协议；`ConceptFetcher` 一个协议塞了 5 种数据，`concept_snapshot` 还调用了协议外的 `fetch_current_snapshot` |
+| 实现按 SDK 堆成大类 | `TushareFetcher` 约 1050 行实现 16 个协议；`ConceptFetcher` 一个协议塞了 5 种数据，`concept_snapshot` 还调用了协议外的 `fetch_current_snapshot` |
 | 签名不统一 | `fetch(params)` / `fetch_daily_basic(trade_date)` / `async fetch_minute_klines(...)`，返回 `list[Any]`，无法按"接口名 + 参数"统一调用 |
 | 工具和数据源混在一起 | `AdataConceptFetcher` = adata × 同花顺；无法表达"akshare 取东财数据" |
 | 一个协议只能有一个实现 | `FetcherRegistry.get(Port)` 只返回一个实例，无法选源、无法失败换源 |
@@ -33,22 +33,25 @@
 | 层 | 命名 | 示例 | 含义 |
 | :-- | :-- | :-- | :-- |
 | 第一层 根约束 | `DataPort` | — | 所有数据接口的抽象基类 |
-| 第二层 接口约束 | `XxxPort` | `DailyKlinePort`、`MoneyflowPort` | 描述"取什么"：名称、元数据、参数模型、返回类型；仍是抽象类 |
-| 第三层 底层实现 | `<工具>XxxAdapter` | `TushareDailyKlineAdapter` | 继承对应 Port，描述"怎么取" |
+| 第二层 接口约束 | `XxxPort` + `XxxParams` + `XxxBO` | `MoneyflowPort`、`MoneyflowParams`、`CapMoneyflowBO` | 描述"取什么"：名称、元数据、参数模型、返回类型；仍是抽象类。不含任何数据源字段 |
+| 实现方属性 | `AdapterBase` | — | infrastructure 侧：`tool` / `origin` / `priority` / `throttle_group` |
+| 第三层 底层实现 | `<工具>XxxAdapter` | `TushareDailyKlineAdapter` | 继承对应 Port 和 `AdapterBase`，描述"怎么取" |
 | SDK 连接 | `<工具>Client` | `TushareClient` | 鉴权、连接、错误翻译 |
 | 横向增强 | `XxxDecorator` | `RetryDecorator`、`CacheDecorator` | 接口不变，在外面叠加能力 |
 | 统一入口 | `DataGateway` | — | 门面：按名或按类型调用 |
 | 调用 / 结果 | `DataCommand` / `DataResult` | — | 一次调用的请求与结果 |
+| 按名调用入口 | `DataQueryService` | — | 应用层：HTTP / Agent / "试查"按名调用，带条数上限和日志 |
 
-Port / Adapter 沿用项目现有的 `application/port`、`infrastructure/adapter` 词汇。
+Port / Adapter 沿用项目现有的 `application/port`、`infrastructure/adapter` 词汇，分层规则以 [DDD.md](../../../config/DDD.md) 为准（§2.2 "port 的组成"）。
 
 ### 3.2 调用流程
 
 ```
 启动期     ⓪ 注册表式工厂：注册 Adapter（自动归到所属 Port）、Client，装配装饰器
 ──────────────────────────────────────────────────────────────────
-调用方     ① 命令：DataCommand{name, params, source?, policy}   ← Service / 采集任务 / Agent / HTTP
-入口       ② 门面：DataGateway.invoke / fetch
+调用方     ① 类型化：fetch(XxxPort, XxxParams)                  ← 业务 Service / 采集任务
+           ① 按名：DataCommand{name, params, source?, policy}    ← DataQueryService（HTTP / Agent / 试查）
+入口       ② 门面：DataGateway.fetch / fetch_many / invoke
 查接口     ③ 注册表按 name 找到 Port + Params 校验（pydantic）
 缓存       ④ CacheDecorator：policy=QUERY 且 Port 声明了 cache 时启用（缓存 / 单飞）
 选数据源   ⑤ 策略（指定 source）/ 责任链（按 priority 逐个尝试）
@@ -61,7 +64,7 @@ Port / Adapter 沿用项目现有的 `application/port`、`infrastructure/adapte
 
 | 使用方式 | 谁来做 | 怎么调 |
 | :-- | :-- | :-- |
-| 实时查询（不入库） | 业务 Service（`concept_service`、`stock_info_service`） | `gateway.invoke(cmd, policy=QUERY)`，失败降级由 Service 自己处理 |
+| 实时查询（不入库） | 业务 Service（`concept_service`、`stock_info_service`） | `gateway.fetch(XxxPort, params, policy=QUERY)`，失败降级由 Service 自己处理 |
 | 采集入库 | 采集任务（模板方法 `execute_task`） | 每个单元 `gateway.fetch(...)` 后落库 |
 | 定时编排 | `CollectManageService` | 通过 `SchedulerPort` 注册方案定时，到点回调 `run_plan` |
 
@@ -77,7 +80,7 @@ Port / Adapter 沿用项目现有的 `application/port`、`infrastructure/adapte
 | `XxxDecorator` | 装饰器 | 统计、重试、限流、缓存只写一处 | [03](./03-横向装饰器.md) |
 | 采集任务 | 模板方法 + 注入的规划器 | 14 个按日 / 按股票任务改成声明式，其余 7 个只换取数方式 | [04](./04-采集任务改造.md) |
 | 实时查询 | 缓存装饰器 + 应用层降级 | 取消 `realtime/`，业务直接调统一入口 | [05](./05-实时查询并入统一入口.md) |
-| 对外暴露 | 门面 + 命令 | 业务 Service、HTTP、Agent 统一接入 | [06](./06-统一入口与对外暴露.md) |
+| 对外暴露 | 门面 + 命令 | 业务 Service 类型化接入；HTTP、Agent 经 `DataQueryService` 按名接入 | [06](./06-统一入口与对外暴露.md) |
 | 定时调度 | 端口 + 回调 | 应用层决定"何时跑什么"，基础设施只负责"到点叫醒" | [07](./07-定时调度改造.md) |
 
 三种"再试一次"不要混：
@@ -101,11 +104,11 @@ application/
   service/
     collect_manage_service.py  直接 import scheduler.collect / collect_scheduler
 infrastructure/
-  config/di.py                 setup_default_registry：TushareFetcher 一个实例注册 17 个协议
+  config/di.py                 setup_default_registry：TushareFetcher 一个实例注册 16 个协议
   adapter/
     fetcher/
       base.py                  BaseCollector（logger / source_name）
-      tushare.py               TushareFetcher（~1050 行，17 个 fetch_*）+ TushareKlineParser
+      tushare.py               TushareFetcher（~1050 行，16 个 fetch_*）+ TushareKlineParser
       adata.py                 AdataConceptFetcher（5+1 个 fetch_*）
       pytdx.py                 PytdxFetcher + MinuteKlineBO
     realtime/
@@ -127,13 +130,14 @@ infrastructure/
 ### 修改后
 
 ```
-domain/service/
-  collect_schedule.py          定时规则：validate_schedule / normalize_times / MIN_INTERVAL_SECONDS
+domain/entitys/collect_plan/
+  vo.py                        Schedule 值对象：定时配置 + 校验规则（间隔下限、每日时间点上限）
 application/
   port/
-    data/                      ← 第一层根约束 + 第二层接口约束
+    data/                      ← 第一层根约束 + 第二层接口约束（每个面文件含 Port + Params + BO）
       base.py                  DataPort、DataCommand、DataResult、CachePolicy、错误类型、DataGatewayPort
-      tech.py                  DailyKlinePort、MinuteKlinePort
+      types.py                 公共参数类型：Symbol、TradeDate、IndexCode
+      tech.py                  DailyKlinePort、MinuteKlinePort、MinuteInterval
       capital.py               MoneyflowPort、MarginDetailPort、TopListPort、TopInstPort、BlockTradePort、HolderNumberPort
       fundamental.py           DailyBasicPort、FinIncomePort、Top10HoldersPort、Top10FloatHoldersPort
       reference.py             StockBasicPort、AdjFactorPort、SuspendPort、NameChangePort、DividendPort
@@ -142,12 +146,15 @@ application/
     (collector_port.py / registry.py / realtime_query_port.py 迁移完成后删除)
   service/
     collect_manage_service.py  只依赖端口：方案增删改时注册定时、到点执行 run_plan
-    concept_service.py  stock_info_service.py   实时查询 + 降级 + 结果组装
+    concept_realtime.py        ConceptRealtimeReader：概念实时行情 + 失败降级（见 05）
+    data_query_service.py      DataQueryService：按名调用入口（见 06）
+    concept_service.py  stock_info_service.py   注入 Gateway；结果组装
 infrastructure/
   config/di.py                 setup_default_registry 改为调用 data.setup
   adapter/
     data/                      ← 统一入口 + 横向装饰器 + 第三层底层实现
       core/
+        base.py                AdapterBase（实现方属性）
         registry.py            DataPortRegistry（一个 Port → 多个 Adapter）
         gateway.py             DataGateway（门面 + 选源 + 责任链）
         decorators.py          MetricsDecorator / RetryDecorator / ThrottleDecorator
@@ -171,8 +178,9 @@ infrastructure/
     background/                ← 原 scheduler/ 下的池操作后台任务
       operation_dispatcher.py  task_registry.py
     (fetcher/ 和 realtime/ 删除)
-route/api/v1/
-  data.py                      新增：POST /data/{name}、GET /data/catalog
+route/
+  api/v1/data.py               新增：POST /data/{name}、GET /data/catalog（经 DataQueryService）
+  dto/request/*.py             21 个 BO 搬到 application/port/data/，过渡期保留 re-export，P4 删除
 ```
 
 ## 5. 实施阶段
@@ -181,26 +189,27 @@ route/api/v1/
 
 | 阶段 | 内容 | 涉及文档 | 完成标志 |
 | :-- | :-- | :-- | :-- |
-| P1 | 建 `application/port/data` 与 `adapter/data/core`；Tushare 拆成 Client + Adapter；装饰器；Gateway 可用。旧 `TushareFetcher` 保留 | 01 / 02 / 03 | 脚本用 Gateway 取到与旧 fetcher 一致的数据 |
+| P1 | 建 `application/port/data` 与 `adapter/data/core`；21 个 BO 搬到 `application/port/data/`（原位置留 re-export）；Tushare 拆成 Client + Adapter；装饰器；Gateway 可用。旧 `TushareFetcher` 保留 | 01 / 02 / 03 | 脚本用 Gateway 取到与旧 fetcher 一致的数据；`application/port/data/` 不 import `route` |
 | P2 | 14 个按日 / 按股票任务（含 `fin_report`）改成 `DeclarativeCollectTask`；`daily_kline` / `stock_basic` 改走 Gateway | 04 | 各任务抽样采集写入行数与改前一致；删掉重复的限流代码 |
-| P3 | adata / pytdx 拆 Adapter；概念任务改走 Gateway；实时查询并入 Gateway（`CacheDecorator`），删除 `realtime/` | 02 / 04 / 05 | 概念采集、分 K、概念分时页面、采集管理"试查"正常 |
+| P3 | adata / pytdx 拆 Adapter；概念任务改走 Gateway；实时查询并入 Gateway（`CacheDecorator`）；新增 `ConceptRealtimeReader`、`stock_info_service.get_minute_klines`、`DataQueryService` 并替换实时调用方；删除 `realtime/` | 02 / 04 / 05 / 06 §4.1 | 概念采集、分 K、概念分时页面、采集管理"试查"正常 |
 | P4 | 业务 Service 改走 Gateway；删除 `collector_port.py`、`FetcherRegistry`、`adapter/fetcher/` | 06 | 全局 grep 不到 `XxxFetcher` / `get_registry()` |
-| P5 | 定时调度改造：规则移到 domain、`SchedulerPort`、`ApschedulerAdapter`；池操作移到 `background/` | 07 | 方案定时触发、下次触发时间显示正常；Service 不再 import 调度器实现 |
+| P5 | 定时调度改造：规则收进 domain 的 `Schedule` 值对象、`SchedulerPort`、`ApschedulerAdapter`；池操作移到 `background/` | 07 | 方案定时触发、下次触发时间显示正常；Service 不再 import 调度器实现 |
 | P6 | 新增 `/api/v1/data/*` 与 Agent 工具目录；`scheduler/collect` 上移到 `adapter/collect` | 04 / 06 | 接口可按名调用任意 Port |
 
 ## 6. 文档索引
 
-- [01-核心骨架.md](./01-核心骨架.md)：DataPort / XxxPort / Registry / Gateway / DataCommand / 错误分类 / 选源规则
+- [01-核心骨架.md](./01-核心骨架.md)：DataPort / XxxPort / AdapterBase / Registry / Gateway / DataCommand / 参数约定与时间参数 / BO 位置 / 错误分类 / 选源规则
 - [02-底层实现拆分.md](./02-底层实现拆分.md)：Client + Adapter 拆分，18 个协议到 23 个 Port 的对照表
 - [03-横向装饰器.md](./03-横向装饰器.md)：Metrics / Retry / Throttle 的顺序、限流分组、可取消等待
 - [04-采集任务改造.md](./04-采集任务改造.md)：`DeclarativeCollectTask`、规划器、哪些任务声明式、哪些保留子类
 - [05-实时查询并入统一入口.md](./05-实时查询并入统一入口.md)：`CacheDecorator`、降级移到应用层、`realtime/` 删除
-- [06-统一入口与对外暴露.md](./06-统一入口与对外暴露.md)：业务 Service / HTTP / Agent 接入、目录统一、旧代码删除清单
-- [07-定时调度改造.md](./07-定时调度改造.md)：`SchedulerPort`、`ApschedulerAdapter`、定时规则归位
+- [06-统一入口与对外暴露.md](./06-统一入口与对外暴露.md)：业务 Service 接入、`DataQueryService`、HTTP / Agent、目录统一、旧代码删除清单
+- [07-定时调度改造.md](./07-定时调度改造.md)：`Schedule` 值对象、`SchedulerPort`、`ApschedulerAdapter`
 
 ## 7. 不在本次范围
 
-- BO 目前放在 `route/dto/request/*`（infrastructure 反向依赖 route），只记录，不在本次移动。
+- 应用服务 import `route/dto` 的问题（`stock_info_service`、`concept_service`、`stock_pool_service` 等引用请求 / 响应 DTO）。本次只搬 Port 用到的 21 个 BO，其余 DTO 另开文档。
+- `collect_plan` 聚合根实体化（`CollectManageService` 仍直接用 ORM 模型），见 07 §9。
 - 新数据源（akshare / 东财）只预留结构，实际接入另开文档。
 - 多副本部署下的分布式限流和调度互斥，本次不做（与现在一样按单进程设计）。
 - 分 K 入库、新闻采集（`planned.py` 里的占位）不变。

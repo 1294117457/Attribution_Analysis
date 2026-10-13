@@ -81,7 +81,9 @@ class FinTop10HoldersCollectTask(BaseCollectTask):
     async def _fetch_with_rate_limit(self, fetcher, symbol, period) -> list:
         for attempt in range(RATE_LIMIT_RETRIES + 1):
             try:
-                return await asyncio.to_thread(fetcher.fetch_top10_holders, symbol, period)
+                return await asyncio.to_thread(
+                    fetcher.fetch_top10_holders, symbol, period
+                )
             except RateLimitError:
                 if attempt == RATE_LIMIT_RETRIES:
                     raise
