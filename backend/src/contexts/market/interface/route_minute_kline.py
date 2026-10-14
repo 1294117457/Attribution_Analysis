@@ -9,8 +9,8 @@ from pydantic import ValidationError
 from contexts.data.application.port.base import InvalidParams, RateLimited, SourceUnavailable
 from contexts.data.application.port.tech import MinuteInterval, MinuteKlineParams
 from contexts.market.application.service.stock_info_service import StockInfoService
-from contexts.shared.infrastructure.config.di import get_stock_info_service
-from contexts.shared.interface import _response as R
+from shared.infrastructure.config.di import get_stock_info_service
+from shared.interface import _response as R
 
 router = APIRouter(prefix="/minute-klines", tags=["分钟K线"])
 

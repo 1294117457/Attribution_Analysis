@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 
 from contexts.collect.application.port.collect_port import CollectProgressPort
-from contexts.shared.infrastructure.cache.redis_client import get_redis
+from shared.infrastructure.cache.redis_client import get_redis
 
 logger = logging.getLogger(__name__)
 

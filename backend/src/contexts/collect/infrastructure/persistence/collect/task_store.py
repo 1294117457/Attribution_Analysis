@@ -9,7 +9,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from contexts.collect.application.port.collect_port import CollectTaskRecord, CollectTaskStorePort
-from contexts.shared.infrastructure.persistence.connection import AsyncSessionLocal
+from shared.infrastructure.persistence.connection import AsyncSessionLocal
 from contexts.collect.infrastructure.persistence.models.sys_collect_task import SysCollectTaskDB
 
 

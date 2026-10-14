@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from contexts.shared.domain.base import DomainError
+from shared.domain.base import DomainError
 from contexts.market.domain.kline.entity import (
     CollectionError,
     KlineDataError,
@@ -25,22 +25,22 @@ from contexts.user.domain.stock_pool.entity import (
     PoolOperationNotFoundError,
     CannotDeleteDefaultPoolError,
 )
-from contexts.shared.infrastructure.config.settings import get_settings
-from contexts.shared.infrastructure.config.di import (
+from shared.infrastructure.config.settings import get_settings
+from shared.infrastructure.config.di import (
     build_collect_context,
     get_collect_manage_service,
     set_scheduler,
     setup_default_registry,
 )
-from contexts.shared.infrastructure.persistence.connection import async_engine, close_db
+from shared.infrastructure.persistence.connection import async_engine, close_db
 # 注册全部 ORM 模型（schema_init 用 Base.metadata 比对 init.sql）
-import contexts.shared.infrastructure.persistence.models_registry  # noqa: F401
-from contexts.shared.infrastructure.persistence.schema_init import ensure_schema
+import shared.infrastructure.persistence.models_registry  # noqa: F401
+from shared.infrastructure.persistence.schema_init import ensure_schema
 from contexts.collect.application.service.collect_manage_service import cancel_background
 from contexts.collect.infrastructure.adapter.scheduler.apscheduler_adapter import ApschedulerAdapter
 from contexts.collect.application.collect.tasks import all_collect_tasks
 from contexts.collect.application.collect import setup_collect
-from contexts.shared.interface.router_compat import api_router
+from shared.interface.router_compat import api_router
 from contexts.auth.infrastructure.security import key_manager
 
 logging.basicConfig(

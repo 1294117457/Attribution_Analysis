@@ -2,7 +2,7 @@
 
 Lazy import di 模块，避免与 connection.py 形成循环 import。
 """
-from contexts.shared.infrastructure.config.settings import get_settings
+from shared.infrastructure.config.settings import get_settings
 
 __all__ = ["get_settings"]
 

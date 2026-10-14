@@ -19,7 +19,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 import asyncio
 import time
 import logging
-from contexts.shared.infrastructure.config.settings import get_settings
+from shared.infrastructure.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 

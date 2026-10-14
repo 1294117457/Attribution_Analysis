@@ -17,7 +17,7 @@ from typing import Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
-from contexts.shared.infrastructure.cache.redis_cache import RedisCache, get_cache
+from shared.infrastructure.cache.redis_cache import RedisCache, get_cache
 
 
 class Captcha:

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
-from contexts.shared.domain.base import AggregateRoot
+from shared.domain.base import AggregateRoot
 from contexts.market.domain.kline.vo import StockCode, TradeDate
 
 
@@ -103,7 +103,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from contexts.shared.domain.base import DomainEvent
+from shared.domain.base import DomainEvent
 
 
 @dataclass(kw_only=True)
@@ -135,7 +135,7 @@ class KlineDeleted(DomainEvent):
 
 # ── K线领域异常（统一继承 DomainError） ──
 
-from contexts.shared.domain.base import DomainError
+from shared.domain.base import DomainError
 
 
 class KlineNotFoundError(DomainError):

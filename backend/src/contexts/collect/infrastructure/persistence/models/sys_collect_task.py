@@ -10,8 +10,8 @@ from datetime import datetime
 from typing import Optional
 from sqlalchemy import String, Integer, Text, DateTime, Index, JSON
 from sqlalchemy.orm import Mapped, mapped_column
-from contexts.shared.infrastructure.persistence.orm_base import Base
-from contexts.shared.infrastructure.persistence.mixins import TimestampMixin
+from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
 class SysCollectTaskDB(Base, TimestampMixin):

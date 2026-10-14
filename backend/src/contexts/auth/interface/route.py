@@ -16,9 +16,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request, status
 
 from contexts.auth.application.service.auth_service import AuthService
-from contexts.shared.infrastructure.config.di import get_auth_service
+from shared.infrastructure.config.di import get_auth_service
 from contexts.auth.infrastructure.security.captcha import Captcha
-from contexts.shared.interface import _response as R
+from shared.interface import _response as R
 from contexts.auth.interface.deps import get_current_user_id
 from contexts.auth.interface.dto.request.auth import (
     ChangePasswordRequest,

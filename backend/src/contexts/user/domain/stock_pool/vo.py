@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from contexts.shared.domain.base import ValueObject
+from shared.domain.base import ValueObject
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

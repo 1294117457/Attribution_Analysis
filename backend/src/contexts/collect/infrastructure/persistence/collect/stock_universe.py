@@ -12,7 +12,7 @@ from typing import Optional
 from sqlalchemy import func, select
 
 from contexts.collect.application.port.collect_port import StockUniversePort
-from contexts.shared.infrastructure.persistence.connection import AsyncSessionLocal
+from shared.infrastructure.persistence.connection import AsyncSessionLocal
 from contexts.market.infrastructure.persistence.models.stock_info import StockInfoDB
 from contexts.market.infrastructure.persistence.models.tech_kline import TechKlineDailyDB
 

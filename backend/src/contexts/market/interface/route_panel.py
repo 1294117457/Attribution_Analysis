@@ -9,8 +9,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from contexts.market.application.service.stock_info_service import StockInfoService
-from contexts.shared.infrastructure.config.di import get_stock_info_service
-from contexts.shared.interface import _response as R
+from shared.infrastructure.config.di import get_stock_info_service
+from shared.interface import _response as R
 from contexts.market.interface.dto.response.panel import StockPanelQueryRequest
 
 router = APIRouter(prefix="/stock-panel", tags=["面板"])

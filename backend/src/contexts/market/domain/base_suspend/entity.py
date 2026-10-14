@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
-from contexts.shared.domain.base import SymboledDatedEntity
+from shared.domain.base import SymboledDatedEntity
 
 
 @dataclass

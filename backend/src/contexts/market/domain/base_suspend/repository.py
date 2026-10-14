@@ -2,7 +2,7 @@
 """base_suspend — 仓储接口"""
 
 from contexts.market.domain.base_suspend.entity import BaseSuspend
-from contexts.shared.domain.repository import BaseSymboledDatedRepository
+from shared.domain.repository import BaseSymboledDatedRepository
 
 
 class BaseSuspendRepository(BaseSymboledDatedRepository[BaseSuspend]):

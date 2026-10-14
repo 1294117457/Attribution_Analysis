@@ -2,7 +2,7 @@
 """base_adj_factor — 仓储接口"""
 
 from contexts.market.domain.base_adj_factor.entity import BaseAdjFactor
-from contexts.shared.domain.repository import BaseSymboledDatedRepository
+from shared.domain.repository import BaseSymboledDatedRepository
 
 
 class BaseAdjFactorRepository(BaseSymboledDatedRepository[BaseAdjFactor]):

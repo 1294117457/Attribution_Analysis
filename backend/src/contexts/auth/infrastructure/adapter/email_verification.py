@@ -24,8 +24,8 @@ import string
 from dataclasses import dataclass
 from typing import Optional
 
-from contexts.shared.infrastructure.cache.redis_cache import RedisCache, get_cache
-from contexts.shared.infrastructure.config.settings import get_settings
+from shared.infrastructure.cache.redis_cache import RedisCache, get_cache
+from shared.infrastructure.config.settings import get_settings
 from contexts.auth.infrastructure.security.email import build_verification_code_email, send_email
 
 

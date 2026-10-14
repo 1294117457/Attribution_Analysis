@@ -2,7 +2,7 @@
 """fin_top10_float — 仓储接口"""
 
 from contexts.market.domain.fin_top10_float.entity import FinTop10Float
-from contexts.shared.domain.repository import BaseSymboledDatedRepository
+from shared.domain.repository import BaseSymboledDatedRepository
 
 
 class FinTop10FloatRepository(BaseSymboledDatedRepository[FinTop10Float]):

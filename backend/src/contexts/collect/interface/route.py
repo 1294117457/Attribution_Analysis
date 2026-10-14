@@ -17,10 +17,10 @@ from contexts.collect.application.collect import get_collect_task_registry, requ
 from contexts.data.application.port.base import InvalidParams, NotSupported, RateLimited, SourceUnavailable
 from contexts.collect.application.service.collect_manage_service import CollectManageService, PlanNotFound, TaskConflict, UnknownTaskType, task_to_dict
 from contexts.data.application.service.data_query_service import DataQueryService
-from contexts.shared.infrastructure.cache.redis_client import get_redis
-from contexts.shared.infrastructure.config.di import get_collect_manage_service, get_data_query_service, get_db
+from shared.infrastructure.cache.redis_client import get_redis
+from shared.infrastructure.config.di import get_collect_manage_service, get_data_query_service, get_db
 from contexts.collect.infrastructure.persistence.models.sys_collect_task import SysCollectTaskDB
-from contexts.shared.interface import _response as R
+from shared.interface import _response as R
 from contexts.collect.interface.dto.request.collect import CollectPlanSaveRequest
 from contexts.collect.interface.dto.response.collect import (
     CollectCatalogResponse,

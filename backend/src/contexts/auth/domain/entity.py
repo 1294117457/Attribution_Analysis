@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from contexts.shared.domain.base import AggregateRoot, DomainError, DomainEvent, ValueObject
+from shared.domain.base import AggregateRoot, DomainError, DomainEvent, ValueObject
 
 
 # ════════════════════════════════════════════════════════════════════════

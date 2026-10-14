@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
-from contexts.shared.domain.base import AggregateRoot
+from shared.domain.base import AggregateRoot
 from contexts.market.domain.stock_info.vo import Industry, Market
 
 
@@ -100,7 +100,7 @@ class StockInfo(AggregateRoot):
 
 # ── 股票领域异常（统一继承 DomainError） ──
 
-from contexts.shared.domain.base import DomainError
+from shared.domain.base import DomainError
 
 
 class StockNotFoundError(DomainError):
