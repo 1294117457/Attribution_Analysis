@@ -13,7 +13,7 @@ import logging
 from datetime import datetime
 from typing import Any, Awaitable, Callable
 
-from contexts.shared.infrastructure.persistence.connection import AsyncSessionLocal
+from shared.infrastructure.persistence.connection import AsyncSessionLocal
 from contexts.user.infrastructure.persistence.repositories.pool_operation_repository import PoolOperationRepoImpl
 from contexts.collect.infrastructure.adapter.background.task_registry import get_task_registry
 

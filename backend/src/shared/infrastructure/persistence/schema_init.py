@@ -14,8 +14,8 @@ from pathlib import Path
 
 from sqlalchemy import text
 
-from contexts.shared.infrastructure.persistence.orm_base import Base
-from contexts.shared.infrastructure.persistence.connection import async_engine
+from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.connection import async_engine
 
 logger = logging.getLogger(__name__)
 

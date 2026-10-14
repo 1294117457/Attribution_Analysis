@@ -36,7 +36,7 @@ from contexts.data.application.port.reference import (
     NameChangePort,
     SuspendPort,
 )
-from contexts.shared.infrastructure.persistence.connection import AsyncSessionLocal
+from shared.infrastructure.persistence.connection import AsyncSessionLocal
 from contexts.market.infrastructure.persistence.models.base_adj_factor import BaseAdjFactorDB
 from contexts.market.infrastructure.persistence.models.base_dividend import BaseDividendDB
 from contexts.market.infrastructure.persistence.models.base_suspend import BaseSuspendDB

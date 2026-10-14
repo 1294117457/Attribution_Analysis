@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from contexts.shared.domain.base import AggregateRoot, DomainError, DomainEvent
+from shared.domain.base import AggregateRoot, DomainError, DomainEvent
 from contexts.user.domain.stock_pool.vo import PoolType, PoolMember
 
 

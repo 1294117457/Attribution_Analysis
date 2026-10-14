@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 
 from contexts.user.application.port.operation_dispatcher_port import OperationDispatcherPort
-from contexts.shared.domain.base import DomainError
+from shared.domain.base import DomainError
 from contexts.market.domain.stock_info.repository import StockInfoRepository
 from contexts.user.domain.stock_pool.entity import (
     CannotDeleteDefaultPoolError,

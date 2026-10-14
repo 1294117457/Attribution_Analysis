@@ -23,7 +23,7 @@ from contexts.auth.domain.repository import (
     RoleRepository,
     UserRepository,
 )
-from contexts.shared.infrastructure.cache.redis_cache import RedisCache, get_cache
+from shared.infrastructure.cache.redis_cache import RedisCache, get_cache
 from contexts.auth.infrastructure.persistence.models.user import PermissionDB, RoleDB, UserDB
 from contexts.auth.infrastructure.persistence.models.user_role import RolePermissionDB, UserRoleDB
 

@@ -17,13 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from contexts.data.application.port.base import InvalidParams, RateLimited, SourceUnavailable
 from contexts.concept.application.service.concept_board_service import ConceptBoardService
 from contexts.concept.application.service.concept_service import ConceptService
-from contexts.shared.infrastructure.config.di import (
+from shared.infrastructure.config.di import (
     get_concept_board_service,
     get_concept_service,
     get_db,
 )
 from contexts.concept.infrastructure.persistence.repositories.concept_repository import ConceptRepoImpl
-from contexts.shared.interface import _response as R
+from shared.interface import _response as R
 from contexts.concept.interface.dto.request.concept_board import (
     ConceptBoardQueryRequest,
     ConceptMembersQueryRequest,

@@ -16,7 +16,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
 
-from contexts.shared.infrastructure.config.settings import get_settings
+from shared.infrastructure.config.settings import get_settings
 
 
 logger = logging.getLogger(__name__)

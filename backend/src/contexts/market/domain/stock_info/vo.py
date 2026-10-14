@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
-from contexts.shared.domain.base import ValueObject
+from shared.domain.base import ValueObject
 
 
 @dataclass(frozen=True)

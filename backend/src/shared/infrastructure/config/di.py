@@ -28,11 +28,11 @@ from contexts.auth.infrastructure.adapter.auth_port_adapters import (
 )
 
 # ── DB session / ORM registry ──
-from contexts.shared.infrastructure.persistence.connection import (
+from shared.infrastructure.persistence.connection import (
     AsyncSessionLocal,
     get_db,
 )
-from contexts.shared.infrastructure.persistence import models_registry  # noqa: F401 触发 ORM 注册
+from shared.infrastructure.persistence import models_registry  # noqa: F401 触发 ORM 注册
 
 if TYPE_CHECKING:
     from contexts.collect.application.collect import CollectContext, CollectRunner
@@ -163,7 +163,7 @@ def build_collect_context() -> "CollectContext":
     from contexts.collect.infrastructure.persistence.collect.concept_store import SqlConceptStore
     from contexts.collect.infrastructure.persistence.collect.raw_store import SqlRawDataStore
     from contexts.collect.infrastructure.persistence.collect.stock_universe import SqlStockUniverse
-    from contexts.shared.infrastructure.config.settings import get_settings
+    from shared.infrastructure.config.settings import get_settings
 
     s = get_settings()
     return CollectContext(

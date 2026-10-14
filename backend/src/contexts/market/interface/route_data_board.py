@@ -18,7 +18,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 
 from contexts.market.application.service.stock_info_service import StockInfoService
-from contexts.shared.infrastructure.config.di import get_db, get_stock_info_service
+from shared.infrastructure.config.di import get_db, get_stock_info_service
 from contexts.market.infrastructure.persistence.repositories.fin_daily_basic_repository import (
     FinDailyBasicRepoImpl,
 )
@@ -60,7 +60,7 @@ from contexts.market.infrastructure.persistence.repositories.base_suspend_reposi
 from contexts.market.infrastructure.persistence.repositories.base_name_change_repository import (
     BaseNameChangeRepoImpl,
 )
-from contexts.shared.interface import _response as R
+from shared.interface import _response as R
 from contexts.market.domain.kline.vo import StockCode
 
 router = APIRouter(prefix="/data-board", tags=["四数据面"])

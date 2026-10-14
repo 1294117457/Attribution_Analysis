@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
-from contexts.shared.domain.base import DomainError, ValueObject
+from shared.domain.base import DomainError, ValueObject
 from contexts.collect.domain.vo_collect_task.vo import TaskOutcome
 
 # 定频下限：低于 30 秒会导致任务永远跑不完（每轮触发都 TaskConflict），且极易打爆数据源配额

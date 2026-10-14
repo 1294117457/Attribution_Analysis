@@ -13,8 +13,8 @@ from pydantic import BaseModel, Field
 
 from contexts.data.application.port.base import InvalidParams, NotSupported, RateLimited, SourceUnavailable
 from contexts.data.application.service.data_query_service import DataQueryService
-from contexts.shared.infrastructure.config.di import get_data_query_service
-from contexts.shared.interface import _response as R
+from shared.infrastructure.config.di import get_data_query_service
+from shared.interface import _response as R
 from contexts.auth.interface.deps import require_permission
 
 router = APIRouter(prefix="/data", tags=["数据接口"])

@@ -24,7 +24,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from contexts.shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import Base
 
 
 class ConceptsDB(Base):

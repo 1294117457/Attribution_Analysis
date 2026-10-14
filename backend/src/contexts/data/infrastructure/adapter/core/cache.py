@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 from contexts.data.application.port.base import DataPort, DataResult
 from contexts.market.domain.service.market_session import market_now, ttl_for
-from contexts.shared.infrastructure.cache.redis_client import try_get_redis
+from shared.infrastructure.cache.redis_client import try_get_redis
 from contexts.data.infrastructure.adapter.core.decorators import STATS_KEEP_DAYS, cache_stats_key
 
 logger = logging.getLogger(__name__)

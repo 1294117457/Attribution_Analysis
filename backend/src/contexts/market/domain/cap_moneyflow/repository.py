@@ -2,7 +2,7 @@
 """cap_moneyflow — 仓储接口"""
 
 from contexts.market.domain.cap_moneyflow.entity import CapMoneyflow
-from contexts.shared.domain.repository import BaseSymboledDatedRepository
+from shared.domain.repository import BaseSymboledDatedRepository
 
 
 class CapMoneyflowRepository(BaseSymboledDatedRepository[CapMoneyflow]):

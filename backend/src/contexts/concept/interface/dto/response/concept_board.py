@@ -16,7 +16,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from contexts.shared.application.port.page import Page
+from shared.interface.page import Page
 from contexts.concept.interface.dto.response.concept import CONCEPT_TYPE_LABELS
 from contexts.user.interface.dto.response.pool import PoolMembershipVO
 

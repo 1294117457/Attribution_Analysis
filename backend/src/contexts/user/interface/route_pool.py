@@ -2,8 +2,8 @@
 from fastapi import APIRouter, Body, Depends, Path, Query, status
 
 from contexts.user.application.service.stock_pool_service import StockPoolService
-from contexts.shared.infrastructure.config.di import get_stock_pool_service
-from contexts.shared.interface.response import (
+from shared.infrastructure.config.di import get_stock_pool_service
+from shared.interface.response import (
     created,
     ok,
 )

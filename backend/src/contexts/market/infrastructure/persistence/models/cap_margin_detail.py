@@ -4,8 +4,8 @@ from datetime import date
 from sqlalchemy import String, Float, Date, Index, UniqueConstraint, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
-from contexts.shared.infrastructure.persistence.orm_base import Base
-from contexts.shared.infrastructure.persistence.mixins import TimestampMixin
+from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
 class CapMarginDetailDB(Base, TimestampMixin):

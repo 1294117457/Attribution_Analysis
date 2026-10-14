@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends, Query, status
 
 from contexts.collect.application.service.collect_manage_service import CollectManageService
 from contexts.market.application.service.stock_info_service import StockInfoService
-from contexts.shared.infrastructure.config.di import (
+from shared.infrastructure.config.di import (
     get_collect_manage_service,
     get_stock_info_service,
 )
-from contexts.shared.interface import _response as R
+from shared.interface import _response as R
 from contexts.market.interface.dto.request.kline import (
     KlineCollectRequest,
     KlineDeleteRequest,

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-from contexts.shared.infrastructure.config.settings import get_settings
+from shared.infrastructure.config.settings import get_settings
 
 settings = get_settings()
 

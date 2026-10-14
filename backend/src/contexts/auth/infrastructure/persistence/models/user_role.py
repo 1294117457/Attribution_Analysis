@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, Integer, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from contexts.shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import Base
 
 
 class UserRoleDB(Base):

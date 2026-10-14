@@ -2,7 +2,7 @@
 """cap_top_list — 仓储接口"""
 
 from contexts.market.domain.cap_top_list.entity import CapTopList
-from contexts.shared.domain.repository import BaseSymboledDatedRepository
+from shared.domain.repository import BaseSymboledDatedRepository
 
 
 class CapTopListRepository(BaseSymboledDatedRepository[CapTopList]):

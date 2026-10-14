@@ -17,7 +17,7 @@ from typing import Any, Optional
 
 from contexts.data.application.port.base import CallPolicy, DataPort, RateLimited, SourceUnavailable
 from contexts.market.domain.service.market_session import market_now
-from contexts.shared.infrastructure.cache.redis_client import try_get_redis
+from shared.infrastructure.cache.redis_client import try_get_redis
 from contexts.data.infrastructure.adapter.core.context import call_policy, sleep_cancellable
 
 logger = logging.getLogger(__name__)

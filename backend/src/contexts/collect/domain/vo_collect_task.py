@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from contexts.shared.domain.base import ValueObject
+from shared.domain.base import ValueObject
 
 
 @dataclass(frozen=True)

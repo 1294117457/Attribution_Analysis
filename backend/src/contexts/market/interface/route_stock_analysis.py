@@ -6,8 +6,8 @@ GET /stocks/{symbol}/analysis?days=365
 from fastapi import APIRouter, Depends, Query
 
 from contexts.market.application.service.stock_info_service import StockInfoService
-from contexts.shared.infrastructure.config.di import get_stock_info_service
-from contexts.shared.interface import _response as R
+from shared.infrastructure.config.di import get_stock_info_service
+from shared.interface import _response as R
 
 router = APIRouter(prefix="/stocks", tags=["AI 归因"])
 
