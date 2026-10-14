@@ -1,0 +1,641 @@
+"""采集管理应用服务（业务模块：collect-manage/）
+
+唯一入口：submit / run_one / run_plan + plans / fetchers
+
+依赖通过 port 注入（DDD.md §4）：
+- progress:           采集进度端口（替代 redis）
+- task_registry:      采集任务注册中心
+- tasks:              任务行端口
+- runner:             采集 runner
+- scheduler:          定时调度（SchedulerPort；未启用时为 None）
+- session_factory:    session 工厂
+- config_repo:        采集配置仓储（方案 / 方案项 / 接口元数据）
+- gateway:            数据统一入口（方案项校验"实时接口不能入方案"用 is_realtime）
+
+DDD 边界：application/ 不 import infrastructure。
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Coroutine, Optional, Protocol
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from contexts.collect.application.collect import (
+    BaseCollectTask,
+    CollectRunner,
+    UnitResult,
+    request_cancel as collect_request_cancel,
+)
+from contexts.collect.application.port.collect_port import (
+    CollectProgressPort,
+    CollectTaskStorePort,
+)
+from contexts.data.application.port import DataGatewayPort
+from contexts.collect.application.port.scheduler_port import SchedulerPort
+from contexts.collect.domain.vo_collect_plan.vo import PlanStopPolicy, Schedule, normalize_times
+from contexts.collect.domain.vo_collect_task.vo import TaskOutcome
+from contexts.collect.infrastructure.persistence.models.collect_config import (
+    CollectFetcherDB,
+    CollectPlanDB,
+    CollectPlanItemDB,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Port 接口
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class CollectTaskRegistryPort(Protocol):
+    def get(self, task_type: str) -> Optional[BaseCollectTask]: ...
+    def supported_types(self) -> list[str]: ...
+
+
+class CollectConfigRepositoryPort(Protocol):
+    # 采集接口元数据
+    async def list_fetchers(self, session: AsyncSession) -> list[CollectFetcherDB]: ...
+    async def get_fetcher(
+        self, task_type: str, session: AsyncSession,
+    ) -> Optional[CollectFetcherDB]: ...
+    # 采集方案
+    async def list_plans(self, session: AsyncSession) -> list[CollectPlanDB]: ...
+    async def get_plan(self, plan_id: int, session: AsyncSession) -> Optional[CollectPlanDB]: ...
+    async def create_plan(self, session: AsyncSession, **fields) -> CollectPlanDB: ...
+    async def update_plan(
+        self, session: AsyncSession, plan: CollectPlanDB, **fields,
+    ) -> CollectPlanDB: ...
+    async def delete_plan(self, session: AsyncSession, plan: CollectPlanDB) -> None: ...
+    async def touch_plan(self, session: AsyncSession, plan_id: int, task_id: int) -> None: ...
+    # 采集方案项
+    async def list_plan_items(
+        self, session: AsyncSession, plan_id: int,
+    ) -> list[CollectPlanItemDB]: ...
+    async def list_all_plan_items(
+        self, session: AsyncSession, plan_id: int,
+    ) -> list[CollectPlanItemDB]: ...
+    async def replace_plan_items(
+        self, session: AsyncSession, plan_id: int, items: list[dict],
+    ) -> None: ...
+
+
+class SessionFactoryPort(Protocol):
+    def __call__(self) -> "AsyncContextManager[AsyncSession]": ...
+
+
+# 兼容 re-export
+from contextlib import AbstractAsyncContextManager  # noqa: E402
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 异常 + 数据结构
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class UnknownTaskType(ValueError):
+    pass
+
+
+class TaskConflict(Exception):
+    """同 task_type 已有运行中的任务"""
+
+
+class PlanNotFound(ValueError):
+    """采集方案不存在"""
+
+
+@dataclass(frozen=True)
+class SubmittedTask:
+    task_id: int
+    task_type: str
+    total_count: int
+    params: dict
+
+
+# ── 后台协程托管（关闭时统一取消）──
+
+_background: set[asyncio.Task] = set()
+
+
+def spawn(coro: Coroutine) -> asyncio.Task:
+    task = asyncio.create_task(coro)
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+    return task
+
+
+async def cancel_background() -> None:
+    tasks = [t for t in _background if not t.done()]
+    for t in tasks:
+        t.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+# 重新导出（route 层调用 request_cancel）
+request_cancel = collect_request_cancel
+
+
+# ── 方案 / 采集接口 的对外字典 ─────────────────────────────────────────
+
+
+def _iso(dt: Optional[datetime]) -> Optional[str]:
+    return dt.isoformat() if dt else None
+
+
+def fetcher_to_dict(f: CollectFetcherDB) -> dict:
+    return {
+        "task_type": f.task_type,
+        "label": f.label or f.task_type,
+        "facet": f.facet,
+        "sub_facet": f.sub_facet,
+        "description": f.description,
+        "kind": f.kind,
+        "status": f.status,
+        "default_params": dict(f.default_params or {}),
+        "supports_run_one": f.supports_run_one,
+        "sort_order": f.sort_order,
+    }
+
+
+def plan_key(plan_id: int) -> str:
+    """方案在调度器中的 key"""
+    return f"plan:{plan_id}"
+
+
+def plan_to_dict(
+    plan: CollectPlanDB,
+    items: list[CollectPlanItemDB],
+    labels: Optional[dict[str, str]] = None,
+    next_run_at: Optional[datetime] = None,
+) -> dict:
+    """labels: task_type → label，由调用方从 fetchers/handler 补充"""
+    labels = labels or {}
+    return {
+        "id": plan.id,
+        "name": plan.name,
+        "enabled": plan.enabled,
+        "schedule_type": plan.schedule_type,
+        "times": list(plan.times or []),
+        "interval_seconds": plan.interval_seconds,
+        "stop_on_fail": plan.stop_on_fail,
+        "items": [
+            {
+                "id": it.id,
+                "task_type": it.task_type,
+                "label": labels.get(it.task_type, it.task_type),
+                "params": dict(it.params or {}),
+                "enabled": it.enabled,
+                "sort_order": it.sort_order,
+            }
+            for it in items
+        ],
+        "last_run_at": _iso(plan.last_run_at),
+        "last_task_id": plan.last_task_id,
+        "next_run_at": _iso(next_run_at),
+        "created_at": _iso(plan.created_at),
+        "updated_at": _iso(plan.updated_at),
+    }
+
+
+def task_to_dict(t: Any) -> dict[str, Any]:
+    """SysCollectTaskDB 或 CollectTaskRecord → 响应 dict（前端字段契约）
+
+    两者都具备同名属性（id/task_type/trigger_type/params/status/total_count/...）。
+    """
+    return {
+        "id": t.id,
+        "task_type": t.task_type,
+        "trigger_type": t.trigger_type,
+        "params": t.params,
+        "status": t.status,
+        "total_count": t.total_count,
+        "success_count": t.success_count,
+        "fail_count": t.fail_count,
+        "skip_count": t.skip_count,
+        "started_at": _iso(getattr(t, "started_at", None)),
+        "finished_at": _iso(getattr(t, "finished_at", None)),
+        "duration_ms": getattr(t, "duration_ms", None),
+        "message": getattr(t, "message", None),
+        "plan_run_id": getattr(t, "plan_run_id", None),
+        "created_at": _iso(getattr(t, "created_at", None)),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 应用服务
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class CollectManageService:
+    """采集管理应用服务（依赖注入：port 化所有基础设施依赖）"""
+
+    def __init__(
+        self,
+        *,
+        progress: CollectProgressPort,
+        tasks: CollectTaskStorePort,
+        runner: CollectRunner,
+        task_registry: CollectTaskRegistryPort,
+        scheduler: Optional[SchedulerPort],
+        config_repo: CollectConfigRepositoryPort,
+        gateway: DataGatewayPort,
+        session_factory: SessionFactoryPort,
+    ) -> None:
+        self._progress = progress
+        self._tasks = tasks
+        self._runner = runner
+        self._task_registry = task_registry
+        self._scheduler = scheduler
+        self._config_repo = config_repo
+        self._gateway = gateway
+        self._session_factory = session_factory
+
+    # ── 定时（调度器未启用时为 None，全部降级为 no-op，方案仍可手动执行）──
+
+    def _sync_schedule(self, plan_id: int, enabled: bool, schedule: Optional[Schedule]) -> None:
+        if self._scheduler is None:
+            return
+        key = plan_key(plan_id)
+        if enabled and schedule:
+            self._scheduler.upsert(key, schedule, {"plan_id": plan_id})
+        else:
+            self._scheduler.remove(key)
+
+    def _next_run(self, plan_id: int) -> Optional[datetime]:
+        return self._scheduler.next_run(plan_key(plan_id)) if self._scheduler else None
+
+    async def restore_schedules(self) -> int:
+        """启动时调用一次：恢复所有启用方案的定时；返回已注册定时的方案数"""
+        if self._scheduler is None:
+            return 0
+        async with self._session_factory() as session:
+            plans = await self._config_repo.list_plans(session)
+        count = 0
+        for p in plans:
+            try:
+                schedule = Schedule.from_form(p.schedule_type, p.times, p.interval_seconds)
+            except ValueError as e:
+                logger.error("采集方案 %d 定时配置无效，未注册: %s", p.id, e)
+                continue
+            self._sync_schedule(p.id, p.enabled, schedule)
+            count += bool(p.enabled and schedule)
+        return count
+
+    async def handle_job(self, payload: dict) -> None:
+        """到点回调：payload 来自 _sync_schedule 传入的命令"""
+        plan_id = payload["plan_id"]
+        run_id = await self.run_plan(plan_id, trigger="schedule")
+        logger.info("采集方案 %d 定时触发完成: plan_run_id=%s", plan_id, run_id)
+
+    # ── 基础 ────────────────────────────────────────────────────────────
+
+    def handler(self, task_type: str) -> BaseCollectTask:
+        handler = self._task_registry.get(task_type)
+        if handler is None:
+            raise UnknownTaskType(
+                f"不支持的任务类型: {task_type}，已支持: {self._task_registry.supported_types()}"
+            )
+        return handler
+
+    async def resolve_params(
+        self,
+        task_type: str,
+        params: Optional[dict] = None,
+        plan_item_params: Optional[dict] = None,
+    ) -> dict:
+        """参数合并：手动传入 > 方案项 params > default_params
+
+        mode=full 时忽略其它条件，改用 full_params（仅保留 mode / concurrency）。
+        """
+        handler = self.handler(task_type)
+        merged = {
+            **handler.default_params,
+            **(plan_item_params or {}),
+            **(params or {}),
+        }
+        if merged.get("mode") == "full":
+            keep = {k: merged[k] for k in ("mode", "concurrency") if k in merged}
+            merged = {**handler.default_params, **handler.full_params, **keep}
+        return merged
+
+    # ── 后台执行 ────────────────────────────────────────────────────────
+
+    async def prepare(
+        self,
+        task_type: str,
+        params: Optional[dict] = None,
+        trigger: str = "manual",
+        *,
+        plan_item_params: Optional[dict] = None,
+        plan_run_id: Optional[int] = None,
+        plan_first: bool = False,
+    ) -> SubmittedTask:
+        """防重 → estimate_total → 写任务行 → 初始化 Redis 进度；不启动执行
+
+        plan_first=True 时本行的 plan_run_id 取自身 id（方案执行的第一项）。
+        """
+        handler = self.handler(task_type)
+        merged = await self.resolve_params(task_type, params, plan_item_params)
+
+        if await self._tasks.has_running(task_type):
+            raise TaskConflict(f"{task_type} 已有运行中的任务，请等待完成")
+
+        total = await handler.estimate_total(merged)
+        task_id = await self._tasks.create(
+            task_type=task_type,
+            trigger=trigger,
+            params=merged,
+            total=total,
+            plan_run_id=plan_run_id,
+            plan_first=plan_first,
+        )
+
+        await self._progress.init(task_id, total)
+        logger.info(
+            "创建采集任务: id=%d, type=%s, trigger=%s, total=%d",
+            task_id, task_type, trigger, total,
+        )
+        return SubmittedTask(
+            task_id=task_id, task_type=task_type,
+            total_count=total, params=merged,
+        )
+
+    async def submit(
+        self, task_type: str,
+        params: Optional[dict] = None, trigger: str = "manual",
+    ) -> SubmittedTask:
+        sub = await self.prepare(task_type, params, trigger)
+        spawn(self._runner.execute(sub.task_id, self.handler(task_type), sub.params))
+        return sub
+
+    # ── 同步单元 ────────────────────────────────────────────────────────
+
+    async def run_one(
+        self, task_type: str, unit: str, params: Optional[dict] = None,
+    ) -> UnitResult:
+        handler = self.handler(task_type)
+        if not handler.supports_collect_one:
+            raise UnknownTaskType(f"{task_type} 不支持按单元调用")
+        merged = {**handler.default_params, **(params or {})}
+        return await handler.collect_one(unit, merged)
+
+    # ── 失败任务重跑（复用原 task_id + 原 params） ─────────────────────
+
+    async def retry_failed(self, task_id: int) -> SubmittedTask:
+        """重跑一个失败 / 已取消的任务：复制原 task 的 type+params，新开 task_id
+
+        Raises:
+            ValueError: 任务不存在 / 不在终态
+        """
+        orig = await self._tasks.get(task_id)
+        if orig is None:
+            raise ValueError(f"任务 {task_id} 不存在")
+        if orig.status not in ("failed", "cancelled", "success"):
+            raise ValueError(
+                f"任务 {task_id} 状态为 {orig.status}，仅 failed/cancelled/success 可重跑"
+            )
+
+        sub = await self.prepare(
+            orig.task_type, dict(orig.params or {}), trigger=orig.trigger_type,
+        )
+        spawn(self._runner.execute(sub.task_id, self.handler(orig.task_type), sub.params))
+        logger.info(
+            "重跑任务: 原 #%d → 新 #%d (type=%s, trigger=%s)",
+            task_id, sub.task_id, orig.task_type, orig.trigger_type,
+        )
+        return sub
+
+    # ── 采集接口元数据 ──────────────────────────────────────────────────
+
+    async def list_fetchers(self) -> list[dict]:
+        """列出全部采集接口元数据（UI 的接口选择器数据源）"""
+        async with self._session_factory() as session:
+            rows = await self._config_repo.list_fetchers(session)
+        return [fetcher_to_dict(f) for f in rows]
+
+    # ── 采集方案 CRUD ───────────────────────────────────────────────────
+
+    def _check_plan(self, fields: dict) -> dict:
+        """校验 + 归一化方案表单；非法时抛 ValueError"""
+        name = (fields.get("name") or "").strip()
+        if not name:
+            raise ValueError("方案名称不能为空")
+        if len(name) > 64:
+            raise ValueError("方案名称不能超过 64 个字符")
+
+        schedule_type = fields.get("schedule_type")
+        interval_seconds = fields.get("interval_seconds")
+        schedule = Schedule.from_form(schedule_type, fields.get("times"), interval_seconds)
+
+        enabled = bool(fields.get("enabled"))
+        if enabled and not schedule_type:
+            raise ValueError("启用方案需要选择触发方式")
+
+        items = self._validate_items(fields.get("items") or [])
+        if not items:
+            raise ValueError("方案至少需要包含一个采集接口")
+        if enabled and not any(it["enabled"] for it in items):
+            raise ValueError("启用方案需要至少一个启用的采集接口")
+
+        return {
+            "name": name,
+            "enabled": enabled,
+            "schedule_type": schedule_type,
+            "times": normalize_times(fields.get("times")),
+            "interval_seconds": interval_seconds,
+            "stop_on_fail": bool(fields.get("stop_on_fail", True)),
+            "items": items,
+            "schedule": schedule,
+        }
+
+    def _validate_items(self, items: list[dict]) -> list[dict]:
+        """校验方案项：已注册 / status=ready / 非实时接口 / 不重复"""
+        seen: set[str] = set()
+        out: list[dict] = []
+        for it in items:
+            task_type = (it.get("task_type") or "").strip()
+            if not task_type:
+                continue
+            if task_type in seen:
+                raise ValueError(f"方案内重复的采集接口: {task_type}")
+            seen.add(task_type)
+
+            if self._gateway.is_realtime(task_type):
+                raise ValueError(f"{task_type} 是实时接口，不能加入方案")
+            handler = self.handler(task_type)           # 未注册 → UnknownTaskType
+            if handler.status != "ready":
+                raise ValueError(f"{task_type} 尚未实现，不能加入方案")
+
+            out.append({
+                "task_type": task_type,
+                "params": dict(it.get("params") or {}),
+                "enabled": bool(it.get("enabled", True)),
+            })
+        return out
+
+    async def _label_map(self, task_types: list[str]) -> dict[str, str]:
+        """task_type → label：优先 fetchers 表，其次代码 registry"""
+        wanted = set(task_types)
+        if not wanted:
+            return {}
+        async with self._session_factory() as session:
+            rows = await self._config_repo.list_fetchers(session)
+        out = {f.task_type: (f.label or f.task_type) for f in rows if f.task_type in wanted}
+        for t in wanted - set(out):
+            h = self._task_registry.get(t)
+            if h is not None:
+                out[t] = h.label or h.name
+        return out
+
+    async def list_plans(self) -> list[dict]:
+        async with self._session_factory() as session:
+            plans = await self._config_repo.list_plans(session)
+            all_items = [
+                it
+                for p in plans
+                for it in await self._config_repo.list_all_plan_items(session, p.id)
+            ]
+        labels = await self._label_map([it.task_type for it in all_items])
+        items_by_plan: dict[int, list[CollectPlanItemDB]] = {}
+        for it in all_items:
+            items_by_plan.setdefault(it.plan_id, []).append(it)
+        return [
+            plan_to_dict(p, items_by_plan.get(p.id, []), labels, self._next_run(p.id))
+            for p in plans
+        ]
+
+    async def get_plan(self, plan_id: int) -> dict:
+        async with self._session_factory() as session:
+            plan = await self._config_repo.get_plan(plan_id, session)
+            if plan is None:
+                raise PlanNotFound(f"采集方案 {plan_id} 不存在")
+            items = await self._config_repo.list_all_plan_items(session, plan_id)
+        labels = await self._label_map([it.task_type for it in items])
+        return plan_to_dict(plan, items, labels, self._next_run(plan_id))
+
+    async def create_plan(self, fields: dict) -> dict:
+        values = self._check_plan(fields)
+        items = values.pop("items")
+        schedule = values.pop("schedule")
+        async with self._session_factory() as session:
+            plan = await self._config_repo.create_plan(session, **values)
+            await self._config_repo.replace_plan_items(session, plan.id, items)
+            await session.commit()
+            await session.refresh(plan)
+        self._sync_schedule(plan.id, plan.enabled, schedule)
+        return await self.get_plan(plan.id)
+
+    async def update_plan(self, plan_id: int, fields: dict) -> dict:
+        values = self._check_plan(fields)
+        items = values.pop("items")
+        schedule = values.pop("schedule")
+        async with self._session_factory() as session:
+            plan = await self._config_repo.get_plan(plan_id, session)
+            if plan is None:
+                raise PlanNotFound(f"采集方案 {plan_id} 不存在")
+            await self._config_repo.update_plan(session, plan, **values)
+            await self._config_repo.replace_plan_items(session, plan_id, items)
+            await session.commit()
+            await session.refresh(plan)
+        self._sync_schedule(plan.id, plan.enabled, schedule)
+        return await self.get_plan(plan_id)
+
+    async def delete_plan(self, plan_id: int) -> None:
+        async with self._session_factory() as session:
+            plan = await self._config_repo.get_plan(plan_id, session)
+            if plan is None:
+                raise PlanNotFound(f"采集方案 {plan_id} 不存在")
+            await self._config_repo.delete_plan(session, plan)
+            await session.commit()
+        self._sync_schedule(plan_id, False, None)
+
+    # ── 方案执行 ────────────────────────────────────────────────────────
+
+    async def start_plan(self, plan_id: int, trigger: str = "manual") -> dict:
+        """立即执行一次方案（后台跑，不阻塞）"""
+        info = await self.get_plan(plan_id)
+        if not any(it["enabled"] for it in info["items"]):
+            raise ValueError("方案没有启用的采集接口")
+        spawn(self.run_plan(plan_id, trigger))
+        return info
+
+    async def run_plan(self, plan_id: int, trigger: str = "manual") -> Optional[int]:
+        """按 sort_order 顺序串行执行方案的所有启用项
+
+        Returns: plan_run_id（= 第一项的 task_id）；全部跳过时为 None
+        """
+        async with self._session_factory() as session:
+            plan = await self._config_repo.get_plan(plan_id, session)
+            if plan is None:
+                logger.warning("采集方案 %d 不存在，跳过执行", plan_id)
+                return None
+            name = plan.name
+            policy = PlanStopPolicy(stop_on_fail=bool(plan.stop_on_fail))
+            # list_plan_items 已按 sort_order 排序并过滤 disabled
+            items = await self._config_repo.list_plan_items(session, plan_id)
+
+        plan_run_id: Optional[int] = None
+        logger.info("采集方案 [%s] 开始: %d 项, trigger=%s", name, len(items), trigger)
+
+        for idx, item in enumerate(items, 1):
+            task_type = item.task_type
+            try:
+                sub = await self.prepare(
+                    task_type, item.params, trigger,
+                    plan_item_params=item.params,
+                    plan_run_id=plan_run_id,
+                    plan_first=plan_run_id is None,
+                )
+            except TaskConflict as e:
+                logger.info("采集方案 [%s] 第 %d 项跳过: %s", name, idx, e)
+                continue
+            except Exception as e:
+                logger.error("采集方案 [%s] 第 %d 项 %s 创建失败: %s", name, idx, task_type, e)
+                if policy.stop_on_fail:
+                    break
+                continue
+
+            if plan_run_id is None:
+                plan_run_id = sub.task_id
+                await self._touch_plan(plan_id, plan_run_id)
+
+            await self._runner.execute(sub.task_id, self.handler(task_type), sub.params)
+
+            record = await self._tasks.get(sub.task_id)
+            if record is None:
+                logger.warning(
+                    "采集方案 [%s] 第 %d/%d 项 %s 完成后未找到任务行",
+                    name, idx, len(items), task_type,
+                )
+                continue
+            outcome = TaskOutcome(
+                success=record.success_count,
+                fail=record.fail_count,
+                skip=record.skip_count,
+            )
+            logger.info(
+                "采集方案 [%s] 第 %d/%d 项 %s 结束: %s（成功%d 失败%d）",
+                name, idx, len(items), task_type, record.status,
+                record.success_count, record.fail_count,
+            )
+            if policy.should_stop(record.status, outcome):
+                logger.warning(
+                    "采集方案 [%s] 第 %d 项 %s（成功%d 失败%d），停止后续 %d 项",
+                    name, idx, record.status,
+                    record.success_count, record.fail_count, len(items) - idx,
+                )
+                break
+
+        logger.info("采集方案 [%s] 结束: plan_run_id=%s", name, plan_run_id)
+        return plan_run_id
+
+    async def _touch_plan(self, plan_id: int, plan_run_id: int) -> None:
+        async with self._session_factory() as session:
+            await self._config_repo.touch_plan(session, plan_id, plan_run_id)
+            await session.commit()

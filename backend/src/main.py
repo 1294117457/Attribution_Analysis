@@ -10,14 +10,14 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from domain.base import DomainError
-from domain.entitys.kline.entity import (
+from contexts.shared.domain.base import DomainError
+from contexts.market.domain.kline.entity import (
     CollectionError,
     KlineDataError,
     KlineNotFoundError,
 )
-from domain.entitys.stock_info.entity import StockNotFoundError
-from domain.entitys.stock_pool.entity import (
+from contexts.market.domain.stock_info.entity import StockNotFoundError
+from contexts.user.domain.stock_pool.entity import (
     DuplicateMemberError,
     MemberNotFoundError,
     PoolNotFoundError,
@@ -25,23 +25,23 @@ from domain.entitys.stock_pool.entity import (
     PoolOperationNotFoundError,
     CannotDeleteDefaultPoolError,
 )
-from infrastructure.config.settings import get_settings
-from infrastructure.config.di import (
+from contexts.shared.infrastructure.config.settings import get_settings
+from contexts.shared.infrastructure.config.di import (
     build_collect_context,
     get_collect_manage_service,
     set_scheduler,
     setup_default_registry,
 )
-from infrastructure.persistence.connection import async_engine, close_db
+from contexts.shared.infrastructure.persistence.connection import async_engine, close_db
 # 注册全部 ORM 模型（schema_init 用 Base.metadata 比对 init.sql）
-import infrastructure.persistence.models  # noqa: F401
-from infrastructure.persistence.schema_init import ensure_schema
-from application.service import cancel_background
-from infrastructure.adapter.scheduler.apscheduler_adapter import ApschedulerAdapter
-from application.collect.tasks import all_collect_tasks
-from application.collect import setup_collect
-from route.api.router import api_router
-from infrastructure.security import key_manager
+import contexts.shared.infrastructure.persistence.models_registry  # noqa: F401
+from contexts.shared.infrastructure.persistence.schema_init import ensure_schema
+from contexts.collect.application.service.collect_manage_service import cancel_background
+from contexts.collect.infrastructure.adapter.scheduler.apscheduler_adapter import ApschedulerAdapter
+from contexts.collect.application.collect.tasks import all_collect_tasks
+from contexts.collect.application.collect import setup_collect
+from contexts.shared.interface.router_compat import api_router
+from contexts.auth.infrastructure.security import key_manager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -124,7 +124,7 @@ async def _sync_fetcher_catalog() -> None:
 
     ⚠️ 必须在 setup_default_registry / setup_collect 之后调用。
     """
-    from application.collect import get_collect_task_registry
+    from contexts.collect.application.collect import get_collect_task_registry
     from sqlalchemy import text
 
     registry = get_collect_task_registry()
