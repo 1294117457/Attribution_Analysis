@@ -1,4 +1,4 @@
-"""采集方案值对象：定时配置 + 定时规则
+"""采集方案值对象：定时配置 + 定时规则 + 方案停止策略
 
 纯 dataclass，零外部依赖；APScheduler 等实现细节在 infrastructure/adapter/scheduler/。
 """
@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Iterable, Optional
 
 from domain.base import DomainError, ValueObject
+from domain.entitys.collect_task.vo import TaskOutcome
 
 # 定频下限：低于 30 秒会导致任务永远跑不完（每轮触发都 TaskConflict），且极易打爆数据源配额
 MIN_INTERVAL_SECONDS = 30
@@ -89,10 +90,30 @@ class Schedule(ValueObject):
         return (self.type, self.times, self.interval_seconds)
 
 
+@dataclass(frozen=True)
+class PlanStopPolicy(ValueObject):
+    """方案执行的编排策略：某一项结束后是否停止后续项
+
+    规则：stop_on_fail=True 时，status∈{failed, cancelled} 或 outcome.all_failed → 停。
+    取消时 outcome 只是累计值，状态由 runner 决定，所以 status 单独传入。
+    """
+
+    stop_on_fail: bool = True
+
+    def should_stop(self, status: str, outcome: TaskOutcome) -> bool:
+        if not self.stop_on_fail:
+            return False
+        return status in ("failed", "cancelled") or outcome.all_failed
+
+    def _get_values(self) -> tuple:
+        return (self.stop_on_fail,)
+
+
 __all__ = [
     "InvalidSchedule",
     "MAX_TIMES_PER_DAY",
     "MIN_INTERVAL_SECONDS",
+    "PlanStopPolicy",
     "Schedule",
     "normalize_times",
 ]

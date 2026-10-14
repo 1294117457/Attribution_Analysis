@@ -27,6 +27,7 @@ from domain.entitys.stock_pool.entity import (
 )
 from infrastructure.config.settings import get_settings
 from infrastructure.config.di import (
+    build_collect_context,
     get_collect_manage_service,
     set_scheduler,
     setup_default_registry,
@@ -37,31 +38,8 @@ import infrastructure.persistence.models  # noqa: F401
 from infrastructure.persistence.schema_init import ensure_schema
 from application.service import cancel_background
 from infrastructure.adapter.scheduler.apscheduler_adapter import ApschedulerAdapter
-from infrastructure.adapter.collect import (
-    ConceptIndexTHCollectTask,
-    ConceptListCollectTask,
-    ConceptMembershipCollectTask,
-    ConceptReasonCollectTask,
-    ConceptSnapshotCollectTask,
-    DailyBasicCollectTask,
-    DailyKlineCollectTask,
-    FinReportCollectTask,
-    FinTop10HoldersCollectTask,
-    FinTop10FloatHoldersCollectTask,
-    StockBasicCollectTask,
-    BaseAdjFactorCollectTask,
-    BaseSuspendCollectTask,
-    BaseNameChangeCollectTask,
-    BaseDividendCollectTask,
-    CapMoneyflowCollectTask,
-    CapMarginDetailCollectTask,
-    CapTopListCollectTask,
-    CapTopInstCollectTask,
-    CapBlockTradeCollectTask,
-    CapHolderNumCollectTask,
-    all_planned_tasks,
-    setup_collect_task_registry,
-)
+from application.collect.tasks import all_collect_tasks
+from application.collect import setup_collect
 from route.api.router import api_router
 from infrastructure.security import key_manager
 
@@ -91,36 +69,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 注册数据源到采集器注册中心
     setup_default_registry()
 
-    # 注册采集任务到 CollectTaskRegistry（router 通过 get_collect_task_registry 读取）
-    setup_collect_task_registry([
-        # ── 已实现的基础任务（4 个）──
-        DailyKlineCollectTask(),
-        DailyBasicCollectTask(),
-        StockBasicCollectTask(),
-        FinReportCollectTask(),
-        # ── 概念（adata · 同花顺，5 个：清单 / 成分股 / 日 K / 入选理由 / 快照）──
-        ConceptListCollectTask(),
-        ConceptMembershipCollectTask(),
-        ConceptIndexTHCollectTask(),
-        ConceptReasonCollectTask(),
-        ConceptSnapshotCollectTask(),
-        # ── 资金面（6 个，⭐⭐⭐ 0 → 6 突破）──
-        CapMoneyflowCollectTask(),
-        CapMarginDetailCollectTask(),
-        CapTopListCollectTask(),
-        CapTopInstCollectTask(),
-        CapBlockTradeCollectTask(),
-        CapHolderNumCollectTask(),
-        # ── 基本面深度 / 基础层（5 个）──
-        FinTop10HoldersCollectTask(),
-        FinTop10FloatHoldersCollectTask(),
-        BaseDividendCollectTask(),
-        BaseAdjFactorCollectTask(),
-        BaseSuspendCollectTask(),
-        BaseNameChangeCollectTask(),
-        # ── 剩余 planned（2 个：分钟 K 入库版 + news_article 权限未开通）──
-        *all_planned_tasks(),
-    ])
+    # 组装 CollectContext（gateway / 4 个 IO 端口 / Service 工厂 / 并发）
+    ctx = build_collect_context()
+
+    # 注册采集任务到 CollectTaskRegistry（23 个：14 声明式 + 日 K + 股票清单 + 5 概念 + 2 占位）
+    setup_collect(ctx, all_collect_tasks())
 
     # 对账 DB 侧的 collect_fetchers（采集任务 + 声明了 cache 的实时 Port，必须在注册之后）
     await _sync_fetcher_catalog()
@@ -169,10 +122,9 @@ async def _sync_fetcher_catalog() -> None:
     - DB 有 / 代码无 → 标 status='orphan'（**不删**，保留现场 + 避免 CASCADE 掉方案项）
     - 两边都有但元数据变了 → UPDATE + warning
 
-    ⚠️ 必须在 setup_default_registry / setup_collect_task_registry 之后调用。
+    ⚠️ 必须在 setup_default_registry / setup_collect 之后调用。
     """
-    from infrastructure.adapter.collect import get_collect_task_registry
-    from infrastructure.adapter.collect.registry import realtime_ports
+    from application.collect import get_collect_task_registry
     from sqlalchemy import text
 
     registry = get_collect_task_registry()
@@ -192,7 +144,7 @@ async def _sync_fetcher_catalog() -> None:
             "sort_order": h.sort_order,
         }
 
-    for q in realtime_ports():
+    for q in registry.realtime_ports():
         code_side[q.name] = {
             "label": q.label or q.name,
             "facet": q.facet or "",
