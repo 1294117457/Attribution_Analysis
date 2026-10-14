@@ -17,7 +17,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from contexts.collect.application.port.scheduler_port import JobHandler
-from contexts.collect.domain.vo_collect_plan.vo import Schedule
+from contexts.collect.domain.vo_collect_plan import Schedule
 
 logger = logging.getLogger(__name__)
 
