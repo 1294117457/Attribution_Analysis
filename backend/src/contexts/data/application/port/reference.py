@@ -34,7 +34,7 @@ class StockInfoBO(BaseModel):
 
     def to_entity(self, id: int = 0) -> "StockInfo":
         """转换为领域实体"""
-        from domain.entitys.stock_info.entity import StockInfo
+        from contexts.market.domain.stock_info.entity import StockInfo
         return StockInfo.create(
             id=id,
             symbol=self.symbol,
@@ -59,7 +59,7 @@ class BaseAdjFactorBO(BaseModel):
     adj_factor: float
 
     def to_entity(self) -> "BaseAdjFactor":
-        from domain.entitys.base_adj_factor.entity import BaseAdjFactor
+        from contexts.market.domain.base_adj_factor.entity import BaseAdjFactor
         return BaseAdjFactor(**self.model_dump())
 
 
@@ -70,7 +70,7 @@ class BaseSuspendBO(BaseModel):
     suspend_type: Optional[str] = None
 
     def to_entity(self) -> "BaseSuspend":
-        from domain.entitys.base_suspend.entity import BaseSuspend
+        from contexts.market.domain.base_suspend.entity import BaseSuspend
         return BaseSuspend(**self.model_dump())
 
 
@@ -83,7 +83,7 @@ class BaseNameChangeBO(BaseModel):
     change_reason: Optional[str] = None
 
     def to_entity(self) -> "BaseNameChange":
-        from domain.entitys.base_name_change.entity import BaseNameChange
+        from contexts.market.domain.base_name_change.entity import BaseNameChange
         return BaseNameChange(**self.model_dump())
 
 
@@ -102,7 +102,7 @@ class BaseDividendBO(BaseModel):
     cash_div_tax: Optional[float] = None
 
     def to_entity(self) -> "BaseDividend":
-        from domain.entitys.base_dividend.entity import BaseDividend
+        from contexts.market.domain.base_dividend.entity import BaseDividend
         return BaseDividend(**self.model_dump())
 
 

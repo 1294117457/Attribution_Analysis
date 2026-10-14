@@ -50,7 +50,7 @@ class KlineBO(BaseModel):
         }
 
     def to_entity(self) -> "Kline":
-        from domain.entitys.kline.entity import Kline
+        from contexts.market.domain.kline.entity import Kline
         args = self.to_entity_args()
         args.pop("source")
         return Kline.create(**args)
