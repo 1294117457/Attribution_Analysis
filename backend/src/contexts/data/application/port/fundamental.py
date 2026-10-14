@@ -36,7 +36,7 @@ class FinDailyBasicBO(BaseModel):
     circ_mv: Optional[float] = None
 
     def to_entity(self) -> "FinDailyBasic":
-        from domain.entitys.fin_daily_basic.entity import FinDailyBasic
+        from contexts.market.domain.fin_daily_basic.entity import FinDailyBasic
         return FinDailyBasic(**self.model_dump())
 
 
@@ -58,7 +58,7 @@ class FinReportBO(BaseModel):
     n_income_attr_p: Optional[float] = None
 
     def to_entity(self) -> "FinReport":
-        from domain.entitys.fin_report.entity import FinReport
+        from contexts.market.domain.fin_report.entity import FinReport
         return FinReport(**self.model_dump())
 
 
@@ -74,7 +74,7 @@ class FinTop10HoldersBO(BaseModel):
     holder_type: Optional[str] = None
 
     def to_entity(self) -> "FinTop10Holders":
-        from domain.entitys.fin_top10_holders.entity import FinTop10Holders
+        from contexts.market.domain.fin_top10_holders.entity import FinTop10Holders
         return FinTop10Holders(**self.model_dump())
 
 
@@ -89,7 +89,7 @@ class FinTop10FloatHoldersBO(BaseModel):
     holder_type: Optional[str] = None
 
     def to_entity(self) -> "FinTop10Float":
-        from domain.entitys.fin_top10_float.entity import FinTop10Float
+        from contexts.market.domain.fin_top10_float.entity import FinTop10Float
         return FinTop10Float(**self.model_dump())
 
 

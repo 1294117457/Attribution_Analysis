@@ -38,7 +38,7 @@ class CapMoneyflowBO(BaseModel):
     net_mf_amount: Optional[float] = None
 
     def to_entity(self) -> "CapMoneyflow":
-        from domain.entitys.cap_moneyflow.entity import CapMoneyflow
+        from contexts.market.domain.cap_moneyflow.entity import CapMoneyflow
         return CapMoneyflow(**self.model_dump())
 
 
@@ -55,7 +55,7 @@ class CapMarginDetailBO(BaseModel):
     rzrqye: Optional[float] = None
 
     def to_entity(self) -> "CapMarginDetail":
-        from domain.entitys.cap_margin_detail.entity import CapMarginDetail
+        from contexts.market.domain.cap_margin_detail.entity import CapMarginDetail
         return CapMarginDetail(**self.model_dump())
 
 
@@ -77,7 +77,7 @@ class CapTopListBO(BaseModel):
     reason: Optional[str] = None
 
     def to_entity(self) -> "CapTopList":
-        from domain.entitys.cap_top_list.entity import CapTopList
+        from contexts.market.domain.cap_top_list.entity import CapTopList
         return CapTopList(**self.model_dump())
 
 
@@ -94,7 +94,7 @@ class CapTopInstBO(BaseModel):
     reason: Optional[str] = None
 
     def to_entity(self) -> "CapTopInst":
-        from domain.entitys.cap_top_inst.entity import CapTopInst
+        from contexts.market.domain.cap_top_inst.entity import CapTopInst
         return CapTopInst(**self.model_dump())
 
 
@@ -109,7 +109,7 @@ class CapBlockTradeBO(BaseModel):
     seller: Optional[str] = None
 
     def to_entity(self) -> "CapBlockTrade":
-        from domain.entitys.cap_block_trade.entity import CapBlockTrade
+        from contexts.market.domain.cap_block_trade.entity import CapBlockTrade
         return CapBlockTrade(**self.model_dump())
 
 
@@ -121,7 +121,7 @@ class CapHolderNumBO(BaseModel):
     holder_nums: Optional[float] = None
 
     def to_entity(self) -> "CapHolderNum":
-        from domain.entitys.cap_holder_num.entity import CapHolderNum
+        from contexts.market.domain.cap_holder_num.entity import CapHolderNum
         return CapHolderNum(**self.model_dump())
 
 
