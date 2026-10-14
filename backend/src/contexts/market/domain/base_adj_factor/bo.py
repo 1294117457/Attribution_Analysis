@@ -15,7 +15,8 @@ class BaseAdjFactorBO(BaseModel):
     adj_factor: float
 
     def to_entity(self) -> "BaseAdjFactor":
-        from contexts.market.domain.base_adj_factor.entity import BaseAdjFactor
-        return BaseAdjFactor(**self.model_dump())
+        """委托给 converter（step7-e）"""
+        from contexts.market.application.base_adj_factor.converter import base_adj_factor_bo_to_entity
+        return base_adj_factor_bo_to_entity(self)
 
 

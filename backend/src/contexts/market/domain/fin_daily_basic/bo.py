@@ -30,7 +30,8 @@ class FinDailyBasicBO(BaseModel):
     circ_mv: Optional[float] = None
 
     def to_entity(self) -> "FinDailyBasic":
-        from contexts.market.domain.fin_daily_basic.entity import FinDailyBasic
-        return FinDailyBasic(**self.model_dump())
+        """委托给 converter（step7-e）"""
+        from contexts.market.application.fin_daily_basic.converter import fin_daily_basic_bo_to_entity
+        return fin_daily_basic_bo_to_entity(self)
 
 

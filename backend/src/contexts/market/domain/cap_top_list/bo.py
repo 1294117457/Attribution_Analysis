@@ -27,7 +27,8 @@ class CapTopListBO(BaseModel):
     reason: Optional[str] = None
 
     def to_entity(self) -> "CapTopList":
-        from contexts.market.domain.cap_top_list.entity import CapTopList
-        return CapTopList(**self.model_dump())
+        """委托给 converter（step7-e）"""
+        from contexts.market.application.cap_top_list.converter import cap_top_list_bo_to_entity
+        return cap_top_list_bo_to_entity(self)
 
 

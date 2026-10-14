@@ -18,7 +18,8 @@ class BaseNameChangeBO(BaseModel):
     change_reason: Optional[str] = None
 
     def to_entity(self) -> "BaseNameChange":
-        from contexts.market.domain.base_name_change.entity import BaseNameChange
-        return BaseNameChange(**self.model_dump())
+        """委托给 converter（step7-e）"""
+        from contexts.market.application.base_name_change.converter import base_name_change_bo_to_entity
+        return base_name_change_bo_to_entity(self)
 
 

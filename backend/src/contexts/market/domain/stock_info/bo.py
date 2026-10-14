@@ -26,24 +26,9 @@ class StockInfoBO(BaseModel):
     act_name: Optional[str] = Field(None, description="实控人名称")
     act_ent_type: Optional[str] = Field(None, description="实控人企业性质")
 
-    def to_entity(self, id: int = 0) -> "StockInfo":
-        """转换为领域实体"""
-        from contexts.market.domain.stock_info.entity import StockInfo
-        return StockInfo.create(
-            id=id,
-            symbol=self.symbol,
-            name=self.name,
-            industry=self.industry,
-            market=self.market,
-            area=self.area,
-            exchange=self.exchange,
-            list_date=self.list_date,
-            delist_date=self.delist_date,
-            list_status=self.list_status,
-            is_hs=self.is_hs,
-            act_name=self.act_name,
-            act_ent_type=self.act_ent_type,
-            ts_code=self.ts_code,
-        )
+    def to_entity(self) -> "StockInfo":
+        """委托给 converter（step7-e）"""
+        from contexts.market.application.stock_info.converter import stock_info_bo_to_entity
+        return stock_info_bo_to_entity(self)
 
 
