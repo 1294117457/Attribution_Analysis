@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Awaitable, Callable, Optional, Protocol
 
-from contexts.collect.domain.vo_collect_plan.vo import Schedule
+from contexts.collect.domain.vo_collect_plan import Schedule
 
 # 到点回调：payload 为 upsert 时传入的命令，原样传回
 JobHandler = Callable[[dict], Awaitable[None]]

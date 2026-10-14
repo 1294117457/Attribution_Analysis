@@ -29,7 +29,7 @@ from contexts.collect.application.port.collect_port import (
     CollectTaskStorePort,
 )
 from contexts.data.application.port.context import cancel_check
-from contexts.collect.domain.vo_collect_task.vo import TaskOutcome
+from contexts.collect.domain.vo_collect_task import TaskOutcome
 
 if TYPE_CHECKING:
     from application.collect.context import CollectContext

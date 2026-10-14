@@ -9,126 +9,16 @@ from pydantic import BaseModel, ConfigDict
 from contexts.data.application.port.base import DataPort
 from contexts.data.application.port.types import Symbol, TradeDate, TradeDateParams
 
+from contexts.market.domain.cap_moneyflow.bo import CapMoneyflowBO
+from contexts.market.domain.cap_margin_detail.bo import CapMarginDetailBO
+from contexts.market.domain.cap_top_list.bo import CapTopListBO
+from contexts.market.domain.cap_top_inst.bo import CapTopInstBO
+from contexts.market.domain.cap_block_trade.bo import CapBlockTradeBO
+from contexts.market.domain.cap_holder_num.bo import CapHolderNumBO
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # BO
 # ═══════════════════════════════════════════════════════════════════════════════
-
-
-class CapMoneyflowBO(BaseModel):
-    symbol: str
-    trade_date: date
-    buy_sm_vol: Optional[float] = None
-    buy_sm_amount: Optional[float] = None
-    sell_sm_vol: Optional[float] = None
-    sell_sm_amount: Optional[float] = None
-    buy_md_vol: Optional[float] = None
-    buy_md_amount: Optional[float] = None
-    sell_md_vol: Optional[float] = None
-    sell_md_amount: Optional[float] = None
-    buy_lg_vol: Optional[float] = None
-    buy_lg_amount: Optional[float] = None
-    sell_lg_vol: Optional[float] = None
-    sell_lg_amount: Optional[float] = None
-    buy_elg_vol: Optional[float] = None
-    buy_elg_amount: Optional[float] = None
-    sell_elg_vol: Optional[float] = None
-    sell_elg_amount: Optional[float] = None
-    net_mf_vol: Optional[float] = None
-    net_mf_amount: Optional[float] = None
-
-    def to_entity(self) -> "CapMoneyflow":
-        from contexts.market.domain.cap_moneyflow.entity import CapMoneyflow
-        return CapMoneyflow(**self.model_dump())
-
-
-class CapMarginDetailBO(BaseModel):
-    symbol: str
-    trade_date: date
-    rzye: Optional[float] = None
-    rqye: Optional[float] = None
-    rzmre: Optional[float] = None
-    rqyl: Optional[float] = None
-    rzche: Optional[float] = None
-    rqchl: Optional[float] = None
-    rqmcl: Optional[float] = None
-    rzrqye: Optional[float] = None
-
-    def to_entity(self) -> "CapMarginDetail":
-        from contexts.market.domain.cap_margin_detail.entity import CapMarginDetail
-        return CapMarginDetail(**self.model_dump())
-
-
-class CapTopListBO(BaseModel):
-    trade_date: date
-    symbol: str
-    name: Optional[str] = None
-    close: Optional[float] = None
-    pct_change: Optional[float] = None
-    turnover_rate: Optional[float] = None
-    amount: Optional[float] = None
-    l_sell: Optional[float] = None
-    l_buy: Optional[float] = None
-    l_amount: Optional[float] = None
-    net_amount: Optional[float] = None
-    net_rate: Optional[float] = None
-    amount_rate: Optional[float] = None
-    float_values: Optional[float] = None
-    reason: Optional[str] = None
-
-    def to_entity(self) -> "CapTopList":
-        from contexts.market.domain.cap_top_list.entity import CapTopList
-        return CapTopList(**self.model_dump())
-
-
-class CapTopInstBO(BaseModel):
-    trade_date: date
-    symbol: str
-    exalter: Optional[str] = None
-    side: Optional[str] = None
-    buy: Optional[float] = None
-    buy_rate: Optional[float] = None
-    sell: Optional[float] = None
-    sell_rate: Optional[float] = None
-    net_buy: Optional[float] = None
-    reason: Optional[str] = None
-
-    def to_entity(self) -> "CapTopInst":
-        from contexts.market.domain.cap_top_inst.entity import CapTopInst
-        return CapTopInst(**self.model_dump())
-
-
-class CapBlockTradeBO(BaseModel):
-    trade_date: date
-    symbol: str
-    name: Optional[str] = None
-    price: Optional[float] = None
-    vol: Optional[float] = None
-    amount: Optional[float] = None
-    buyer: Optional[str] = None
-    seller: Optional[str] = None
-
-    def to_entity(self) -> "CapBlockTrade":
-        from contexts.market.domain.cap_block_trade.entity import CapBlockTrade
-        return CapBlockTrade(**self.model_dump())
-
-
-class CapHolderNumBO(BaseModel):
-    symbol: str
-    ann_date: Optional[date] = None
-    end_date: date
-    holder_num: Optional[int] = None
-    holder_nums: Optional[float] = None
-
-    def to_entity(self) -> "CapHolderNum":
-        from contexts.market.domain.cap_holder_num.entity import CapHolderNum
-        return CapHolderNum(**self.model_dump())
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Params
-# ═══════════════════════════════════════════════════════════════════════════════
-
 
 class MoneyflowParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -136,18 +26,15 @@ class MoneyflowParams(BaseModel):
     trade_date: TradeDate
     symbols: Optional[list[Symbol]] = None
 
-
 class HolderNumberParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     symbol: Symbol
     ann_date: Optional[TradeDate] = None
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Port
 # ═══════════════════════════════════════════════════════════════════════════════
-
 
 class MoneyflowPort(DataPort[MoneyflowParams, CapMoneyflowBO]):
     name, label = "moneyflow", "个股资金流向"
@@ -157,7 +44,6 @@ class MoneyflowPort(DataPort[MoneyflowParams, CapMoneyflowBO]):
     unit = "trade_date"
     sample_params = {"trade_date": "20260105"}
 
-
 class MarginDetailPort(DataPort[TradeDateParams, CapMarginDetailBO]):
     name, label = "margin_detail", "个股融资融券"
     facet, sub_facet = "capital", "margin"
@@ -165,7 +51,6 @@ class MarginDetailPort(DataPort[TradeDateParams, CapMarginDetailBO]):
     Params, Item = TradeDateParams, CapMarginDetailBO
     unit = "trade_date"
     sample_params = {"trade_date": "20260105"}
-
 
 class TopListPort(DataPort[TradeDateParams, CapTopListBO]):
     name, label = "top_list", "龙虎榜每日"
@@ -175,7 +60,6 @@ class TopListPort(DataPort[TradeDateParams, CapTopListBO]):
     unit = "trade_date"
     sample_params = {"trade_date": "20260105"}
 
-
 class TopInstPort(DataPort[TradeDateParams, CapTopInstBO]):
     name, label = "top_inst", "龙虎榜机构"
     facet, sub_facet = "capital", "dragon_tiger"
@@ -183,7 +67,6 @@ class TopInstPort(DataPort[TradeDateParams, CapTopInstBO]):
     Params, Item = TradeDateParams, CapTopInstBO
     unit = "trade_date"
     sample_params = {"trade_date": "20260105"}
-
 
 class BlockTradePort(DataPort[TradeDateParams, CapBlockTradeBO]):
     name, label = "block_trade", "大宗交易"
@@ -193,7 +76,6 @@ class BlockTradePort(DataPort[TradeDateParams, CapBlockTradeBO]):
     unit = "trade_date"
     sample_params = {"trade_date": "20260105"}
 
-
 class HolderNumberPort(DataPort[HolderNumberParams, CapHolderNumBO]):
     name, label = "holder_number", "股东户数"
     facet, sub_facet = "capital", "chip"
@@ -201,7 +83,6 @@ class HolderNumberPort(DataPort[HolderNumberParams, CapHolderNumBO]):
     Params, Item = HolderNumberParams, CapHolderNumBO
     unit = "symbol"
     sample_params = {"symbol": "600519"}
-
 
 __all__ = [
     "BlockTradePort",

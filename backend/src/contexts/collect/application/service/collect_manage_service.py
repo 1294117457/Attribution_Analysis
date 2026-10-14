@@ -36,8 +36,8 @@ from contexts.collect.application.port.collect_port import (
 )
 from contexts.data.application.port import DataGatewayPort
 from contexts.collect.application.port.scheduler_port import SchedulerPort
-from contexts.collect.domain.vo_collect_plan.vo import PlanStopPolicy, Schedule, normalize_times
-from contexts.collect.domain.vo_collect_task.vo import TaskOutcome
+from contexts.collect.domain.vo_collect_plan import PlanStopPolicy, Schedule, normalize_times
+from contexts.collect.domain.vo_collect_task import TaskOutcome
 from contexts.collect.infrastructure.persistence.models.collect_config import (
     CollectFetcherDB,
     CollectPlanDB,

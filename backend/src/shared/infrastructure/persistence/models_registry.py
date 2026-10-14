@@ -26,7 +26,6 @@ from contexts.concept.infrastructure.persistence.models.concept import (  # noqa
 )
 
 # market
-from contexts.market.infrastructure.persistence.models.kline import KlineDailyDB  # noqa: F401
 from contexts.market.infrastructure.persistence.models.tech_kline import TechKlineDailyDB  # noqa: F401
 from contexts.market.infrastructure.persistence.models.stock_info import StockInfoDB  # noqa: F401
 from contexts.market.infrastructure.persistence.models.fin_daily_basic import FinDailyBasicDB  # noqa: F401
@@ -48,7 +47,6 @@ from contexts.market.infrastructure.persistence.models.mkt_calendar import MktCa
 from contexts.market.infrastructure.persistence.models.mkt_market_daily import MktMarketDailyDB  # noqa: F401
 from contexts.market.infrastructure.persistence.models.mkt_sector_daily import MktSectorDailyDB  # noqa: F401
 from contexts.market.infrastructure.persistence.models.mkt_index_member import MktIndexMemberDB  # noqa: F401
-from contexts.market.infrastructure.persistence.models.panel_compose import StockPanelComposeDB  # noqa: F401
 
 # user (stock_pool)
 from contexts.user.infrastructure.persistence.models.pool import (  # noqa: F401
