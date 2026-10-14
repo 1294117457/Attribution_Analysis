@@ -22,7 +22,8 @@ class CapTopInstBO(BaseModel):
     reason: Optional[str] = None
 
     def to_entity(self) -> "CapTopInst":
-        from contexts.market.domain.cap_top_inst.entity import CapTopInst
-        return CapTopInst(**self.model_dump())
+        """委托给 converter（step7-e）"""
+        from contexts.market.application.cap_top_inst.converter import cap_top_inst_bo_to_entity
+        return cap_top_inst_bo_to_entity(self)
 
 

@@ -20,7 +20,8 @@ class CapBlockTradeBO(BaseModel):
     seller: Optional[str] = None
 
     def to_entity(self) -> "CapBlockTrade":
-        from contexts.market.domain.cap_block_trade.entity import CapBlockTrade
-        return CapBlockTrade(**self.model_dump())
+        """委托给 converter（step7-e）"""
+        from contexts.market.application.cap_block_trade.converter import cap_block_trade_bo_to_entity
+        return cap_block_trade_bo_to_entity(self)
 
 

@@ -32,7 +32,8 @@ class CapMoneyflowBO(BaseModel):
     net_mf_amount: Optional[float] = None
 
     def to_entity(self) -> "CapMoneyflow":
-        from contexts.market.domain.cap_moneyflow.entity import CapMoneyflow
-        return CapMoneyflow(**self.model_dump())
+        """委托给 converter（step7-e）"""
+        from contexts.market.application.cap_moneyflow.converter import cap_moneyflow_bo_to_entity
+        return cap_moneyflow_bo_to_entity(self)
 
 

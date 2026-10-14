@@ -43,10 +43,9 @@ class KlineBO(BaseModel):
         }
 
     def to_entity(self) -> "Kline":
-        from contexts.market.domain.kline.entity import Kline
-        args = self.to_entity_args()
-        args.pop("source")
-        return Kline.create(**args)
+        """委托给 converter（step7-e）"""
+        from contexts.market.application.kline.converter import kline_bo_to_entity
+        return kline_bo_to_entity(self)
 
 
 

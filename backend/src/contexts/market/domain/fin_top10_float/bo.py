@@ -20,8 +20,9 @@ class FinTop10FloatHoldersBO(BaseModel):
     holder_type: Optional[str] = None
 
     def to_entity(self) -> "FinTop10Float":
-        from contexts.market.domain.fin_top10_float.entity import FinTop10Float
-        return FinTop10Float(**self.model_dump())
+        """委托给 converter（step7-e）"""
+        from contexts.market.application.fin_top10_float.converter import fin_top10_float_holders_bo_to_entity
+        return fin_top10_float_holders_bo_to_entity(self)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

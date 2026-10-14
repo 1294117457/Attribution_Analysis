@@ -16,7 +16,8 @@ class BaseSuspendBO(BaseModel):
     suspend_type: Optional[str] = None
 
     def to_entity(self) -> "BaseSuspend":
-        from contexts.market.domain.base_suspend.entity import BaseSuspend
-        return BaseSuspend(**self.model_dump())
+        """委托给 converter（step7-e）"""
+        from contexts.market.application.base_suspend.converter import base_suspend_bo_to_entity
+        return base_suspend_bo_to_entity(self)
 
 

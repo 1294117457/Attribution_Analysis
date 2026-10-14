@@ -17,8 +17,9 @@ class CapHolderNumBO(BaseModel):
     holder_nums: Optional[float] = None
 
     def to_entity(self) -> "CapHolderNum":
-        from contexts.market.domain.cap_holder_num.entity import CapHolderNum
-        return CapHolderNum(**self.model_dump())
+        """委托给 converter（step7-e）"""
+        from contexts.market.application.cap_holder_num.converter import cap_holder_num_bo_to_entity
+        return cap_holder_num_bo_to_entity(self)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

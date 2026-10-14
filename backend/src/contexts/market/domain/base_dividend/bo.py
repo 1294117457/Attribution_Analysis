@@ -24,8 +24,9 @@ class BaseDividendBO(BaseModel):
     cash_div_tax: Optional[float] = None
 
     def to_entity(self) -> "BaseDividend":
-        from contexts.market.domain.base_dividend.entity import BaseDividend
-        return BaseDividend(**self.model_dump())
+        """委托给 converter（step7-e）"""
+        from contexts.market.application.base_dividend.converter import base_dividend_bo_to_entity
+        return base_dividend_bo_to_entity(self)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

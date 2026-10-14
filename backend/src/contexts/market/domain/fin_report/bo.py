@@ -27,7 +27,8 @@ class FinReportBO(BaseModel):
     n_income_attr_p: Optional[float] = None
 
     def to_entity(self) -> "FinReport":
-        from contexts.market.domain.fin_report.entity import FinReport
-        return FinReport(**self.model_dump())
+        """委托给 converter（step7-e）"""
+        from contexts.market.application.fin_report.converter import fin_report_bo_to_entity
+        return fin_report_bo_to_entity(self)
 
 
