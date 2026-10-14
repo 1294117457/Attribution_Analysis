@@ -1,7 +1,7 @@
 """采集任务管理 API（业务模块：collect-manage/）
 
 router 仅负责 HTTP 协议：创建任务 / 方案 / 任务组走 CollectManageService，
-采集逻辑在 `infrastructure.adapter.collect.*` 子类中实现。
+采集逻辑在 `application.collect.tasks.*` 子类中实现。
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from application.collect import get_collect_task_registry, request_cancel
 from application.port.data.base import InvalidParams, NotSupported, RateLimited, SourceUnavailable
 from application.service import (
     CollectManageService,
@@ -23,10 +24,6 @@ from application.service import (
 )
 from application.service.data_query_service import DataQueryService
 from infrastructure.adapter.cache.redis_client import get_redis
-from infrastructure.adapter.collect import (
-    get_collect_task_registry,
-    request_cancel,
-)
 from infrastructure.config.di import get_collect_manage_service, get_data_query_service, get_db
 from infrastructure.persistence.models.sys_collect_task import SysCollectTaskDB
 from route.api import _response as R

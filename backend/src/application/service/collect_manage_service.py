@@ -3,12 +3,16 @@
 唯一入口：submit / run_one / run_plan + plans / fetchers
 
 依赖通过 port 注入（DDD.md §4）：
-- redis:                Redis 端口
-- task_registry:        采集任务注册中心
-- scheduler:            定时调度（SchedulerPort；未启用时为 None）
-- session_factory:      session 工厂
-- config_repo:          采集配置仓储（方案 / 方案项 / 接口元数据）
-- gateway:              数据统一入口（方案项校验"实时接口不能入方案"用 is_realtime）
+- progress:           采集进度端口（替代 redis）
+- task_registry:      采集任务注册中心
+- tasks:              任务行端口
+- runner:             采集 runner
+- scheduler:          定时调度（SchedulerPort；未启用时为 None）
+- session_factory:    session 工厂
+- config_repo:        采集配置仓储（方案 / 方案项 / 接口元数据）
+- gateway:            数据统一入口（方案项校验"实时接口不能入方案"用 is_realtime）
+
+DDD 边界：application/ 不 import infrastructure。
 """
 from __future__ import annotations
 
@@ -18,37 +22,34 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Coroutine, Optional, Protocol
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from application.collect import (
+    BaseCollectTask,
+    CollectRunner,
+    UnitResult,
+    request_cancel as collect_request_cancel,
+)
+from application.port.collect_port import (
+    CollectProgressPort,
+    CollectTaskStorePort,
+)
 from application.port.data import DataGatewayPort
 from application.port.scheduler_port import SchedulerPort
-from domain.entitys.collect_plan.vo import Schedule, normalize_times
-from infrastructure.adapter.collect import (
-    BaseCollectTask,
-    UnitResult,
-    execute_task,
-)
+from domain.entitys.collect_plan.vo import PlanStopPolicy, Schedule, normalize_times
+from domain.entitys.collect_task.vo import TaskOutcome
 from infrastructure.persistence.models.collect_config import (
     CollectFetcherDB,
     CollectPlanDB,
     CollectPlanItemDB,
 )
-from infrastructure.persistence.models.sys_collect_task import (
-    SysCollectTaskDB,
-)
 
 logger = logging.getLogger(__name__)
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
 # Port 接口
-# ════════════════════════════════════════════════════════════════════════
-
-
-class RedisPort(Protocol):
-    async def hset(self, key: str, mapping: dict) -> Any: ...
-    async def expire(self, key: str, seconds: int) -> Any: ...
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class CollectTaskRegistryPort(Protocol):
@@ -87,9 +88,13 @@ class SessionFactoryPort(Protocol):
     def __call__(self) -> "AsyncContextManager[AsyncSession]": ...
 
 
-# ════════════════════════════════════════════════════════════════════════
+# 兼容 re-export
+from contextlib import AbstractAsyncContextManager  # noqa: E402
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # 异常 + 数据结构
-# ════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class UnknownTaskType(ValueError):
@@ -130,6 +135,10 @@ async def cancel_background() -> None:
         t.cancel()
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
+
+
+# 重新导出（route 层调用 request_cancel）
+request_cancel = collect_request_cancel
 
 
 # ── 方案 / 采集接口 的对外字典 ─────────────────────────────────────────
@@ -194,8 +203,11 @@ def plan_to_dict(
     }
 
 
-def task_to_dict(t: SysCollectTaskDB) -> dict[str, Any]:
-    """SysCollectTaskDB → 响应 dict（前端字段契约）"""
+def task_to_dict(t: Any) -> dict[str, Any]:
+    """SysCollectTaskDB 或 CollectTaskRecord → 响应 dict（前端字段契约）
+
+    两者都具备同名属性（id/task_type/trigger_type/params/status/total_count/...）。
+    """
     return {
         "id": t.id,
         "task_type": t.task_type,
@@ -206,34 +218,38 @@ def task_to_dict(t: SysCollectTaskDB) -> dict[str, Any]:
         "success_count": t.success_count,
         "fail_count": t.fail_count,
         "skip_count": t.skip_count,
-        "started_at": _iso(t.started_at),
-        "finished_at": _iso(t.finished_at),
-        "duration_ms": t.duration_ms,
-        "message": t.message,
-        "plan_run_id": t.plan_run_id,
-        "created_at": _iso(t.created_at),
+        "started_at": _iso(getattr(t, "started_at", None)),
+        "finished_at": _iso(getattr(t, "finished_at", None)),
+        "duration_ms": getattr(t, "duration_ms", None),
+        "message": getattr(t, "message", None),
+        "plan_run_id": getattr(t, "plan_run_id", None),
+        "created_at": _iso(getattr(t, "created_at", None)),
     }
 
 
-# ════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
 # 应用服务
-# ════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
 
 
 class CollectManageService:
-    """采集管理应用服务（依赖注入：port 化所有 infrastructure 依赖）"""
+    """采集管理应用服务（依赖注入：port 化所有基础设施依赖）"""
 
     def __init__(
         self,
         *,
-        redis: RedisPort,
+        progress: CollectProgressPort,
+        tasks: CollectTaskStorePort,
+        runner: CollectRunner,
         task_registry: CollectTaskRegistryPort,
         scheduler: Optional[SchedulerPort],
         config_repo: CollectConfigRepositoryPort,
         gateway: DataGatewayPort,
         session_factory: SessionFactoryPort,
     ) -> None:
-        self._redis = redis
+        self._progress = progress
+        self._tasks = tasks
+        self._runner = runner
         self._task_registry = task_registry
         self._scheduler = scheduler
         self._config_repo = config_repo
@@ -243,7 +259,6 @@ class CollectManageService:
     # ── 定时（调度器未启用时为 None，全部降级为 no-op，方案仍可手动执行）──
 
     def _sync_schedule(self, plan_id: int, enabled: bool, schedule: Optional[Schedule]) -> None:
-        """方案增删改后同步定时"""
         if self._scheduler is None:
             return
         key = plan_key(plan_id)
@@ -297,7 +312,6 @@ class CollectManageService:
         """参数合并：手动传入 > 方案项 params > default_params
 
         mode=full 时忽略其它条件，改用 full_params（仅保留 mode / concurrency）。
-        ⚠️ 不查 DB —— 方案项参数由调用方（run_plan）传入。
         """
         handler = self.handler(task_type)
         merged = {
@@ -329,39 +343,20 @@ class CollectManageService:
         handler = self.handler(task_type)
         merged = await self.resolve_params(task_type, params, plan_item_params)
 
-        async with self._session_factory() as session:
-            running = await session.execute(
-                select(SysCollectTaskDB.id).where(
-                    SysCollectTaskDB.task_type == task_type,
-                    SysCollectTaskDB.status == "running",
-                )
-            )
-            if running.first():
-                raise TaskConflict(f"{task_type} 已有运行中的任务，请等待完成")
+        if await self._tasks.has_running(task_type):
+            raise TaskConflict(f"{task_type} 已有运行中的任务，请等待完成")
 
-            total = await handler.estimate_total(merged)
-            task = SysCollectTaskDB(
-                task_type=task_type,
-                trigger_type=trigger,
-                params=merged,
-                status="running",
-                total_count=total,
-                started_at=datetime.now(),
-                plan_run_id=plan_run_id,
-            )
-            session.add(task)
-            await session.flush()
-            if plan_first:
-                task.plan_run_id = task.id
-            task_id = task.id
-            await session.commit()
+        total = await handler.estimate_total(merged)
+        task_id = await self._tasks.create(
+            task_type=task_type,
+            trigger=trigger,
+            params=merged,
+            total=total,
+            plan_run_id=plan_run_id,
+            plan_first=plan_first,
+        )
 
-        key = f"collect:progress:{task_id}"
-        await self._redis.hset(key, mapping={
-            "total": str(total), "done": "0", "success": "0", "fail": "0",
-            "skip": "0", "status": "running", "current": "",
-        })
-        await self._redis.expire(key, 86400)
+        await self._progress.init(task_id, total)
         logger.info(
             "创建采集任务: id=%d, type=%s, trigger=%s, total=%d",
             task_id, task_type, trigger, total,
@@ -376,7 +371,7 @@ class CollectManageService:
         params: Optional[dict] = None, trigger: str = "manual",
     ) -> SubmittedTask:
         sub = await self.prepare(task_type, params, trigger)
-        spawn(execute_task(sub.task_id, self.handler(task_type), sub.params))
+        spawn(self._runner.execute(sub.task_id, self.handler(task_type), sub.params))
         return sub
 
     # ── 同步单元 ────────────────────────────────────────────────────────
@@ -395,31 +390,24 @@ class CollectManageService:
     async def retry_failed(self, task_id: int) -> SubmittedTask:
         """重跑一个失败 / 已取消的任务：复制原 task 的 type+params，新开 task_id
 
-        设计：
-          - 不修改原 task 行（保留历史记录用于追溯）
-          - 跳过 list_units → 直接用原 task 的 total_count 作为估计
-          - 后台协程继续由 spawn 接管
-
         Raises:
             ValueError: 任务不存在 / 不在终态
         """
-        async with self._session_factory() as session:
-            orig = await session.get(SysCollectTaskDB, task_id)
-            if orig is None:
-                raise ValueError(f"任务 {task_id} 不存在")
-            if orig.status not in ("failed", "cancelled", "success"):
-                raise ValueError(
-                    f"任务 {task_id} 状态为 {orig.status}，仅 failed/cancelled/success 可重跑"
-                )
-            orig_type = orig.task_type
-            orig_params = dict(orig.params or {})
-            orig_trigger = orig.trigger_type
+        orig = await self._tasks.get(task_id)
+        if orig is None:
+            raise ValueError(f"任务 {task_id} 不存在")
+        if orig.status not in ("failed", "cancelled", "success"):
+            raise ValueError(
+                f"任务 {task_id} 状态为 {orig.status}，仅 failed/cancelled/success 可重跑"
+            )
 
-        sub = await self.prepare(orig_type, orig_params, trigger=orig_trigger)
-        spawn(execute_task(sub.task_id, self.handler(orig_type), sub.params))
+        sub = await self.prepare(
+            orig.task_type, dict(orig.params or {}), trigger=orig.trigger_type,
+        )
+        spawn(self._runner.execute(sub.task_id, self.handler(orig.task_type), sub.params))
         logger.info(
             "重跑任务: 原 #%d → 新 #%d (type=%s, trigger=%s)",
-            task_id, sub.task_id, orig_type, orig_trigger,
+            task_id, sub.task_id, orig.task_type, orig.trigger_type,
         )
         return sub
 
@@ -588,7 +576,7 @@ class CollectManageService:
                 logger.warning("采集方案 %d 不存在，跳过执行", plan_id)
                 return None
             name = plan.name
-            stop_on_fail = plan.stop_on_fail
+            policy = PlanStopPolicy(stop_on_fail=bool(plan.stop_on_fail))
             # list_plan_items 已按 sort_order 排序并过滤 disabled
             items = await self._config_repo.list_plan_items(session, plan_id)
 
@@ -609,7 +597,7 @@ class CollectManageService:
                 continue
             except Exception as e:
                 logger.error("采集方案 [%s] 第 %d 项 %s 创建失败: %s", name, idx, task_type, e)
-                if stop_on_fail:
+                if policy.stop_on_fail:
                     break
                 continue
 
@@ -617,25 +605,30 @@ class CollectManageService:
                 plan_run_id = sub.task_id
                 await self._touch_plan(plan_id, plan_run_id)
 
-            await execute_task(sub.task_id, self.handler(task_type), sub.params)
+            await self._runner.execute(sub.task_id, self.handler(task_type), sub.params)
 
-            async with self._session_factory() as session:
-                row = await session.get(SysCollectTaskDB, sub.task_id)
-                status = row.status if row else "unknown"
-                ok = row.success_count if row else 0
-                fail = row.fail_count if row else 0
+            record = await self._tasks.get(sub.task_id)
+            if record is None:
+                logger.warning(
+                    "采集方案 [%s] 第 %d/%d 项 %s 完成后未找到任务行",
+                    name, idx, len(items), task_type,
+                )
+                continue
+            outcome = TaskOutcome(
+                success=record.success_count,
+                fail=record.fail_count,
+                skip=record.skip_count,
+            )
             logger.info(
                 "采集方案 [%s] 第 %d/%d 项 %s 结束: %s（成功%d 失败%d）",
-                name, idx, len(items), task_type, status, ok, fail,
+                name, idx, len(items), task_type, record.status,
+                record.success_count, record.fail_count,
             )
-            # ⚠️ 不能只看 status —— _decide_status 里"部分失败也算 success"，
-            #   所以额外拦"零成功但有失败"的极端情况。
-            if stop_on_fail and (
-                status in ("failed", "cancelled") or (ok == 0 and fail > 0)
-            ):
+            if policy.should_stop(record.status, outcome):
                 logger.warning(
                     "采集方案 [%s] 第 %d 项 %s（成功%d 失败%d），停止后续 %d 项",
-                    name, idx, status, ok, fail, len(items) - idx,
+                    name, idx, record.status,
+                    record.success_count, record.fail_count, len(items) - idx,
                 )
                 break
 
