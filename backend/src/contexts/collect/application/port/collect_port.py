@@ -124,6 +124,13 @@ class CollectTaskStorePort(Protocol):
     """采集任务行（sys_collect_tasks）的读写"""
 
     async def has_running(self, task_type: str) -> bool: ...
+    async def mark_running_as_failed(
+        self, task_type: str, reason: str,
+    ) -> list[int]:
+        """把 task_type 下所有 running 标 failed（启动崩溃/进程被杀 等孤儿）
+
+        返回被修改的任务 id 列表；调用方通常是新建任务前的"业务级懒清理"。
+        """
     async def create(
         self, *, task_type: str, trigger: str, params: dict, total: int,
         plan_run_id: int | None, plan_first: bool,

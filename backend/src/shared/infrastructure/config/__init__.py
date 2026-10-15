@@ -20,6 +20,6 @@ def __getattr__(name):
         "get_stock_analysis_app_service",
         "get_stock_app_service",
     ):
-        from infrastructure.config import di
+        from shared.infrastructure.config import di
         return getattr(di, name)
-    raise AttributeError(f"module 'infrastructure.config' has no attribute {name!r}")
+    raise AttributeError(f"module 'shared.infrastructure.config' has no attribute {name!r}")

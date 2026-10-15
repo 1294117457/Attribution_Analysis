@@ -15,9 +15,9 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ── 通用领域服务（无 IO，可单例）──
-from contexts.market.domain.service.indicator_calculator import IndicatorCalculator
-from contexts.concept.domain.service.concept_brief_service import ConceptBriefService
-from contexts.collect.domain.service.concept_collection_policy import ConceptCollectionPolicy
+from contexts.market.domain.services.indicator_calculator import IndicatorCalculator
+from contexts.concept.domain.services.concept_brief_service import ConceptBriefService
+from contexts.collect.domain.services.concept_collection_policy import ConceptCollectionPolicy
 
 # ── Auth 端口实现（依然放 infra/）──
 from contexts.auth.infrastructure.adapter.auth_port_adapters import (
@@ -27,12 +27,11 @@ from contexts.auth.infrastructure.adapter.auth_port_adapters import (
     JwtAdapter,
 )
 
-# ── DB session / ORM registry ──
+# ── DB session ──
 from shared.infrastructure.persistence.connection import (
     AsyncSessionLocal,
     get_db,
 )
-from shared.infrastructure.persistence import models_registry  # noqa: F401 触发 ORM 注册
 
 if TYPE_CHECKING:
     from contexts.collect.application.collect import CollectContext, CollectRunner

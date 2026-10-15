@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
+from shared.domain.base import DomainError
+
 
 class ConceptSource(str, Enum):
     """概念数据来源（adata 采集，同花顺数据）"""
@@ -68,16 +70,15 @@ class ConceptMember:
     )
 
 
-class ConceptNotFoundError(Exception):
+class ConceptNotFoundError(DomainError):
     """指定概念不存在（按 id / name 查不到）"""
-
-    message: str
 
     def __init__(self, *, id: int | None = None, name: str | None = None):
         if id is not None:
-            self.message = f"概念 id={id} 不存在"
+            msg = f"概念 id={id} 不存在"
         elif name is not None:
-            self.message = f"概念 name={name!r} 不存在"
+            msg = f"概念 name={name!r} 不存在"
         else:
-            self.message = "概念不存在"
-        super().__init__(self.message)
+            msg = "概念不存在"
+        super().__init__(msg, "CONCEPT_NOT_FOUND", DomainError.HTTP_NOT_FOUND)
+        self.message = msg

@@ -62,6 +62,7 @@ class DuplicateMemberError(PoolDomainError):
         self.symbol = symbol
         self.pool_id = pool_id
         super().__init__(f"股票 {symbol} 已在池 {pool_id} 中", "DUPLICATE_MEMBER")
+        self.http_status = DomainError.HTTP_CONFLICT
 
 
 class MemberNotFoundError(PoolDomainError):
@@ -69,24 +70,26 @@ class MemberNotFoundError(PoolDomainError):
         self.symbol = symbol
         self.pool_id = pool_id
         super().__init__(f"股票 {symbol} 不在池 {pool_id} 中", "MEMBER_NOT_FOUND")
+        self.http_status = DomainError.HTTP_NOT_FOUND
 
 
 class CannotDeleteDefaultPoolError(PoolDomainError):
     def __init__(self, pool_id: int):
         self.pool_id = pool_id
         super().__init__(f"无法删除默认池 {pool_id}", "CANNOT_DELETE_DEFAULT_POOL")
+        self.http_status = DomainError.HTTP_BAD_REQUEST
 
 
 class PoolNotFoundError(DomainError):
     def __init__(self, pool_id: int):
         self.pool_id = pool_id
-        super().__init__(f"操作池不存在: {pool_id}", "POOL_NOT_FOUND")
+        super().__init__(f"操作池不存在: {pool_id}", "POOL_NOT_FOUND", DomainError.HTTP_NOT_FOUND)
 
 
 class PoolOperationNotFoundError(DomainError):
     def __init__(self, op_id: int):
         self.op_id = op_id
-        super().__init__(f"操作记录不存在: {op_id}", "POOL_OP_NOT_FOUND")
+        super().__init__(f"操作记录不存在: {op_id}", "POOL_OP_NOT_FOUND", DomainError.HTTP_NOT_FOUND)
 
 
 class PoolOperationConflictError(DomainError):
@@ -95,6 +98,7 @@ class PoolOperationConflictError(DomainError):
         super().__init__(
             f"池 {pool_id} 已有进行中的操作，请等待完成后重试",
             "OPERATION_CONFLICT",
+            DomainError.HTTP_CONFLICT,
         )
 
 

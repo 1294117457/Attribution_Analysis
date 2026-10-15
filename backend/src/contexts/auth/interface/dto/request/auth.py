@@ -88,6 +88,30 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=8, max_length=64)
 
 
+class ForgotPasswordSendCodeRequest(BaseModel):
+    """找回密码 Step 1:发送邮箱验证码(必传图形验证码)"""
+    email: str
+    captcha_id: str = Field(..., min_length=1)
+    captcha_code: str = Field(..., min_length=1)
+
+    @field_validator("email")
+    @classmethod
+    def _check_email(cls, v: str) -> str:
+        return _validate_email_loose(v)
+
+
+class ForgotPasswordResetRequest(BaseModel):
+    """找回密码 Step 2:校验邮箱验证码 + 设置新密码"""
+    email: str
+    code: str = Field(..., min_length=4, max_length=8, description="邮箱验证码")
+    new_password: str = Field(..., min_length=8, max_length=64)
+
+    @field_validator("email")
+    @classmethod
+    def _check_email(cls, v: str) -> str:
+        return _validate_email_loose(v)
+
+
 class AssignRoleRequest(BaseModel):
     role_id: int = Field(..., ge=1)
 
@@ -101,4 +125,6 @@ __all__ = [
     "UpdateUserStatusRequest",
     "ResetPasswordRequest",
     "AssignRoleRequest",
+    "ForgotPasswordSendCodeRequest",
+    "ForgotPasswordResetRequest",
 ]

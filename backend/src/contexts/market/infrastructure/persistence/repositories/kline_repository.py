@@ -9,9 +9,9 @@ from sqlalchemy import select, delete, func
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contexts.market.domain.kline.entity import Kline
-from contexts.market.domain.kline.repository import KlineRepository
-from contexts.market.domain.kline.vo import StockCode
+from contexts.market.domain.entities.kline.entity import Kline
+from contexts.market.domain.entities.kline.repository import KlineRepository
+from contexts.market.domain.entities.kline.vo import StockCode
 from contexts.market.infrastructure.persistence.models.tech_kline import TechKlineDailyDB
 
 

@@ -10,7 +10,7 @@ from datetime import datetime
 
 from contexts.collect.application.collect.task import BaseCollectTask, UnitResult, UnitTally
 from contexts.data.application.port.concept import ConceptSnapshotPort
-from contexts.market.domain.service.market_session import market_now
+from contexts.market.domain.services.market_session import market_now
 
 logger = logging.getLogger(__name__)
 

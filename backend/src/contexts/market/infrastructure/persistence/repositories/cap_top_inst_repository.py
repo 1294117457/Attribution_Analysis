@@ -13,8 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contexts.market.domain.cap_top_inst.entity import CapTopInst
-from contexts.market.domain.cap_top_inst.repository import CapTopInstRepository
+from contexts.market.domain.entities.cap_top_inst.entity import CapTopInst
+from contexts.market.domain.entities.cap_top_inst.repository import CapTopInstRepository
 from contexts.market.infrastructure.persistence.models.cap_top_inst import CapTopInstDB
 
 

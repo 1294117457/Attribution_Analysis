@@ -7,8 +7,8 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contexts.market.domain.base_adj_factor.entity import BaseAdjFactor
-from contexts.market.domain.base_adj_factor.repository import BaseAdjFactorRepository
+from contexts.market.domain.entities.base_adj_factor.entity import BaseAdjFactor
+from contexts.market.domain.entities.base_adj_factor.repository import BaseAdjFactorRepository
 from contexts.market.infrastructure.persistence.models.base_adj_factor import BaseAdjFactorDB
 from contexts.market.infrastructure.persistence.repositories._symboled_dated_repo import (
     find_by_symbol_and_date_range,

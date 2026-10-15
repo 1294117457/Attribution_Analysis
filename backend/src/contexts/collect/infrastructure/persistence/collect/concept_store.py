@@ -15,7 +15,7 @@ from contexts.data.application.port.concept import (
     ConceptOfStockBO,
     ConceptSnapshotBO,
 )
-from contexts.market.domain.service.market_session import market_now
+from contexts.market.domain.services.market_session import market_now
 from shared.infrastructure.persistence.connection import AsyncSessionLocal
 from contexts.concept.infrastructure.persistence.models.concept import (
     ConceptMemberDB,

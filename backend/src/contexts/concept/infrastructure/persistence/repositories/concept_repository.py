@@ -647,7 +647,7 @@ async def _list_concept_kline_impl(
 
     返回 [{date(YYYY-MM-DD), open, high, low, close, volume, amount, change_pct}, ...]
     """
-    from infrastructure.persistence.models.concept import ConceptIndexTHDB
+    from contexts.concept.infrastructure.persistence.models.concept import ConceptIndexTHDB
 
     stmt = select(
         ConceptIndexTHDB.trade_date,

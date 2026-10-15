@@ -13,7 +13,6 @@ from sqlalchemy.orm import selectinload
 from contexts.user.domain.stock_pool.entity import StockPool, DuplicateMemberError
 from contexts.user.domain.stock_pool.repository import StockPoolRepository
 from contexts.user.domain.stock_pool.vo import PoolMember, PoolType
-from contexts.user.interface.dto.response.pool import StockPoolVO
 from contexts.user.infrastructure.persistence.models.pool import (
     StockPoolDB,
     StockPoolMemberDB,

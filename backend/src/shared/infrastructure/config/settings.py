@@ -11,10 +11,10 @@ class Settings(BaseSettings):
     """应用配置"""
 
     model_config = SettingsConfigDict(
-        # DDD 改造后 settings.py 移到 infrastructure/config/settings.py
-        # __file__ = backend/src/infrastructure/config/settings.py
-        # .parent.parent.parent.parent = backend/  (要往上 4 级)
-        env_file=Path(__file__).parent.parent.parent.parent / ".env",
+        # DDD 改造后 settings.py 移到 shared/infrastructure/config/settings.py
+        # __file__ = backend/src/shared/infrastructure/config/settings.py
+        # .parent.parent.parent.parent.parent = backend/  (要往上 5 级)
+        env_file=Path(__file__).parent.parent.parent.parent.parent / ".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     COLLECT_SCHEDULER_TIMEZONE: str = "Asia/Shanghai"
 
     # API 版本
-    API_V1_PREFIX: str = "/api/v1"
+    API_V1_PREFIX: str = "/api"
 
     # ── 邮件 SMTP(用于邮箱验证码) ──
     # 通过 .env 配置: SMTP_HOST / SMTP_PORT / SMTP_USERNAME / SMTP_PASSWORD

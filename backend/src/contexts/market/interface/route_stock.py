@@ -9,7 +9,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
 
-from contexts.collect.application.service.collect_manage_service import CollectManageService, StockInfoService
+from contexts.collect.application.service.collect_manage_service import CollectManageService
+from contexts.market.application.service.stock_info_service import StockInfoService
 from shared.infrastructure.config.di import (
     get_collect_manage_service,
     get_stock_info_service,

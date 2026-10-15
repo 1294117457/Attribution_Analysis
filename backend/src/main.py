@@ -6,25 +6,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
-from shared.domain.base import DomainError
-from contexts.market.domain.kline.entity import (
-    CollectionError,
-    KlineDataError,
-    KlineNotFoundError,
-)
-from contexts.market.domain.stock_info.entity import StockNotFoundError
-from contexts.user.domain.stock_pool.entity import (
-    DuplicateMemberError,
-    MemberNotFoundError,
-    PoolNotFoundError,
-    PoolOperationConflictError,
-    PoolOperationNotFoundError,
-    CannotDeleteDefaultPoolError,
-)
 from shared.infrastructure.config.settings import get_settings
 from shared.infrastructure.config.di import (
     build_collect_context,
@@ -33,15 +15,14 @@ from shared.infrastructure.config.di import (
     setup_default_registry,
 )
 from shared.infrastructure.persistence.connection import async_engine, close_db
-# 注册全部 ORM 模型（schema_init 用 Base.metadata 比对 init.sql）
-import shared.infrastructure.persistence.models_registry  # noqa: F401
-from shared.infrastructure.persistence.schema_init import ensure_schema
 from contexts.collect.application.service.collect_manage_service import cancel_background
 from contexts.collect.infrastructure.adapter.scheduler.apscheduler_adapter import ApschedulerAdapter
 from contexts.collect.application.collect.tasks import all_collect_tasks
 from contexts.collect.application.collect import setup_collect
 from shared.interface.router_compat import api_router
 from contexts.auth.infrastructure.security import key_manager
+from app.exception_handler import register_exception_handlers
+from app.middleware import register_middlewares
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,14 +38,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # JWT 密钥预热(第一次启动时生成 RSA 密钥对到 .keys/)
     key_manager.warmup()
 
-    # 表结构：全新库按 backend/init.sql 建表，已有库只校验差异
-    await ensure_schema()
-
-    # 运行时清理：把上次异常退出遗留的 running/pending 任务标为 failed
-    async with async_engine.begin() as conn:
-        await _cleanup_stale_tasks(conn)
-        await _ensure_default_pool(conn)
-        await _ensure_initial_admin(conn)
+    # 注：表结构初始化已不再自动执行。请手动执行 backend/init.sql 建表。
+    # 注：默认池/初始 admin 不再自动创建，请通过业务接口或手工 SQL 初始化。
+    # 注：sys_collect_tasks 的 running 孤儿清理已下放到业务层
+    #   （collect_manage_service.prepare → SqlCollectTaskStore.mark_running_as_failed），
+    #   由用户下次发起同类型采集时处理，不再在启动时全局清扫。
 
     # 注册数据源到采集器注册中心
     setup_default_registry()
@@ -96,23 +74,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         set_scheduler(None)
     await cancel_background()
     await close_db()
-
-
-async def _cleanup_stale_tasks(conn) -> None:
-    """启动期清理：把上次异常退出遗留的 running/pending 任务标为 failed。
-
-    单进程部署，启动时仍为 running 的一定是上次崩溃残留。
-    不清理会导致同类采集任务被防重拦截。
-    """
-    from sqlalchemy import text
-    try:
-        await conn.execute(text(
-            "UPDATE sys_collect_tasks SET status = 'failed', finished_at = NOW(), "
-            "message = COALESCE(message, '') || ' [服务重启，任务中断]' "
-            "WHERE status = 'running'"
-        ))
-    except Exception as e:
-        logging.warning("sys_collect_tasks 清理跳过: %s", e)
 
 
 async def _sync_fetcher_catalog() -> None:
@@ -244,263 +205,25 @@ async def _sync_fetcher_catalog() -> None:
                  inserted, updated, len(orphans), len(code_side))
 
 
-async def _ensure_default_pool(conn) -> None:
-    """确保存在默认操作池（首次启动）"""
-    from sqlalchemy import text
-    try:
-        result = await conn.execute(
-            text("SELECT COUNT(*) FROM stock_pools WHERE is_default = TRUE")
-        )
-        count = result.scalar()
-        if count == 0:
-            await conn.execute(
-                text(
-                    "INSERT INTO stock_pools "
-                    "(name, pool_type, is_default, icon, color, sort_order, "
-                    "is_archived, created_at, updated_at) "
-                    "VALUES (:name, :type, TRUE, :icon, :color, 0, FALSE, NOW(), NOW())"
-                ),
-                {
-                    "name": "我的自选",
-                    "type": "watchlist",
-                    "icon": "⭐",
-                    "color": "#FFB800",
-                },
-            )
-            logging.info("已创建默认池：我的自选")
-    except Exception as e:
-        logging.warning("默认池初始化跳过: %s", e)
-
-
-async def _ensure_initial_admin(conn) -> None:
-    """首次启动时创建初始 admin 用户
-    email=admin@local / password=admin123,
-    并绑定 admin 角色。
-
-    重启行为:
-    - sys_users 为空 → INSERT 新账号
-    - sys_users 不为空但无 admin@local → 跳过
-    - admin@local 存在但密码不匹配(开发期间偶发,例如 bcrypt 升级) →
-      用 ENV 变量 ATTR_REBUILD_ADMIN_HASH=true(默认) 强制重置 hash;
-      生产环境可设 false 关闭
-    """
-    import bcrypt as _bcrypt
-    import os
-    from sqlalchemy import text
-
-    target_email = "admin@local"
-    target_password = b"admin123"
-    rebuild = os.getenv("ATTR_REBUILD_ADMIN_HASH", "true").lower() != "false"
-
-    try:
-        existing = (await conn.execute(
-            text("SELECT id, password_hash FROM sys_users WHERE email = :e"),
-            {"e": target_email},
-        )).first()
-    except Exception as e:
-        logging.warning("查询 sys_users 失败,跳过 admin 初始化: %s", e)
-        return
-
-    new_hash = _bcrypt.hashpw(target_password, _bcrypt.gensalt(rounds=12)).decode("utf-8")
-
-    if existing is None:
-        # INSERT
-        try:
-            admin_id = (
-                await conn.execute(
-                    text(
-                        "INSERT INTO sys_users (email, password_hash, nickname, "
-                        "is_active, is_verified) VALUES "
-                        "(:e, :h, '系统管理员', TRUE, TRUE) RETURNING id"
-                    ),
-                    {"e": target_email, "h": new_hash},
-                )
-            ).scalar()
-            await conn.execute(
-                text(
-                    "INSERT INTO sys_user_roles (user_id, role_id) "
-                    "VALUES (:u, (SELECT id FROM sys_roles WHERE code = 'admin'))"
-                ),
-                {"u": admin_id},
-            )
-            logging.warning(
-                "=" * 70 + "\n"
-                "  初始 admin 账号已创建!\n"
-                "    email    : %s\n"
-                "    password : admin123\n"
-                "  [WARNING]  请登录后第一时间修改!\n" + "=" * 70,
-                target_email,
-            )
-        except Exception as e:
-            logging.error("创建初始 admin 失败: %s", e)
-        return
-
-    # 已存在 — 校验 hash
-    try:
-        ok = _bcrypt.checkpw(target_password, existing.password_hash.encode("utf-8"))
-    except Exception:
-        ok = False
-    if ok:
-        logging.info("admin@local hash 校验通过,无需重置")
-        return
-
-    # hash 不匹配
-    if not rebuild:
-        logging.warning(
-            "admin@local hash 校验失败,但 ATTR_REBUILD_ADMIN_HASH=false 跳过重置。"
-            "请手动: UPDATE sys_users SET password_hash='%s' WHERE email='%s'",
-            new_hash, target_email,
-        )
-        return
-
-    logging.warning("admin@local hash 校验失败,自动重置为 admin123 (ATTR_REBUILD_ADMIN_HASH=true)")
-    await conn.execute(
-        text("UPDATE sys_users SET password_hash = :h WHERE id = :i"),
-        {"h": new_hash, "i": existing.id},
-    )
-
-
 def create_app() -> FastAPI:
     """创建 FastAPI 应用"""
-    app = FastAPI(
+    application = FastAPI(
         title="智能金融数据归因分析平台",
         description="DDD 架构 - 数据采集 + K线查询",
         version="2.0.0",
         lifespan=lifespan,
     )
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.ALLOWED_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    register_exception_handlers(app)
-    app.include_router(api_router)
-    return app
+    register_middlewares(application)
+    register_exception_handlers(application)
+    application.include_router(api_router)
+    return application
 
 
-def register_exception_handlers(app: FastAPI) -> None:
-    """注册全局异常处理器"""
-
-    @app.exception_handler(KlineNotFoundError)
-    async def kline_not_found(request: Request, exc: KlineNotFoundError):
-        return JSONResponse(
-            status_code=404,
-            content={"code": 404, "message": exc.message, "data": None},
-        )
-
-    @app.exception_handler(StockNotFoundError)
-    async def stock_not_found(request: Request, exc: StockNotFoundError):
-        return JSONResponse(
-            status_code=404,
-            content={"code": 404, "message": exc.message, "data": None},
-        )
-
-    @app.exception_handler(KlineDataError)
-    async def kline_data_error(request: Request, exc: KlineDataError):
-        return JSONResponse(
-            status_code=400,
-            content={"code": 400, "message": exc.message, "data": None},
-        )
-
-    @app.exception_handler(CollectionError)
-    async def collection_error(request: Request, exc: CollectionError):
-        return JSONResponse(
-            status_code=502,
-            content={"code": 502, "message": exc.message, "data": None},
-        )
-
-    @app.exception_handler(DomainError)
-    async def domain_error(request: Request, exc: DomainError):
-        return JSONResponse(
-            status_code=400,
-            content={"code": 400, "message": exc.message, "data": None},
-        )
-
-    @app.exception_handler(PoolNotFoundError)
-    async def pool_not_found(request: Request, exc: PoolNotFoundError):
-        return JSONResponse(
-            status_code=404,
-            content={"code": 404, "message": exc.message, "data": None},
-        )
-
-    @app.exception_handler(PoolOperationNotFoundError)
-    async def pool_op_not_found(request: Request, exc: PoolOperationNotFoundError):
-        return JSONResponse(
-            status_code=404,
-            content={"code": 404, "message": exc.message, "data": None},
-        )
-
-    @app.exception_handler(PoolOperationConflictError)
-    async def pool_op_conflict(request: Request, exc: PoolOperationConflictError):
-        return JSONResponse(
-            status_code=409,
-            content={"code": 409, "message": exc.message, "data": None},
-        )
-
-    @app.exception_handler(RequestValidationError)
-    async def validation_error(request: Request, exc: RequestValidationError):
-        # 兜底：把 ctx/input 里的 bytes 转成 str，避免 JSON 序列化失败
-        def _safe(value):
-            if isinstance(value, bytes):
-                try:
-                    return value.decode("utf-8", errors="replace")
-                except Exception:  # noqa: BLE001
-                    return repr(value)
-            if isinstance(value, dict):
-                return {k: _safe(v) for k, v in value.items()}
-            if isinstance(value, (list, tuple)):
-                return [_safe(v) for v in value]
-            return value
-
-        return JSONResponse(
-            status_code=422,
-            content={
-                "code": 422,
-                "message": "请求参数校验失败",
-                "data": {"errors": _safe(exc.errors())},
-            },
-        )
-
-    @app.exception_handler(ValueError)
-    async def value_error(request: Request, exc: ValueError):
-        return JSONResponse(
-            status_code=400,
-            content={"code": 400, "message": str(exc), "data": None},
-        )
-
-    @app.exception_handler(RuntimeError)
-    async def runtime_error(request: Request, exc: RuntimeError):
-        return JSONResponse(
-            status_code=502,
-            content={"code": 502, "message": str(exc), "data": None},
-        )
-
-    @app.exception_handler(KeyError)
-    async def registry_not_found(request: Request, exc: KeyError):
-        """注册中心未找到对应的协议实现（通常是启动配置缺失）"""
-        logging.error("数据源未注册: %s", exc)
-        return JSONResponse(
-            status_code=503,
-            content={"code": 503, "message": f"数据源未配置: {exc}", "data": None},
-        )
-
-    @app.exception_handler(Exception)
-    async def generic_error(request: Request, exc: Exception):
-        logging.exception("未处理的异常: %s", exc)
-        return JSONResponse(
-            status_code=500,
-            content={"code": 500, "message": "服务器内部错误", "data": None},
-        )
+application = create_app()
 
 
-app = create_app()
-
-
-@app.get("/health", tags=["系统"])
+@application.get("/health", tags=["系统"])
 async def health():
     """健康检查"""
     return {"status": "ok", "version": "2.0.0"}
@@ -516,7 +239,7 @@ if __name__ == "__main__":
     #    且日志无任何 fetcher 调用记录。详见 docs/overview/00-项目索引.md §8。
     #    如需在开发期跑长时采集任务，请改用 reload=False 启动，或把产物写到 backend/ 之外。
     uvicorn.run(
-        "main:app",
+        "main:application",
         host="0.0.0.0",
         port=8000,
         reload=True,

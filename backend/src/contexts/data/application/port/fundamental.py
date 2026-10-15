@@ -9,10 +9,10 @@ from pydantic import BaseModel, ConfigDict
 from contexts.data.application.port.base import DataPort
 from contexts.data.application.port.types import Symbol, TradeDate, TradeDateParams
 
-from contexts.market.domain.fin_daily_basic.bo import FinDailyBasicBO
-from contexts.market.domain.fin_report.bo import FinReportBO
-from contexts.market.domain.fin_top10_holders.bo import FinTop10HoldersBO
-from contexts.market.domain.fin_top10_float.bo import FinTop10FloatHoldersBO
+from contexts.market.application.bo.fin_daily_basic import FinDailyBasicBO
+from contexts.market.application.bo.fin_report import FinReportBO
+from contexts.market.application.bo.fin_top10_holders import FinTop10HoldersBO
+from contexts.market.application.bo.fin_top10_float import FinTop10FloatHoldersBO
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # BO

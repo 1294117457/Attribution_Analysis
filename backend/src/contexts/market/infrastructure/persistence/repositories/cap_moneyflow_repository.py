@@ -7,8 +7,8 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contexts.market.domain.cap_moneyflow.entity import CapMoneyflow
-from contexts.market.domain.cap_moneyflow.repository import CapMoneyflowRepository
+from contexts.market.domain.entities.cap_moneyflow.entity import CapMoneyflow
+from contexts.market.domain.entities.cap_moneyflow.repository import CapMoneyflowRepository
 from contexts.market.infrastructure.persistence.models.cap_moneyflow import CapMoneyflowDB
 from contexts.market.infrastructure.persistence.repositories._symboled_dated_repo import (
     find_by_symbol_and_date_range,

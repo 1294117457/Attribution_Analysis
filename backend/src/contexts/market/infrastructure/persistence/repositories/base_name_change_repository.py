@@ -11,8 +11,8 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contexts.market.domain.base_name_change.entity import BaseNameChange
-from contexts.market.domain.base_name_change.repository import BaseNameChangeRepository
+from contexts.market.domain.entities.base_name_change.entity import BaseNameChange
+from contexts.market.domain.entities.base_name_change.repository import BaseNameChangeRepository
 from contexts.market.infrastructure.persistence.models.base_name_change import BaseNameChangeDB
 from contexts.market.infrastructure.persistence.repositories._symboled_dated_repo import chunks
 

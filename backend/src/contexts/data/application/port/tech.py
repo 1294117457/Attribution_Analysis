@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from contexts.data.application.port.base import CachePolicy, DataPort
 from contexts.data.application.port.types import Symbol, TradeDate
 
-from contexts.market.domain.kline.bo import KlineBO, MinuteKlineBO, MinuteInterval, BARS_PER_DAY
+from contexts.market.application.bo.kline import KlineBO, MinuteKlineBO, MinuteInterval, BARS_PER_DAY
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 日 K

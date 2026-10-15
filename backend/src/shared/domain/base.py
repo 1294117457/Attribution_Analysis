@@ -105,15 +105,35 @@ class DomainEvent:
 # ════════════════════════════════════════════════════════════════
 
 class DomainError(Exception):
-    """领域异常基类（统一 message + code 字段）
+    """领域异常基类（统一 message + code + http_status 字段）
 
     命名沿用 DDD 语义：业务异常属于领域知识，由 domain 层定义。
     替换原先散布在 kline / stock_info / stock_pool 中的 ApplicationError。
+
+    字段：
+    - message : 用户可读消息
+    - code    : 业务错误码（前端按 code 字符串精细分流）
+    - http_status : HTTP 状态码（默认 400，可被子类覆盖）
     """
 
-    def __init__(self, message: str, code: str = "DOMAIN_ERROR"):
+    # 常用 HTTP 状态码常量（避免业务方写魔法数字）
+    HTTP_BAD_REQUEST = 400
+    HTTP_UNAUTHORIZED = 401
+    HTTP_FORBIDDEN = 403
+    HTTP_NOT_FOUND = 404
+    HTTP_CONFLICT = 409
+    HTTP_BAD_GATEWAY = 502
+    HTTP_SERVICE_UNAVAILABLE = 503
+
+    def __init__(
+        self,
+        message: str,
+        code: str = "DOMAIN_ERROR",
+        http_status: int = 400,
+    ):
         self.message = message
         self.code = code
+        self.http_status = http_status
         super().__init__(message)
 
 

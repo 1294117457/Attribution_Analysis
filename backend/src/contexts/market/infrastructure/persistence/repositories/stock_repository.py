@@ -12,8 +12,8 @@ from sqlalchemy import select, func, or_, and_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contexts.market.domain.stock_info.entity import StockInfo
-from contexts.market.domain.stock_info.repository import StockInfoRepository
+from contexts.market.domain.entities.stock_info.entity import StockInfo
+from contexts.market.domain.entities.stock_info.repository import StockInfoRepository
 from contexts.market.infrastructure.persistence.models.stock_info import StockInfoDB
 from contexts.market.infrastructure.persistence.models.tech_kline import TechKlineDailyDB
 
