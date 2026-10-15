@@ -1,0 +1,20 @@
+# TODO: DDD 仓储接口已定义，待 infrastructure 层实现对应 *_repo_impl
+"""base_name_change — 仓储接口"""
+
+from abc import ABC, abstractmethod
+from typing import Optional
+
+from contexts.market.domain.entities.base_name_change.entity import BaseNameChange
+
+
+class BaseNameChangeRepository(ABC):
+    """股票曾用名仓储（主键 symbol + start_date + name）"""
+
+    @abstractmethod
+    async def save(self, entity: BaseNameChange) -> BaseNameChange: ...
+
+    @abstractmethod
+    async def save_batch(self, entities: list[BaseNameChange]) -> int: ...
+
+    @abstractmethod
+    async def find_by_symbol(self, symbol: str) -> list[BaseNameChange]: ...

@@ -8,8 +8,8 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contexts.market.domain.cap_top_list.entity import CapTopList
-from contexts.market.domain.cap_top_list.repository import CapTopListRepository
+from contexts.market.domain.entities.cap_top_list.entity import CapTopList
+from contexts.market.domain.entities.cap_top_list.repository import CapTopListRepository
 from contexts.market.infrastructure.persistence.models.cap_top_list import CapTopListDB
 from contexts.market.infrastructure.persistence.repositories._symboled_dated_repo import chunks
 

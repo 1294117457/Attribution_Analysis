@@ -61,7 +61,7 @@ from contexts.market.infrastructure.persistence.repositories.base_name_change_re
     BaseNameChangeRepoImpl,
 )
 from shared.interface import _response as R
-from contexts.market.domain.kline.vo import StockCode
+from contexts.market.domain.entities.kline.vo import StockCode
 
 router = APIRouter(prefix="/data-board", tags=["四数据面"])
 
@@ -578,12 +578,12 @@ async def overview_panel(
 ):
     """按 symbol 一次拉四面的关键统计（前端 DataBoard.vue 概览用）"""
     from sqlalchemy import func, select
-    from infrastructure.persistence.models.tech_kline import TechKlineDailyDB
-    from infrastructure.persistence.models.fin_daily_basic import FinDailyBasicDB
-    from infrastructure.persistence.models.cap_moneyflow import CapMoneyflowDB
-    from infrastructure.persistence.models.cap_margin_detail import CapMarginDetailDB
-    from infrastructure.persistence.models.cap_top_list import CapTopListDB
-    from infrastructure.persistence.models.cap_holder_num import CapHolderNumDB
+    from contexts.market.infrastructure.persistence.models.tech_kline import TechKlineDailyDB
+    from contexts.market.infrastructure.persistence.models.fin_daily_basic import FinDailyBasicDB
+    from contexts.market.infrastructure.persistence.models.cap_moneyflow import CapMoneyflowDB
+    from contexts.market.infrastructure.persistence.models.cap_margin_detail import CapMarginDetailDB
+    from contexts.market.infrastructure.persistence.models.cap_top_list import CapTopListDB
+    from contexts.market.infrastructure.persistence.models.cap_holder_num import CapHolderNumDB
 
     # 各表最新一条 + 条数
     async def _latest(model, col):

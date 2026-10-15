@@ -26,6 +26,37 @@ class SqlCollectTaskStore(CollectTaskStorePort):
             )
             return row.first() is not None
 
+    async def mark_running_as_failed(
+        self, task_type: str, reason: str,
+    ) -> list[int]:
+        """把同 task_type 下所有 running 标 failed，返回被改的 task_id
+
+        业务级懒清理：上次进程崩溃 / kill -9 / 断电 留下的孤儿由本次新任务在
+        创建前清扫（而不是靠启动时全局对账）。message 追加原因便于排查。
+        """
+        async with AsyncSessionLocal() as session:
+            rows = (await session.execute(
+                select(SysCollectTaskDB.id).where(
+                    SysCollectTaskDB.task_type == task_type,
+                    SysCollectTaskDB.status == "running",
+                )
+            )).scalars().all()
+            if not rows:
+                return []
+            from sqlalchemy import update
+            now = datetime.now()
+            await session.execute(
+                update(SysCollectTaskDB)
+                .where(SysCollectTaskDB.id.in_(rows))
+                .values(
+                    status="failed",
+                    finished_at=now,
+                    message=f"上次进程未正常结束（{reason}）",
+                )
+            )
+            await session.commit()
+            return list(rows)
+
     async def create(
         self, *, task_type: str, trigger: str, params: dict, total: int,
         plan_run_id: int | None, plan_first: bool,

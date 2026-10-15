@@ -11,8 +11,8 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contexts.market.domain.base_dividend.entity import BaseDividend
-from contexts.market.domain.base_dividend.repository import BaseDividendRepository
+from contexts.market.domain.entities.base_dividend.entity import BaseDividend
+from contexts.market.domain.entities.base_dividend.repository import BaseDividendRepository
 from contexts.market.infrastructure.persistence.models.base_dividend import BaseDividendDB
 from contexts.market.infrastructure.persistence.repositories._symboled_dated_repo import (
     save_batch_symboled_dated,

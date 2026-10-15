@@ -28,7 +28,7 @@ from contexts.data.application.port.concept import (
     ConceptListPort,
     ConceptMembersPort,
 )
-from contexts.collect.domain.service.concept_collection_policy import ConceptCollectionPolicy
+from contexts.collect.domain.services.concept_collection_policy import ConceptCollectionPolicy
 
 logger = logging.getLogger(__name__)
 

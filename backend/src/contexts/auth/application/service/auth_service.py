@@ -14,7 +14,12 @@ from typing import Optional, Protocol
 import jwt as pyjwt
 
 from contexts.auth.domain.entity import (
+    AccountNotFoundError,
+    CaptchaInvalidError,
+    EmailCodeExpiredError,
+    EmailCodeInvalidError,
     InvalidCredentialsError,
+    PasswordMismatchError,
     Permission,
     Role,
     TokenInvalidError,
@@ -147,14 +152,42 @@ class AuthService:
         )
 
     async def _verify_captcha(self, captcha_id: str, captcha_code: str) -> None:
-        """强制要求前端传 captcha_id + code,任一为空或校验失败都抛 AuthError。"""
+        """强制要求前端传 captcha_id + code,任一为空或校验失败都抛 CaptchaInvalidError。
+
+        错误细分:
+        - 缺参/不匹配 → CaptchaInvalidError(code=CAPTCHA_INVALID)
+          前端根据此 code 高亮图形验证码输入框。
+        """
         if not captcha_id or not captcha_code:
-            from domain.entitys.auth.entity import AuthError
-            raise AuthError(message="图形验证码不能为空", code="CAPTCHA_REQUIRED")
+            raise CaptchaInvalidError("图形验证码不能为空")
         ok, err = await self.captcha.verify(captcha_id, captcha_code)
         if not ok:
-            from domain.entitys.auth.entity import AuthError
-            raise AuthError(message=err, code="CAPTCHA_INVALID")
+            raise CaptchaInvalidError(err or "图形验证码错误")
+
+    async def _verify_email_code(
+        self, *, email: str, purpose: str, input_code: str,
+    ) -> None:
+        """统一封装邮箱验证码校验,捕获底层 EmailCodeError 并翻译为业务域异常。
+
+        - 空 / 不匹配 → EmailCodeInvalidError
+        - 已过期       → EmailCodeExpiredError
+        - 其它底层异常 → EmailCodeInvalidError(兜底)
+        """
+        from contexts.auth.infrastructure.adapter.email_verification import (
+            EmailCodeError,
+            EmailCodeInvalidError as _EmailCodeInvalidInfra,
+        )
+        try:
+            await self.email_verify.verify(
+                email=email, purpose=purpose, input_code=input_code,
+            )
+        except _EmailCodeInvalidInfra as e:
+            msg = (e.message or "").lower()
+            if "过期" in msg or "expire" in msg:
+                raise EmailCodeExpiredError() from e
+            raise EmailCodeInvalidError(e.message or "邮箱验证码错误") from e
+        except EmailCodeError as e:
+            raise EmailCodeInvalidError(e.message or "邮箱验证码错误") from e
 
     # ── 注册 ─────────────────────────────────────────────────────────
 
@@ -174,7 +207,7 @@ class AuthService:
         - nickname 可选,空时回退为 email 本地部分
         - 通过邮箱验证码注册 = 邮箱已验证(is_verified=True)
         """
-        await self.email_verify.verify(email=email, purpose="register", input_code=code)
+        await self._verify_email_code(email=email, purpose="register", input_code=code)
 
         if await self.users.find_by_email(email):
             raise UserAlreadyExistsError(field="邮箱", value=email)
@@ -374,10 +407,76 @@ class AuthService:
         if not user:
             raise UserNotFoundError(str(user_id))
         if not self.hasher.verify(old_password, user.password_hash):
-            raise InvalidCredentialsError()
+            raise PasswordMismatchError()
         user.password_hash = self.hasher.hash(new_password)
         await self.users.update(user)
         await self.refresh.revoke_all_for_user(user_id)
+
+    # ── 找回密码（公开端点：分两步） ────────────────────────────────────
+
+    async def forgot_password_send_code(
+        self,
+        *,
+        email: str,
+        ip: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        captcha_id: str,
+        captcha_code: str,
+    ) -> dict:
+        """找回密码 Step 1:发送邮箱验证码。
+
+        流程:
+        - 必传图形验证码(防刷)
+        - 邮箱必须**已注册** → 抛 AccountNotFoundError(让用户感知"邮箱没注册")
+        - 调用底层 email_verify.send(purpose='reset_password')
+        """
+        # 1. 图形验证码
+        await self._verify_captcha(captcha_id, captcha_code)
+
+        # 2. 校验邮箱已注册
+        if not await self.users.find_by_email(email):
+            raise AccountNotFoundError(email)
+
+        # 3. 发送
+        return await self.email_verify.send(
+            email=email,
+            purpose="reset_password",
+            ip=ip,
+            user_agent=user_agent,
+        )
+
+    async def forgot_password_reset(
+        self,
+        *,
+        email: str,
+        code: str,
+        new_password: str,
+    ) -> None:
+        """找回密码 Step 2:校验邮箱验证码 + 写入新密码。
+
+        流程:
+        - 校验邮箱验证码(过期/不匹配都友好提示)
+        - 校验邮箱已注册
+        - 写入新密码
+        - 撤销该用户全部 refresh token(强制其他设备重登)
+        - 不会自动登录,前端引导用户去 /login
+        """
+        # 1. 邮箱验证码
+        await self._verify_email_code(
+            email=email, purpose="reset_password", input_code=code,
+        )
+
+        # 2. 校验账号存在
+        user = await self.users.find_by_email(email)
+        if not user:
+            raise AccountNotFoundError(email)
+
+        # 3. 写新密码
+        user.password_hash = self.hasher.hash(new_password)
+        await self.users.update(user)
+
+        # 4. 撤销该用户全部 refresh token
+        await self.refresh.revoke_all_for_user(user.id)
 
     async def assign_role(self, user_id: int, role_id: int) -> None:
         user = await self.users.find_by_id(user_id)

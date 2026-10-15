@@ -34,7 +34,7 @@ def port_of(adapter_cls: type) -> type[DataPort]:
 
 
 def _disabled_tools() -> set[str]:
-    from infrastructure.config.settings import get_settings
+    from shared.infrastructure.config.settings import get_settings
     raw = get_settings().DATA_SOURCE_DISABLED or ""
     return {t.strip() for t in raw.split(",") if t.strip()}
 

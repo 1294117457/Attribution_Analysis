@@ -25,7 +25,7 @@ from contexts.data.application.port.base import (
     RateLimited,
     SourceUnavailable,
 )
-from contexts.market.domain.service.market_session import market_now
+from contexts.market.domain.services.market_session import market_now
 from contexts.data.infrastructure.adapter.core.base import ORIGIN_LABELS
 from contexts.data.infrastructure.adapter.core.cache import CacheDecorator
 from contexts.data.infrastructure.adapter.core.context import call_policy

@@ -45,7 +45,7 @@ const etagCacheGet = <T>(key: string) => etagCache.get(key) as EtagEntry<T> | un
 const etagCacheSet = <T>(key: string, entry: EtagEntry<T>) => etagCache.set(key, entry)
 
 const http: AxiosInstance = axios.create({
-  baseURL: '/api/v1',
+  baseURL: '/api',
   timeout: 60_000,
   // 304 视为合法响应（ETag 协商），不能 reject。
   // 否则 axios 默认 validateStatus（仅 2xx）会把 304 丢进 error 分支，

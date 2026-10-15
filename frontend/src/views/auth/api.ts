@@ -135,6 +135,35 @@ export const sendVerificationCode = (payload: SendCodePayload) =>
     >('/auth/send-verification-code', payload)
     .then(unwrap)
 
+/** 找回密码 Step 1:发送邮箱验证码(必传图形验证码) */
+export const forgotPasswordSendCode = (payload: {
+  email: string
+  captcha_id: string
+  captcha_code: string
+}) =>
+  http
+    .post<
+      {
+        code: number
+        message: string
+        data: { expire_seconds: number; purpose: string }
+      }
+    >('/auth/forgot-password/send-code', payload)
+    .then(unwrap)
+
+/** 找回密码 Step 2:校验邮箱验证码 + 设置新密码 */
+export const forgotPasswordReset = (payload: {
+  email: string
+  code: string
+  new_password: string
+}) =>
+  http
+    .post<{ code: number; message: string; data: null }>(
+      '/auth/forgot-password/reset',
+      payload,
+    )
+    .then(unwrap)
+
 export const login = (payload: LoginPayload) =>
   http
     .post<{ code: number; message: string; data: AuthTokenResponse }>('/auth/login', payload)

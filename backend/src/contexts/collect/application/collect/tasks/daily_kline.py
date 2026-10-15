@@ -28,7 +28,7 @@ from contexts.collect.application.collect.task import (
     parse_date,
     run_units,
 )
-from contexts.market.domain.kline.entity import CollectionError
+from contexts.market.domain.entities.kline.entity import CollectionError
 from contexts.market.interface.dto.request.kline import KlineCollectRequest
 
 logger = logging.getLogger(__name__)

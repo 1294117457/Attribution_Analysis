@@ -11,8 +11,8 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contexts.market.domain.fin_top10_holders.entity import FinTop10Holders
-from contexts.market.domain.fin_top10_holders.repository import FinTop10HoldersRepository
+from contexts.market.domain.entities.fin_top10_holders.entity import FinTop10Holders
+from contexts.market.domain.entities.fin_top10_holders.repository import FinTop10HoldersRepository
 from contexts.market.infrastructure.persistence.models.fin_top10_holders import FinTop10HolderDB
 from contexts.market.infrastructure.persistence.repositories._symboled_dated_repo import chunks
 

@@ -11,7 +11,7 @@ from shared.infrastructure.persistence.orm_base import Base
 
 
 if TYPE_CHECKING:
-    from infrastructure.persistence.models.user_role import (
+    from contexts.auth.infrastructure.persistence.models.user_role import (
         RolePermissionDB,
         UserRoleDB,
     )

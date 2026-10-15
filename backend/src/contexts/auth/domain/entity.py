@@ -135,10 +135,10 @@ class UserLoggedIn(DomainEvent):
 
 
 class AuthError(DomainError):
-    """认证授权通用异常基类"""
+    """认证授权通用异常基类（默认 HTTP 401）"""
 
     def __init__(self, message: str, code: str = "AUTH_ERROR"):
-        super().__init__(message=message, code=code)
+        super().__init__(message=message, code=code, http_status=DomainError.HTTP_UNAUTHORIZED)
 
 
 class UserNotFoundError(AuthError):
@@ -147,6 +147,7 @@ class UserNotFoundError(AuthError):
             message=f"用户不存在: {identifier}",
             code="USER_NOT_FOUND",
         )
+        self.http_status = DomainError.HTTP_NOT_FOUND
 
 
 class UserAlreadyExistsError(AuthError):
@@ -155,14 +156,71 @@ class UserAlreadyExistsError(AuthError):
             message=f"该{field}已被注册: {value}",
             code="USER_ALREADY_EXISTS",
         )
+        self.http_status = DomainError.HTTP_CONFLICT
 
 
 class InvalidCredentialsError(AuthError):
+    """账号或密码错误（不区分两者，防账号枚举）"""
+
     def __init__(self):
         super().__init__(
-            message="邮箱或密码错误",
+            message="登录失败，请检查账号密码是否正确",
             code="INVALID_CREDENTIALS",
         )
+
+
+class AccountNotFoundError(AuthError):
+    """账号不存在（仅在找回密码等非登录场景使用）"""
+
+    def __init__(self, identifier: str = ""):
+        super().__init__(
+            message=f"账号不存在: {identifier}" if identifier else "账号不存在",
+            code="ACCOUNT_NOT_FOUND",
+        )
+        self.http_status = DomainError.HTTP_NOT_FOUND
+
+
+class PasswordMismatchError(AuthError):
+    """密码错误（仅在找回密码/改密等已校验账号存在后使用）"""
+
+    def __init__(self):
+        super().__init__(
+            message="密码错误",
+            code="PASSWORD_MISMATCH",
+        )
+
+
+class CaptchaInvalidError(AuthError):
+    """图形验证码错误（前端可据此高亮图形验证码输入框）"""
+
+    def __init__(self, reason: str = "图形验证码错误"):
+        super().__init__(
+            message=reason,
+            code="CAPTCHA_INVALID",
+        )
+        self.http_status = DomainError.HTTP_BAD_REQUEST
+
+
+class EmailCodeInvalidError(AuthError):
+    """邮箱验证码错误"""
+
+    def __init__(self, reason: str = "邮箱验证码错误"):
+        super().__init__(
+            message=reason,
+            code="EMAIL_CODE_INVALID",
+        )
+        self.http_status = DomainError.HTTP_BAD_REQUEST
+
+
+class EmailCodeExpiredError(AuthError):
+    """邮箱验证码已过期"""
+
+    def __init__(self):
+        super().__init__(
+            message="邮箱验证码已过期，请重新获取",
+            code="EMAIL_CODE_EXPIRED",
+        )
+        self.http_status = DomainError.HTTP_BAD_REQUEST
 
 
 class UserInactiveError(AuthError):
@@ -171,6 +229,7 @@ class UserInactiveError(AuthError):
             message="账号已被禁用",
             code="USER_INACTIVE",
         )
+        self.http_status = DomainError.HTTP_FORBIDDEN
 
 
 class TokenExpiredError(AuthError):
@@ -195,3 +254,4 @@ class PermissionDeniedError(AuthError):
             message=f"缺少权限: {required}",
             code="PERMISSION_DENIED",
         )
+        self.http_status = DomainError.HTTP_FORBIDDEN

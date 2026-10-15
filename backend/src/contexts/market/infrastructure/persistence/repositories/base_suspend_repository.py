@@ -11,8 +11,8 @@ from typing import Optional
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contexts.market.domain.base_suspend.entity import BaseSuspend
-from contexts.market.domain.base_suspend.repository import BaseSuspendRepository
+from contexts.market.domain.entities.base_suspend.entity import BaseSuspend
+from contexts.market.domain.entities.base_suspend.repository import BaseSuspendRepository
 from contexts.market.infrastructure.persistence.models.base_suspend import BaseSuspendDB
 
 

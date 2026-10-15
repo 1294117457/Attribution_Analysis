@@ -12,8 +12,8 @@ from typing import Optional
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contexts.market.domain.cap_block_trade.entity import CapBlockTrade
-from contexts.market.domain.cap_block_trade.repository import CapBlockTradeRepository
+from contexts.market.domain.entities.cap_block_trade.entity import CapBlockTrade
+from contexts.market.domain.entities.cap_block_trade.repository import CapBlockTradeRepository
 from contexts.market.infrastructure.persistence.models.cap_block_trade import CapBlockTradeDB
 
 

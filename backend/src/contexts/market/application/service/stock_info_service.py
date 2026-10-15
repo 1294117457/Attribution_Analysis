@@ -19,14 +19,14 @@ from contexts.data.application.port import DataGatewayPort
 from contexts.data.application.port.base import CallPolicy, InvalidParams, NotSupported
 from contexts.data.application.port.reference import StockBasicPort
 from contexts.data.application.port.tech import DailyKlinePort, MinuteKlineBO, MinuteKlineParams, MinuteKlinePort
-from contexts.market.domain.kline.entity import CollectionError, Kline, KlineDataError, KlineNotFoundError
-from contexts.market.domain.kline.repository import KlineRepository
-from contexts.market.domain.kline.vo import IndicatorValues, StockCode
-from contexts.market.domain.stock_info.entity import StockInfo, StockNotFoundError
-from contexts.market.domain.stock_info.repository import StockInfoRepository
+from contexts.market.domain.entities.kline.entity import CollectionError, Kline, KlineDataError, KlineNotFoundError
+from contexts.market.domain.entities.kline.repository import KlineRepository
+from contexts.market.domain.entities.kline.vo import IndicatorValues, StockCode
+from contexts.market.domain.entities.stock_info.entity import StockInfo, StockNotFoundError
+from contexts.market.domain.entities.stock_info.repository import StockInfoRepository
 from contexts.user.domain.stock_pool.repository import StockPoolRepository
-from contexts.market.domain.service.indicator_calculator import WARMUP_BARS, IndicatorCalculator
-from contexts.market.domain.service.signal_detector import SignalDetector
+from contexts.market.domain.services.indicator_calculator import WARMUP_BARS, IndicatorCalculator
+from contexts.market.domain.services.signal_detector import SignalDetector
 from contexts.market.interface.dto.request.kline import (
     KlineCollectRequest,
     KlineDeleteRequest,
@@ -63,9 +63,9 @@ from contexts.market.interface.dto.response.stock_analysis import (
 )
 from contexts.concept.domain.repository import ConceptRepository
 from contexts.concept.domain.vo import ConceptBriefVO, ConceptMainVO
-from contexts.market.domain.panel.repository import StockPanelComposeRepository
-from contexts.market.domain.panel.vo import StockPanelRow
-from contexts.concept.domain.service.concept_brief_service import ConceptBriefService
+from contexts.market.domain.entities.panel.repository import StockPanelComposeRepository
+from contexts.market.domain.entities.panel.vo import StockPanelRow
+from contexts.concept.domain.services.concept_brief_service import ConceptBriefService
 
 logger = logging.getLogger(__name__)
 

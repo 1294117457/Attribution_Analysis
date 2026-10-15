@@ -1,0 +1,10 @@
+# TODO: DDD 仓储接口已定义，待 infrastructure 层实现对应 *_repo_impl
+"""cap_top_list — 仓储接口"""
+
+from contexts.market.domain.entities.cap_top_list.entity import CapTopList
+from shared.domain.repository import BaseSymboledDatedRepository
+
+
+class CapTopListRepository(BaseSymboledDatedRepository[CapTopList]):
+    """龙虎榜汇总仓储（继承通用维度仓储）"""
+    pass

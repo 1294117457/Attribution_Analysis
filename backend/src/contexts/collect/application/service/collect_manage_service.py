@@ -343,6 +343,17 @@ class CollectManageService:
         handler = self.handler(task_type)
         merged = await self.resolve_params(task_type, params, plan_item_params)
 
+        # 业务级懒清理：上次进程崩溃/被杀 留下的 running 孤儿
+        # 由本次新任务在创建前清扫（取代 main.py 启动期全局清理）
+        cleaned = await self._tasks.mark_running_as_failed(
+            task_type, "进程未正常结束",
+        )
+        if cleaned:
+            logger.warning(
+                "task_type=%s 发现 %d 个残留 running 任务（上次进程异常退出），已标 failed: %s",
+                task_type, len(cleaned), cleaned,
+            )
+
         if await self._tasks.has_running(task_type):
             raise TaskConflict(f"{task_type} 已有运行中的任务，请等待完成")
 

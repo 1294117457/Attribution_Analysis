@@ -9,12 +9,12 @@ from pydantic import BaseModel, ConfigDict
 from contexts.data.application.port.base import DataPort
 from contexts.data.application.port.types import Symbol, TradeDate, TradeDateParams
 
-from contexts.market.domain.cap_moneyflow.bo import CapMoneyflowBO
-from contexts.market.domain.cap_margin_detail.bo import CapMarginDetailBO
-from contexts.market.domain.cap_top_list.bo import CapTopListBO
-from contexts.market.domain.cap_top_inst.bo import CapTopInstBO
-from contexts.market.domain.cap_block_trade.bo import CapBlockTradeBO
-from contexts.market.domain.cap_holder_num.bo import CapHolderNumBO
+from contexts.market.application.bo.cap_moneyflow import CapMoneyflowBO
+from contexts.market.application.bo.cap_margin_detail import CapMarginDetailBO
+from contexts.market.application.bo.cap_top_list import CapTopListBO
+from contexts.market.application.bo.cap_top_inst import CapTopInstBO
+from contexts.market.application.bo.cap_block_trade import CapBlockTradeBO
+from contexts.market.application.bo.cap_holder_num import CapHolderNumBO
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # BO

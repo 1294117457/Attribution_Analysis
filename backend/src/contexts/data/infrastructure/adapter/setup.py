@@ -16,18 +16,18 @@ _done = False
 
 
 def _tushare() -> tuple[Any, Iterable[type]]:
-    from infrastructure.adapter.data.tushare import ADAPTERS, TushareClient
-    from infrastructure.config.settings import get_settings
+    from contexts.data.infrastructure.adapter.tushare import ADAPTERS, TushareClient
+    from shared.infrastructure.config.settings import get_settings
     return TushareClient(get_settings().TUSHARE_TOKEN), ADAPTERS
 
 
 def _adata() -> tuple[Any, Iterable[type]]:
-    from infrastructure.adapter.data.adata import ADAPTERS, AdataClient
+    from contexts.data.infrastructure.adapter.adata import ADAPTERS, AdataClient
     return AdataClient(), ADAPTERS
 
 
 def _pytdx() -> tuple[Any, Iterable[type]]:
-    from infrastructure.adapter.data.pytdx import ADAPTERS, PytdxClient
+    from contexts.data.infrastructure.adapter.pytdx import ADAPTERS, PytdxClient
     return PytdxClient(), ADAPTERS
 
 

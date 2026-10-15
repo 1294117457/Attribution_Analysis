@@ -9,8 +9,8 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contexts.market.domain.fin_report.entity import FinReport
-from contexts.market.domain.fin_report.repository import FinReportRepository
+from contexts.market.domain.entities.fin_report.entity import FinReport
+from contexts.market.domain.entities.fin_report.repository import FinReportRepository
 from contexts.market.infrastructure.persistence.models.fin_report import FinReportDB
 
 # 利润表任务只写这些列；资产负债 / 现金流列留给各自的任务，upsert 时不覆盖

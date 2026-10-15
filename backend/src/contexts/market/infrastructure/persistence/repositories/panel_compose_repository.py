@@ -22,8 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from contexts.user.interface.dto.response.pool import PoolMembershipVO
 from contexts.concept.domain.repository import ConceptRepository
 from contexts.concept.domain.vo import ConceptBriefVO
-from contexts.market.domain.panel.repository import StockPanelComposeRepository
-from contexts.market.domain.panel.vo import StockPanelRow
+from contexts.market.domain.entities.panel.repository import StockPanelComposeRepository
+from contexts.market.domain.entities.panel.vo import StockPanelRow
 from contexts.concept.infrastructure.persistence.models.concept import ConceptMemberDB
 from contexts.market.infrastructure.persistence.models.fin_daily_basic import FinDailyBasicDB
 from contexts.market.infrastructure.persistence.models.fin_report import FinReportDB

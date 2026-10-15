@@ -16,7 +16,7 @@ from datetime import timedelta
 from typing import Any, Optional
 
 from contexts.data.application.port.base import CallPolicy, DataPort, RateLimited, SourceUnavailable
-from contexts.market.domain.service.market_session import market_now
+from contexts.market.domain.services.market_session import market_now
 from shared.infrastructure.cache.redis_client import try_get_redis
 from contexts.data.infrastructure.adapter.core.context import call_policy, sleep_cancellable
 
@@ -57,7 +57,7 @@ class ThrottleConfig:
 
 
 def _throttle_groups() -> dict[str, ThrottleConfig]:
-    from infrastructure.config.settings import get_settings
+    from shared.infrastructure.config.settings import get_settings
     return {
         "tushare": ThrottleConfig(concurrency=get_settings().COLLECT_MAX_CONCURRENCY, min_interval=0.15),
         "adata:ths": ThrottleConfig(concurrency=5, min_interval=0.5),

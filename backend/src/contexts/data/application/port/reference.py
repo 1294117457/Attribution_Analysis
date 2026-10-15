@@ -9,11 +9,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from contexts.data.application.port.base import DataPort
 from contexts.data.application.port.types import ListStatus, Symbol, SymbolParams, TradeDateParams
 
-from contexts.market.domain.stock_info.bo import StockInfoBO
-from contexts.market.domain.base_adj_factor.bo import BaseAdjFactorBO
-from contexts.market.domain.base_suspend.bo import BaseSuspendBO
-from contexts.market.domain.base_name_change.bo import BaseNameChangeBO
-from contexts.market.domain.base_dividend.bo import BaseDividendBO
+from contexts.market.application.bo.stock_info import StockInfoBO
+from contexts.market.application.bo.base_adj_factor import BaseAdjFactorBO
+from contexts.market.application.bo.base_suspend import BaseSuspendBO
+from contexts.market.application.bo.base_name_change import BaseNameChangeBO
+from contexts.market.application.bo.base_dividend import BaseDividendBO
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # BO
