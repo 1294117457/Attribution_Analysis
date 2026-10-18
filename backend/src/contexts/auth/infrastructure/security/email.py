@@ -1,4 +1,4 @@
-"""SMTP 邮件发送工具
+﻿"""SMTP 邮件发送工具
 
 - 使用标准库 smtplib + email.mime,同步发送,FastAPI 路由内通过 asyncio.to_thread 包裹
 - SMTP_PORT=465 → SMTP_SSL;否则 STARTTLS

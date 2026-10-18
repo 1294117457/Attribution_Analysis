@@ -1,4 +1,4 @@
-"""通用分页结果容器（应用层契约）
+﻿"""通用分页结果容器（应用层契约）
 
 字段命名与前端 PaginatedResponse<T> 对齐：
 items / total / page / page_size / pages

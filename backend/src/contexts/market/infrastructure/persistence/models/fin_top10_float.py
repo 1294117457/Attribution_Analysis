@@ -1,21 +1,21 @@
-"""前十大流通股东 ORM 模型"""
+﻿"""前十大流通股东 ORM 模型"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Integer, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class FinTop10FloatHolderDB(Base, TimestampMixin):
+class FinTop10FloatHolderDB(RawBase, TimestampMixin):
     """前十大流通股东
 
     物理表名: fin_top10_floatholders
     UK: (symbol, end_date, ann_date, holder_name)
     """
 
-    __tablename__ = "fin_top10_floatholders"
+    __tablename__ = "fundamental_top10_float"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

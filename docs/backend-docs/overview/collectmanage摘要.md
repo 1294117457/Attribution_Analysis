@@ -1,14 +1,20 @@
 # 采集管理 · 摘要
 
 页面：`frontend/src/views/collect-manage/CollectManage.vue`（标签页：采集接口 / 采集方案）
-接口：`/api/v1/collect/*`（`backend/src/route/api/v1/collect_task.py`）
-应用服务：`backend/src/application/service/collect_manage_service.py`（`CollectManageService`，注入 `gateway`）
-框架：`backend/src/infrastructure/adapter/collect/`；调度器：`scheduler/apscheduler_adapter.py`（`SchedulerPort` 实现）
-数据入口：`backend/src/infrastructure/adapter/data/`（`DataGateway` + 装饰器 + tushare / adata / pytdx Adapter），接口约束 `backend/src/application/port/data/`
-实时接口：声明了 `cache` 的数据 Port（缓存由 `adapter/data/core/cache.py` 的 `CacheDecorator` 负责，交易时段规则来自 `domain/service/market_session.py`）；试查 / 统计走 `application/service/data_query_service.py` 的 `DataQueryService`
+接口：`/api/v1/collect/*`（`backend/src/contexts/collect/interface/route/collect_task.py`）
+应用服务：`backend/src/contexts/collect/application/service/collect_manage_service.py`（`CollectManageService`，注入 `gateway`）
+框架：`backend/src/shared/infrastructure/adapter/collect/`（**step7 上移到 shared**）；调度器：`shared/infrastructure/adapter/scheduler/apscheduler_adapter.py`（`SchedulerPort` 实现）
+数据入口：`backend/src/shared/infrastructure/adapter/data/`（`DataGateway` + 装饰器 + tushare / adata / pytdx Adapter），接口约束 `backend/src/contexts/collect/application/port/data/`
+实时接口：声明了 `cache` 的数据 Port（缓存由 `shared/infrastructure/adapter/data/core/cache.py` 的 `CacheDecorator` 负责，交易时段规则来自 `contexts/market/domain/service/market_session.py` —— step7 重构后从 `collect.domain` 移到了 `market.domain`）；试查 / 统计走 `contexts/collect/application/service/data_query_service.py` 的 `DataQueryService`
 方案：[`04-修订方案`](../dev/step2/04采集管理优化/04-修订方案.md)（S0–S4 已实施）、[`05接口优化`](../dev/step2/04采集管理优化/05接口优化.md)、[`06实时数据接口`](../dev/step2/04采集管理优化/06实时数据接口.md)（已实施）、[`step5/02底层采集优化`](../dev/step5/02底层采集优化/README.md)（P1–P6 已实施）
 
-> 最后更新：2026-10-13（**底层采集优化**）
+> 最后更新：2026-10-17（**step7 统一 DDD 重构**）
+> - `infrastructure/adapter/collect/` 已上移到 `shared/infrastructure/adapter/collect/`（被 collect / market / concept 等多个 context 复用）
+> - `application/port/data/` 路径改为 `contexts/collect/application/port/data/`（仍属 collect context，外部仅按 Gateway 取数）
+> - `domain/service/market_session.py` 从 `collect` 移到 `market`（概念性服务归属"市场域"更合理）
+> - 路由文件 `route/api/v1/collect_task.py` → `contexts/collect/interface/route/collect_task.py`
+>
+> 2026-10-13（**底层采集优化**）
 > - 取数统一走 `DataGateway`；旧 `XxxFetcher` / `get_registry()` / `adapter/fetcher/` / `adapter/realtime/`（`RealtimeQueryFramework` / `BaseRealtimeQuery`）已删除
 > - 14 个 tushare 任务改为 `DeclarativeCollectTask`（集中在 `tushare_tasks.py`，`task_type` 不变）
 > - 实时接口 Redis 键改为 `ds:cache:*` / `ds:lock:*` / `ds:stats:*`；概念行情降级移到 `ConceptRealtimeReader`
@@ -244,8 +250,22 @@ flowchart LR
 
 | 模块 | 性质 | 与 application/service 的关系 |
 |---|---|---|
-| `domain/service/market_session.py` `MarketSessionService` | **领域服务**（纯规则，无 IO） | application/service 可直接调用，不依赖 infrastructure；`CacheDecorator` 用它的 `ttl_for` 定 TTL |
-| `domain/service/concept_collection_policy.py` `ConceptCollectionPolicy` | **领域服务**（纯规则） | application/service / adapter/collect 调用 |
-| `application/port/data/` `XxxPort`（声明 `cache` 即为实时接口） | **接口约束**（名称 / 元数据 / 参数 / BO / 缓存策略） | application/service 类型化调 `gateway.fetch(XxxPort, params, policy=QUERY)` |
-| `infrastructure/adapter/data/core/` `DataGateway` + `CacheDecorator` + `Metrics/Retry/Throttle` | **技术框架**（缓存 / 单飞 / 限流 / 超时 / 重试 / 统计） | 不持有任何业务规则；降级不在这里 |
-| `application/service/concept_realtime.py` `ConceptRealtimeReader` | **应用层**（业务降级：失败回落最近收盘，标 `stale=true`） | `ConceptService` / `ConceptBoardService` 共用 |
+| `contexts/market/domain/service/market_session.py` `MarketSessionService` | **领域服务**（纯规则，无 IO） | application/service 可直接调用，不依赖 infrastructure；`CacheDecorator` 用它的 `ttl_for` 定 TTL |
+| `contexts/concept/domain/service/concept_collection_policy.py` `ConceptCollectionPolicy` | **领域服务**（纯规则） | application/service / adapter/collect 调用 |
+| `contexts/collect/application/port/data/` `XxxPort`（声明 `cache` 即为实时接口） | **接口约束**（名称 / 元数据 / 参数 / BO / 缓存策略） | application/service 类型化调 `gateway.fetch(XxxPort, params, policy=QUERY)` |
+| `shared/infrastructure/adapter/data/core/` `DataGateway` + `CacheDecorator` + `Metrics/Retry/Throttle` | **技术框架**（缓存 / 单飞 / 限流 / 超时 / 重试 / 统计） | 不持有任何业务规则；降级不在这里 |
+| `contexts/concept/application/service/concept_realtime.py` `ConceptRealtimeReader` | **应用层**（业务降级：失败回落最近收盘，标 `stale=true`） | `ConceptService` / `ConceptBoardService` 共用 |
+
+### 10.4 step7 统一 DDD 简化（2026-10-17）
+
+| 之前 | 之后 | 说明 |
+|---|---|---|
+| 顶层目录 `src/{route, application, domain, infrastructure}` | 顶层目录 `src/{main, app, shared, contexts}` | 删除按层切分的顶层目录；改为按 context 切分 |
+| `src/infrastructure/adapter/collect/` | `src/shared/infrastructure/adapter/collect/` | 采集框架是跨 context 复用件，上移到 shared |
+| `src/domain/service/market_session.py` | `src/contexts/market/domain/service/market_session.py` | 交易时段规则属于"市场域"，从 collect 移到 market |
+| `src/domain/service/concept_collection_policy.py` | `src/contexts/concept/domain/service/concept_collection_policy.py` | 概念保护策略属于"概念域"，从 collect 移到 concept |
+| `src/route/api/v1/collect_task.py` | `src/contexts/collect/interface/route/collect_task.py` | 路由按 context 归位（`interface/` 内部仍用 `route/` 子目录） |
+| `src/infrastructure/security/` | `src/shared/infrastructure/security/` | 鉴权安全工具是跨 context 复用件，下沉到 shared |
+| `src/route/api/v1/*.py` | `src/contexts/<ctx>/interface/route/*.py` | 14 个路由模块按 context 拆分（auth / user / market / collect / concept） |
+| `src/route/api/router.py` 聚合 | `src/shared/interface/router_compat.py` `api_router` 聚合 | 路由聚合上移到 shared，跨 context 复用 |
+| `src/application/port/data/` | `src/contexts/collect/application/port/data/` | 数据 Port 仍属 collect context（外部按 Gateway 取数） |

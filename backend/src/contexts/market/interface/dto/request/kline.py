@@ -1,4 +1,4 @@
-"""K线 DTO（请求 + BO）— 来自 application/dto/kline.py 拆分"""
+﻿"""K线 DTO（请求 + BO）— 来自 application/dto/kline.py 拆分"""
 from __future__ import annotations
 
 from datetime import date

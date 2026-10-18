@@ -1,21 +1,21 @@
-"""个股资金流向 ORM 模型"""
+﻿"""个股资金流向 ORM 模型"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Index, UniqueConstraint, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class CapMoneyflowDB(Base, TimestampMixin):
+class CapMoneyflowDB(RawBase, TimestampMixin):
     """个股资金流向
 
     物理表名: cap_moneyflows
     UK: (symbol, trade_date)
     """
 
-    __tablename__ = "cap_moneyflows"
+    __tablename__ = "capital_moneyflow"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

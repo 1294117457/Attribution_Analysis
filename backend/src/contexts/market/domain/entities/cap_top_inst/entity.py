@@ -1,4 +1,4 @@
-"""cap_top_inst — 领域实体"""
+﻿"""cap_top_inst — 领域实体"""
 
 from dataclasses import dataclass
 from typing import Optional

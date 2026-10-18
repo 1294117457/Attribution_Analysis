@@ -1,4 +1,4 @@
-"""认证授权实体 / 值对象 / 领域事件 / 异常 — 聚合根
+﻿"""认证授权实体 / 值对象 / 领域事件 / 异常 — 聚合根
 
 User 是聚合根；Role / Permission 是值对象（只读/unchanged）。
 AuthError 子类继承 DomainError，由 main.py 的统一 DomainError 处理器捕获为 400。

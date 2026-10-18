@@ -1,21 +1,21 @@
-"""板块行情 ORM 模型（行业/概念）"""
+﻿"""板块行情 ORM 模型（行业/概念）"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Index, UniqueConstraint, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class MktSectorDailyDB(Base, TimestampMixin):
+class MktSectorDailyDB(RawBase, TimestampMixin):
     """板块行情
 
     物理表名: mkt_sector_dailys
     UK: (sector_type, sector_code, trade_date)
     """
 
-    __tablename__ = "mkt_sector_dailys"
+    __tablename__ = "fundamental_sector_daily"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

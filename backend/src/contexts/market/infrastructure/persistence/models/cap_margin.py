@@ -1,21 +1,21 @@
-"""两融汇总 ORM 模型"""
+﻿"""两融汇总 ORM 模型"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Index, UniqueConstraint, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class CapMarginDB(Base, TimestampMixin):
+class CapMarginDB(RawBase, TimestampMixin):
     """两融汇总（按交易所）
 
     物理表名: cap_margins
     UK: (exchange_id, trade_date)
     """
 
-    __tablename__ = "cap_margins"
+    __tablename__ = "capital_margin"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

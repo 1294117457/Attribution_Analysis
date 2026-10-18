@@ -1,4 +1,4 @@
-"""股票信息仓储实现
+﻿"""股票信息仓储实现
 
 实现 domain/stock_info/repository.py 中的 StockInfoRepository 接口。
 面板组合查询（4 表 JOIN）已迁移至 infrastructure/repositories/panel_compose_repository.py。
@@ -19,13 +19,17 @@ from contexts.market.infrastructure.persistence.models.tech_kline import TechKli
 
 
 class StockRepoImpl:
-    """股票信息仓储实现
+    """股票信息仓储实现（双 session：raw 主表 + attr 业务关联）
 
     实现 domain/stock_info/repository.py 中的 StockInfoRepository 接口。
+    - raw_session:  StockInfoDB / TechKlineDailyDB
+    - attr_session: 未来扩展（如果 stock 业务关联用户自选股/角色）
     """
 
-    def __init__(self, session: AsyncSession):
-        self._session = session
+    def __init__(self, raw_session: AsyncSession, attr_session: AsyncSession | None = None):
+        self._raw = raw_session
+        self._attr = attr_session
+        self._session = raw_session  # 向后兼容
 
     # ── ORM ↔ Entity 转换 ───────────────────────────────────
 

@@ -1,21 +1,21 @@
-"""市场整体行情 ORM 模型（指数级）"""
+﻿"""市场整体行情 ORM 模型（指数级）"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Index, UniqueConstraint, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class MktMarketDailyDB(Base, TimestampMixin):
+class MktMarketDailyDB(RawBase, TimestampMixin):
     """市场整体行情（沪深主要指数）
 
     物理表名: mkt_market_dailys
     UK: (market, trade_date)
     """
 
-    __tablename__ = "mkt_market_dailys"
+    __tablename__ = "fundamental_market_daily"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

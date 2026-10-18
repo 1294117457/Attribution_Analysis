@@ -1,4 +1,4 @@
-"""K线聚合根（仅 OHLCV；技术指标见 domain/services/indicator_calculator.py，请求时实时计算）"""
+﻿"""K线聚合根（仅 OHLCV；技术指标见 domain/services/indicator_calculator.py，请求时实时计算）"""
 
 from __future__ import annotations
 

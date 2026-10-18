@@ -1,14 +1,14 @@
-"""股票信息 ORM 模型"""
+﻿"""股票信息 ORM 模型"""
 
 from datetime import date
 from sqlalchemy import String, Integer, Date, BigInteger, Index
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class StockInfoDB(Base, TimestampMixin):
+class StockInfoDB(RawBase, TimestampMixin):
     """股票信息数据库模型（PO）
 
     字段对齐 Tushare stock_basic：
@@ -20,7 +20,7 @@ class StockInfoDB(Base, TimestampMixin):
     - is_hs (N/H/S)
     """
 
-    __tablename__ = "stock_infos"
+    __tablename__ = "fundamental_stock_info"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

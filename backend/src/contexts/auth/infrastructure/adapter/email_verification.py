@@ -1,20 +1,14 @@
-"""邮箱验证码服务(Redis 版)
+"""邮箱验证码服务
 
 业务流程:
-- send(email, purpose)  -> Redis 限流(1 分钟 1 次 / 1 小时 5 次)
+- send(email, purpose)  -> 限流(1 分钟 1 次 / 1 小时 5 次)
                            -> 生成 6 位数字码
-                           -> 写入 Redis(明文,5 分钟 TTL)
+                           -> 写 Redis(明文,5 分钟 TTL)
                            -> 异步发邮件(失败时删除 Redis 中的码)
 - verify(email, purpose, input_code)
-                         -> Redis GETDEL 一次性取 + 校验(避免并发重放)
+                         -> 一次性取 + 校验(避免并发重放)
 
-存储:
-- 验证码明文存 Redis,TTL 5 分钟;过期/被消费后自动失效。
-- 不入库;考虑到 5 分钟短时,数据价值低,丢了不影响业务。
-
-业务用途:
-- register    : 注册
-- reset_password : 改密 / 找回密码(预留)
+存储 / 限流原语由 `contexts.auth.infrastructure.cache.email_code` 提供。
 """
 from __future__ import annotations
 
@@ -24,10 +18,9 @@ import string
 from dataclasses import dataclass
 from typing import Optional
 
-from shared.infrastructure.cache.redis_cache import RedisCache, get_cache
 from shared.infrastructure.config.settings import get_settings
+from contexts.auth.infrastructure.cache import email_code
 from contexts.auth.infrastructure.security.email import build_verification_code_email, send_email
-
 
 logger = logging.getLogger(__name__)
 
@@ -63,15 +56,7 @@ class EmailCodeInvalidError(EmailCodeError):
 
 @dataclass
 class EmailVerificationService:
-    """邮箱验证码工具类(不依赖 DB session,直接走 Redis)。
-
-    旧设计:接受 AsyncSession;现服务由 AuthAppService 无参构造即可。
-    """
-
-    # 默认无参构造即可(不再需要 session)
-    # 用 dataclass 但保留向后兼容:EmailVerificationService(session) / EmailVerificationService() 都可
-
-    # ── 生成 + 发送 ──
+    """邮箱验证码工具类(不依赖 DB session)"""
 
     async def send(
         self,
@@ -90,8 +75,7 @@ class EmailVerificationService:
         # 2. 生成 + 写 Redis
         code = _make_code(settings.VERIFICATION_CODE_LENGTH)
         ttl = settings.VERIFICATION_CODE_TTL_SECONDS
-        cache: RedisCache = await get_cache()
-        await cache.store_email_code(code, ttl, purpose, email)
+        await email_code.store_code(code, ttl, purpose, email)
 
         # 3. 发邮件
         try:
@@ -104,7 +88,7 @@ class EmailVerificationService:
             await send_email(email, subject, html)
         except Exception as e:  # noqa: BLE001
             # 失败立即把 Redis 中码删除,用户不会拿到一个失败的验证码
-            await cache.delete_email_code(purpose, email)
+            await email_code.delete_code(purpose, email)
             logger.error("发送验证码失败并已回滚: %s", e)
             raise EmailCodeError(
                 message=f"验证码发送失败: {e}", code="EMAIL_CODE_SEND_FAILED"
@@ -118,20 +102,19 @@ class EmailVerificationService:
     async def _check_rate_limit(self, *, email: str, purpose: str) -> None:
         """1m / 1h 两层限频(任一被拒都抛错)。"""
         settings = get_settings()
-        cache: RedisCache = await get_cache()
 
         # 1 分钟内 1 次
-        key_1m = RedisCache.email_rate_limit_key("1m", purpose, email)
-        allowed_1m, _ = await cache.rate_limit(
-            key_1m, max_count=settings.VERIFICATION_CODE_RL_1M, window_seconds=60
+        allowed_1m, _ = await email_code.check_rate_limit(
+            "1m", purpose, email,
+            max_count=settings.VERIFICATION_CODE_RL_1M, window_seconds=60,
         )
         if not allowed_1m:
             raise EmailCodeRateLimitedError(retry_after=60)
 
         # 1 小时内 5 次
-        key_1h = RedisCache.email_rate_limit_key("1h", purpose, email)
-        allowed_1h, _ = await cache.rate_limit(
-            key_1h, max_count=settings.VERIFICATION_CODE_RL_1H, window_seconds=3600
+        allowed_1h, _ = await email_code.check_rate_limit(
+            "1h", purpose, email,
+            max_count=settings.VERIFICATION_CODE_RL_1H, window_seconds=3600,
         )
         if not allowed_1h:
             raise EmailCodeRateLimitedError(retry_after=3600)
@@ -145,25 +128,21 @@ class EmailVerificationService:
         purpose: str,
         input_code: str,
     ) -> None:
-        """校验验证码。成功:Redis GETDEL 一次性消费;失败/过期抛 EmailCodeError。
-
-        GETDEL 是原子操作:并发请求两个相同码,只有一个能拿到正确码,另一个必然失败。
-        """
+        """校验验证码。成功:先比对后 DEL(防重放);失败/过期抛 EmailCodeError。"""
         if not input_code or not input_code.strip():
             raise EmailCodeInvalidError("验证码不能为空")
 
-        cache: RedisCache = await get_cache()
-        stored = await cache.get_email_code(purpose, email)
+        stored = await email_code.get_code(purpose, email)
 
         if not stored:
             raise EmailCodeInvalidError("验证码已过期,请重新获取")
 
-        # 先比对,后 GETDEL,避免误删(比如用户多打了一个空格导致不匹配时仍把码留下)
+        # 先比对,后删除,避免误删(比如用户多打了一个空格导致不匹配时仍把码留下)
         if stored != input_code.strip():
             raise EmailCodeInvalidError("验证码错误")
 
         # 校验通过,立即销毁(防重放)
-        await cache.delete_email_code(purpose, email)
+        await email_code.delete_code(purpose, email)
 
 
 # ── 工具 ──────────────────────────────────────────────────────────

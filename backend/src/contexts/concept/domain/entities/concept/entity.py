@@ -1,4 +1,4 @@
-"""概念实体（聚合根）
+﻿"""概念实体（聚合根）
 
 配套设计文档：
   docs/dev/06gainian/01-domain-design.md §2

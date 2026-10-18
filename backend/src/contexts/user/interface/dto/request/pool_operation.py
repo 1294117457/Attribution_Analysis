@@ -1,4 +1,4 @@
-"""池操作相关 DTO"""
+﻿"""池操作相关 DTO"""
 
 from __future__ import annotations
 

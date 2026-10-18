@@ -1,4 +1,4 @@
-"""复权因子仓储实现（base_adj_factors）"""
+﻿"""复权因子仓储实现（base_adj_factors）"""
 
 from __future__ import annotations
 

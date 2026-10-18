@@ -1,4 +1,4 @@
-"""股票归因分析 DTO - /stocks/{symbol}/analysis 响应结构"""
+﻿"""股票归因分析 DTO - /stocks/{symbol}/analysis 响应结构"""
 
 from __future__ import annotations
 

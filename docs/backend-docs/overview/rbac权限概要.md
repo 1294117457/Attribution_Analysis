@@ -3,13 +3,13 @@
 > 面向"需要快速理解角色 / 权限数据模型和接入点（路由 Depends、前端 store / 菜单）的开发者"。
 > 完整方案（数据库 / 路由 / 前端 / 实施清单）见 [`docs/dev/step3/01登录鉴权/`](../dev/step3/01登录鉴权/) 12 份设计文档；登录双 Token 机制见 [`登录概要.md`](登录概要.md)。
 
-应用服务：`backend/src/application/service/auth_app_service.py`（RBAC 业务与登录业务共用）
-仓储：`backend/src/infrastructure/persistence/repositories/auth_repository.py`
-依赖（路由）：`backend/src/route/api/v1/deps_auth.py`（`require_role` / `require_permission`）
+应用服务：`backend/src/contexts/auth/application/service/auth_app_service.py`（RBAC 业务与登录业务共用）
+仓储：`backend/src/contexts/auth/infrastructure/persistence/repositories/auth_repository.py`
+依赖（路由）：`backend/src/contexts/auth/interface/route/deps_auth.py`（`require_role` / `require_permission`）
 前端：`frontend/src/stores/auth.ts`（`hasRole` / `hasPermission` / `isAdmin`）
 前端页面：`frontend/src/views/auth/AccountPage.vue`（账户/角色/权限 三 Tab）
 
-最后更新：2026-10-02
+最后更新：2026-10-17（step7 统一 DDD 重构后：路径全部从 `application/...` / `infrastructure/...` / `route/api/v1/...` 改为 `contexts/auth/{interface,application,infrastructure}/...`）
 
 ---
 
@@ -137,10 +137,10 @@ erDiagram
 
 | 路由模块 | 操作的 Depends |
 |---|---|
-| `route/api/v1/auth.py` | `me` / `logout` / `change-password` 需 `get_current_user_id`；其他公开 |
-| `route/api/v1/user.py` | 列表读类 `user:read`；其余写类 `user:write`（`assign_role` 还需 `role:write`） |
-| `route/api/v1/role.py` | `role:read` |
-| `route/api/v1/permission.py` | `role:read` |
+| `contexts/auth/interface/route/auth.py` | `me` / `logout` / `change-password` 需 `get_current_user_id`；其他公开 |
+| `contexts/auth/interface/route/user.py` | 列表读类 `user:read`；其余写类 `user:write`（`assign_role` 还需 `role:write`） |
+| `contexts/auth/interface/route/role.py` | `role:read` |
+| `contexts/auth/interface/route/permission.py` | `role:read` |
 
 > **保守做法**：当前阶段只给上述 auth + user/role/permission 路由加鉴权；业务路由（stock / pool / kline / collect / concept）保持公开。后续按需逐步收紧：
 >
@@ -290,14 +290,14 @@ sequenceDiagram
 
 | 类 / 模块 | 路径 | 说明 |
 |---|---|---|
-| `AuthAppService` | `application/service/auth_app_service.py` | 业务编排：`register` / `login` / `refresh_token` / `logout` / `change_password` / `list_users` / `update_user_status` / `reset_user_password` / `assign_role` / `remove_role` / `_get_user_permissions` |
-| `User / Role / Permission` | `domain/auth/entity.py` | 聚合根 + 值对象 |
-| `UserRepo / RoleRepo / PermissionRepo / RefreshTokenRepo` | `domain/auth/repository.py` | 仓储接口（DDD 解耦） |
-| `UserDB / RoleDB / PermissionDB` | `infrastructure/persistence/models/user.py` | ORM（`UserDB`） |
-| `UserRoleDB / RolePermissionDB` | `infrastructure/persistence/models/user_role.py` | ORM |
-| `RefreshTokenDB` | `infrastructure/persistence/models/refresh_token.py` | ORM |
-| `auth_repository.py` | `infrastructure/persistence/repositories/auth_repository.py` | 4 个仓储实现 |
-| `deps_auth.py` | `route/api/v1/deps_auth.py` | `get_current_user_id` / `get_current_user` / `require_role` / `require_permission` |
+| `AuthAppService` | `contexts/auth/application/service/auth_app_service.py` | 业务编排：`register` / `login` / `refresh_token` / `logout` / `change_password` / `list_users` / `update_user_status` / `reset_user_password` / `assign_role` / `remove_role` / `_get_user_permissions` |
+| `User / Role / Permission` | `contexts/auth/domain/entity.py` | 聚合根 + 值对象 |
+| `UserRepo / RoleRepo / PermissionRepo / RefreshTokenRepo` | `contexts/auth/domain/repository.py` | 仓储接口（DDD 解耦） |
+| `UserDB / RoleDB / PermissionDB` | `contexts/auth/infrastructure/persistence/models/user.py` | ORM（`UserDB`） |
+| `UserRoleDB / RolePermissionDB` | `contexts/auth/infrastructure/persistence/models/user_role.py` | ORM |
+| `RefreshTokenDB` | `contexts/auth/infrastructure/persistence/models/refresh_token.py` | ORM |
+| `auth_repository.py` | `contexts/auth/infrastructure/persistence/repositories/auth_repository.py` | 4 个仓储实现 |
+| `deps_auth.py` | `contexts/auth/interface/route/deps_auth.py` | `get_current_user_id` / `get_current_user` / `require_role` / `require_permission` |
 | `useAuthStore` | `frontend/src/stores/auth.ts` | Pinia 状态：`isLoggedIn` / `isAdmin` / `userInfo` / `hasRole` / `hasPermission` |
 | `views/auth/api.ts` | `frontend/src/views/auth/api.ts` | auth + users + roles + permissions TS 类型与请求封装 |
 | `LeftBar.vue` | `layouts/components/LeftBar.vue` | 菜单项 + admin 显示账户管理 |

@@ -1,13 +1,4 @@
-"""股票信息应用服务（业务模块：stock-info/）
-
-合并原 4 个 service：
-- StockAppService（stock_app_service）    → 股票 CRUD + 元数据
-- KlineAppService（kline_app_service）    → K 线采集 + 查询 + 指标
-- StockAnalysisAppService                → 归因分析聚合视图
-- StockPanelAppService                   → 列表分页面板（stock-panel/）
-
-统一为 StockInfoService，依赖全部通过构造注入（DDD.md §4）。
-"""
+﻿"""股票信息应用服务（step7 重构：直接调 service，不走旧 gateway）"""
 from __future__ import annotations
 
 import asyncio
@@ -15,10 +6,6 @@ import logging
 from datetime import date, timedelta
 from typing import Optional
 
-from contexts.data.application.port import DataGatewayPort
-from contexts.data.application.port.base import CallPolicy, InvalidParams, NotSupported
-from contexts.data.application.port.reference import StockBasicPort
-from contexts.data.application.port.tech import DailyKlinePort, MinuteKlineBO, MinuteKlineParams, MinuteKlinePort
 from contexts.market.domain.entities.kline.entity import CollectionError, Kline, KlineDataError, KlineNotFoundError
 from contexts.market.domain.entities.kline.repository import KlineRepository
 from contexts.market.domain.entities.kline.vo import IndicatorValues, StockCode
@@ -66,39 +53,33 @@ from contexts.concept.domain.vo import ConceptBriefVO, ConceptMainVO
 from contexts.market.domain.entities.panel.repository import StockPanelComposeRepository
 from contexts.market.domain.entities.panel.vo import StockPanelRow
 from contexts.concept.domain.services.concept_brief_service import ConceptBriefService
+from contexts.collect.application.service.fundamental.stock_basic_service import StockBasicService
+from contexts.collect.application.service.tech.daily_kline_service import DailyKlineService
+from contexts.collect.application.service.tech.minute_kline_service import MinuteKlineService
 
 logger = logging.getLogger(__name__)
 
-# 列表行内"主概念"列展示上限
 DEFAULT_MAIN_CONCEPT_TOP_K = 3
 
 
-def _format_minute_bar(bo: MinuteKlineBO) -> dict:
+def _format_minute_bar(item: dict) -> dict:
     return {
-        "datetime": bo.dt.strftime("%Y-%m-%d %H:%M"),
-        "interval": bo.interval,
-        "open": bo.open,
-        "high": bo.high,
-        "low": bo.low,
-        "close": bo.close,
-        "volume": bo.volume,
-        "amount": bo.amount,
+        "datetime": item.get("datetime", ""),
+        "interval": item.get("interval", ""),
+        "open": item.get("open"),
+        "high": item.get("high"),
+        "low": item.get("low"),
+        "close": item.get("close"),
+        "volume": item.get("volume"),
+        "amount": item.get("amount"),
     }
 
 
 class StockInfoService:
     """股票信息应用服务（CRUD + K 线 + 归因 + 面板）
 
-    依赖（构造注入）：
-    - stock_repo:        股票信息仓储
-    - kline_repo:        K 线仓储
-    - pool_repo:         股票池仓储（归因分析时反查）
-    - panel_repo:        面板组合仓储
-    - concept_repo:      概念仓储（面板主概念）
-    - brief_service:     概念摘要服务（domain）
-    - signal:            技术信号检测器
-    - indicator_calc:    指标计算器
-    - gateway:           数据统一入口（采集 / 同步 / 分 K 实时查询）
+    step7：依赖注入改为
+    - 直接持有各 CollectService 引用（不通过 gateway 多源切换）
     """
 
     def __init__(
@@ -112,7 +93,9 @@ class StockInfoService:
         brief_service: ConceptBriefService,
         signal: Optional[SignalDetector] = None,
         indicator_calc: Optional[IndicatorCalculator] = None,
-        gateway: Optional[DataGatewayPort] = None,
+        stock_basic_svc: Optional[StockBasicService] = None,
+        daily_kline_svc: Optional[DailyKlineService] = None,
+        minute_kline_svc: Optional[MinuteKlineService] = None,
         top_k: int = DEFAULT_MAIN_CONCEPT_TOP_K,
     ):
         self._stock_repo = stock_repo
@@ -123,19 +106,20 @@ class StockInfoService:
         self._brief_service = brief_service
         self._signal = signal or SignalDetector()
         self._calc = indicator_calc or IndicatorCalculator()
-        self._gateway = gateway
+        self._stock_basic_svc = stock_basic_svc
+        self._daily_kline_svc = daily_kline_svc
+        self._minute_kline_svc = minute_kline_svc
         self._top_k = top_k
 
-    # ══════════════════════════════════════════════════════════════════════
-    # 股票 CRUD（原 StockAppService）
-    # ══════════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════
+    # 股票 CRUD
+    # ══════════════════════════════════════════════════════════════
 
     async def list_stocks(
         self,
         industry: Optional[str] = None,
         market: Optional[str] = None,
     ) -> StockListResponse:
-        """查询所有股票列表（含K线统计，兼容旧接口）"""
         rows = await self._stock_repo.list_with_kline_stats(
             industry=industry, market=market,
         )
@@ -159,7 +143,6 @@ class StockInfoService:
         )
 
     async def get_meta(self) -> StockMetaResponse:
-        """获取筛选下拉枚举值"""
         meta = await self._stock_repo.distinct_meta()
         return StockMetaResponse(
             industries=meta.get("industries", []),
@@ -200,34 +183,16 @@ class StockInfoService:
             list_date=stock.list_date, total_shares=stock.total_shares,
         )
 
-    def _require_gateway(self) -> DataGatewayPort:
-        if self._gateway is None:
-            raise RuntimeError("StockInfoService 未注入 DataGateway")
-        return self._gateway
-
     async def sync_stocks(self, list_status: str = "L") -> SyncStockResponse:
-        """全量同步 A股 股票元数据"""
-        result = await self._require_gateway().fetch(StockBasicPort, {"list_status": list_status})
-        raw_data = result.items
-        if not raw_data:
-            return SyncStockResponse(
-                synced_count=0, inserted=0, updated=0,
-                message="未获取到数据（可能是数据源未配置或无网络）",
-            )
-        stocks: list[StockInfo] = []
-        for data in raw_data:
-            try:
-                stocks.append(data.to_entity())
-            except Exception as e:
-                logger.warning("跳过无效股票数据: %s", e)
-        if not stocks:
-            return SyncStockResponse(
-                synced_count=0, inserted=0, updated=0, message="数据解析后为空",
-            )
-        synced = await self._stock_repo.bulk_upsert(stocks)
+        """全量同步 A股 股票元数据（直接调 StockBasicService）"""
+        if self._stock_basic_svc is None:
+            raise RuntimeError("StockInfoService 未注入 StockBasicService")
+        result = await self._stock_basic_svc.collect({"list_status": list_status})
         return SyncStockResponse(
-            synced_count=synced, inserted=synced, updated=0,
-            message=f"成功同步 {synced} 只股票（list_status={list_status}）",
+            synced_count=result.saved,
+            inserted=result.saved,
+            updated=0,
+            message=result.message or f"成功同步 {result.saved} 只股票",
         )
 
     async def delete_stock(self, symbol: str) -> StockDeleteResponse:
@@ -238,58 +203,45 @@ class StockInfoService:
             symbol=symbol, deleted_count=1, message=f"成功删除股票 {symbol}",
         )
 
-    # ══════════════════════════════════════════════════════════════════════
-    # K 线（原 KlineAppService）
-    # ══════════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════
+    # K 线
+    # ══════════════════════════════════════════════════════════════
 
     async def collect(self, request: KlineCollectRequest) -> KlineCollectResponse:
-        """采集 K 线（只存 OHLCV，指标在查询时实时计算）"""
+        """采集 K 线（直接调 DailyKlineService.collect）"""
+        if self._daily_kline_svc is None:
+            raise RuntimeError("StockInfoService 未注入 DailyKlineService")
         try:
-            end_date = request.end_date or date.today()
-            start_date = request.start_date or (end_date - timedelta(days=request.days))
-            result = await self._require_gateway().fetch(DailyKlinePort, {
-                "symbol": request.symbol, "start_date": start_date, "end_date": end_date,
-            })
-            raw_data = result.items
-            if raw_data and not raw_data[0].name:
-                prefetched_name = await self._lookup_name(request.symbol)
-                for bo in raw_data:
-                    bo.name = prefetched_name or None
-            if not raw_data:
-                return KlineCollectResponse(
-                    symbol=request.symbol, name="", saved_count=0, total_count=0,
-                    message="未获取到数据（代码无效或无交易记录）",
-                )
-            klines: list[Kline] = []
-            name = ""
-            for data in raw_data:
-                kline = data.to_entity()
-                klines.append(kline)
-                if not name:
-                    name = kline.name
-            saved_count = await self._kline_repo.save_batch(klines)
-            if name:
-                await self._upsert_stock_info(request.symbol, name)
+            params = {
+                "symbol": request.symbol,
+                "start_date": request.start_date.isoformat() if request.start_date else None,
+                "end_date": request.end_date.isoformat() if request.end_date else None,
+                "days": request.days,
+            }
+            params = {k: v for k, v in params.items() if v is not None}
+            result = await self._daily_kline_svc.collect(params)
             return KlineCollectResponse(
-                symbol=request.symbol, name=name,
-                saved_count=saved_count, total_count=len(klines),
-                message=f"成功采集 {saved_count} 条新数据（共获取 {len(klines)} 条）",
+                symbol=request.symbol,
+                name="",
+                saved_count=result.saved,
+                total_count=result.total,
+                message=result.message,
             )
         except Exception as e:
             raise CollectionError(request.symbol, str(e))
 
-    async def get_minute_klines(self, params: MinuteKlineParams) -> dict:
-        """实时分 K（不入库）；返回 {total, items, cached, fetched_at}"""
-        try:
-            res = await self._require_gateway().fetch(MinuteKlinePort, params, policy=CallPolicy.QUERY)
-        except NotSupported:
-            raise InvalidParams(f"{params.symbol} 为北交所代码，分K暂不支持")
-        items = [_format_minute_bar(b) for b in res.items]
+    async def get_minute_klines(
+        self, symbol: str, interval: str = "5min", days: int = 1,
+    ) -> dict:
+        """实时分 K（直接调 MinuteKlineService）"""
+        if self._minute_kline_svc is None:
+            raise RuntimeError("StockInfoService 未注入 MinuteKlineService")
+        items = await self._minute_kline_svc.get(symbol, interval=interval, days=days)
         return {
             "total": len(items),
-            "items": items,
-            "cached": res.cached,
-            "fetched_at": res.fetched_at.isoformat() if res.fetched_at else None,
+            "items": [_format_minute_bar(it) for it in items],
+            "cached": False,
+            "fetched_at": None,
         }
 
     async def _lookup_name(self, symbol: str) -> str:
@@ -324,7 +276,6 @@ class StockInfoService:
         limit: int,
         order_desc: bool,
     ) -> list[tuple[Kline, IndicatorValues]]:
-        """读取 K 线 + 前置 WARMUP_BARS 根预热，实时算指标后只返回主窗口"""
         code = StockCode(symbol)
         main = await self._kline_repo.find_by_symbol(
             code, start_date=start_date, end_date=end_date,
@@ -358,7 +309,6 @@ class StockInfoService:
         end_date: Optional[date] = None,
         limit: int = 250,
     ) -> list[tuple[Kline, IndicatorValues]]:
-        """数据看板技术面：按日期倒序返回 K 线 + 实时指标"""
         return await self._load_klines_with_indicators(
             symbol, start_date, end_date, limit=limit, order_desc=True,
         )
@@ -420,12 +370,11 @@ class StockInfoService:
             **ind.to_dict(),
         )
 
-    # ══════════════════════════════════════════════════════════════════════
-    # 归因分析（原 StockAnalysisAppService）
-    # ══════════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════
+    # 归因分析
+    # ══════════════════════════════════════════════════════════════
 
     async def build_analysis(self, symbol: str, days: int = 365) -> StockAnalysisResponse:
-        """组装完整的股票分析数据"""
         stock_entity = await self._stock_repo.find_by_symbol(symbol)
         if stock_entity is None:
             raise StockNotFoundError(symbol)
@@ -482,12 +431,11 @@ class StockInfoService:
             **ind.to_dict(),
         )
 
-    # ══════════════════════════════════════════════════════════════════════
-    # 列表面板（原 StockPanelAppService）
-    # ══════════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════
+    # 列表面板
+    # ══════════════════════════════════════════════════════════════
 
     async def query_panels(self, req: StockPanelQueryRequest) -> StockPanelListVO:
-        """分页 + 多维筛选 + 4 表快照 + 池信息 + 主概念"""
         rows, total = await self._panel_repo.list_paginated(
             q=req.q, industry=req.industry, market=req.market,
             exchange=req.exchange, is_hs=req.is_hs,
@@ -515,7 +463,7 @@ class StockInfoService:
         return StockPanelListVO.from_list(items, total, req.page, req.page_size)
 
 
-# ── 模块级工具函数 ────────────────────────────────────────────────────
+# ── 模块级工具函数 ────────────────────────────────────────────────
 
 def _panel_row_to_vo(
     r: StockPanelRow,

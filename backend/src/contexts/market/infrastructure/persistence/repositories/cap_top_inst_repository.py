@@ -1,4 +1,4 @@
-"""龙虎榜机构席位仓储实现（cap_top_insts）
+﻿"""龙虎榜机构席位仓储实现（cap_top_insts）
 
 UK 不固定：每条记录是 (trade_date, symbol, exalter, side) 唯一。
 直接按主键 id 增删（无 UK 约束覆盖），但为简洁仍走 pg_insert + on_conflict_do_nothing。

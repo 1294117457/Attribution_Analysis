@@ -1,4 +1,4 @@
-"""market.domain.entities - 所有领域模型聚合
+﻿"""market.domain.entities - 所有领域模型聚合
 
 按领域模型组织，每个聚合根一个子目录，包含 entity.py、vo.py（可选）、repository.py。
 

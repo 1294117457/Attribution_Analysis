@@ -1,4 +1,4 @@
-"""大宗交易仓储实现（cap_block_trades）
+﻿"""大宗交易仓储实现（cap_block_trades）
 
 无 UK，按 (trade_date, symbol, buyer, seller) 自然主键。
 直接 id 自增，重复采集时做"先删后写"以保证最新。

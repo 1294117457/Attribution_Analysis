@@ -1,21 +1,21 @@
-"""日频估值指标 ORM 模型"""
+﻿"""日频估值指标 ORM 模型"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Index, UniqueConstraint, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class FinDailyBasicDB(Base, TimestampMixin):
+class FinDailyBasicDB(RawBase, TimestampMixin):
     """日频估值指标（PE/PB/PS/换手率等）
 
     物理表名: fin_daily_basics
     UK: (symbol, trade_date)
     """
 
-    __tablename__ = "fin_daily_basics"
+    __tablename__ = "fundamental_daily_basic"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

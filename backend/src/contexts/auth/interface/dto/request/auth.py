@@ -1,4 +1,4 @@
-"""认证授权 — Request DTO
+﻿"""认证授权 — Request DTO
 
 按 DDD.md §2.3：DTO 是协议载体（JSON），与传输方式绑定，
 统一放在 `route/dto/request/`。

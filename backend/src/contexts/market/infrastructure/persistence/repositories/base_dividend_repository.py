@@ -1,4 +1,4 @@
-"""分红送股仓储实现（base_dividends）
+﻿"""分红送股仓储实现（base_dividends）
 
 UK: (symbol, end_date, div_proc)。
 """

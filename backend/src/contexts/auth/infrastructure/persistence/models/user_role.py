@@ -1,4 +1,4 @@
-"""认证授权 ORM 模型 - sys_user_roles / sys_role_permissions 关联表"""
+﻿"""认证授权 ORM 模型 - sys_user_roles / sys_role_permissions 关联表"""
 from __future__ import annotations
 
 from datetime import datetime

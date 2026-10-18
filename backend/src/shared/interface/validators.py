@@ -1,4 +1,4 @@
-"""shared.interface.validators — 跨 context 共享的数据校验类型
+﻿"""shared.interface.validators — 跨 context 共享的数据校验类型
 
 - Symbol: A 股股票代码（6 位数字）
 - IndexCode: 同花顺指数编码（885xxx 等）

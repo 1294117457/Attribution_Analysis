@@ -1,4 +1,4 @@
-"""密码哈希工具
+﻿"""密码哈希工具
 
 基于 bcrypt(cost=12)。
 - hash_password: 返回 ~60 字符 hash

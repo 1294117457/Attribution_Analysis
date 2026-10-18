@@ -1,4 +1,4 @@
-"""认证授权 — Response DTO
+﻿"""认证授权 — Response DTO
 
 按 DDD.md §2.3：DTO 放在 `route/dto/response/`。
 """

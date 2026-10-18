@@ -1,4 +1,4 @@
-"""fin_daily_basic — 仓储接口"""
+﻿"""fin_daily_basic — 仓储接口"""
 
 from contexts.market.domain.entities.fin_daily_basic.entity import FinDailyBasic
 from shared.domain.repository import BaseSymboledDatedRepository

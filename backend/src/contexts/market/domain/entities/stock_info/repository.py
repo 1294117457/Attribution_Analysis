@@ -1,4 +1,4 @@
-"""股票信息仓储接口"""
+﻿"""股票信息仓储接口"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""领域层基类
+﻿"""领域层基类
 
 领域层不依赖任何外部框架（SQLAlchemy、FastAPI、Pydantic 等）。
 仅使用 Python 标准库和 dataclasses。

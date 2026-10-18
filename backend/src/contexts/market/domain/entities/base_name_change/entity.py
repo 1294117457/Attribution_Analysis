@@ -1,4 +1,4 @@
-"""base_name_change — 领域实体"""
+﻿"""base_name_change — 领域实体"""
 
 from dataclasses import dataclass
 from datetime import date

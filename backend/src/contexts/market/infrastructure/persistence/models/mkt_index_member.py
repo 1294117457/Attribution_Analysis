@@ -1,21 +1,21 @@
-"""板块成分 ORM 模型"""
+﻿"""板块成分 ORM 模型"""
 
 from datetime import date
 from sqlalchemy import String, Date, Index, UniqueConstraint, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class MktIndexMemberDB(Base, TimestampMixin):
+class MktIndexMemberDB(RawBase, TimestampMixin):
     """板块成分股
 
     物理表名: mkt_index_members
     UK: (sector_type, sector_code, symbol, effective_date)
     """
 
-    __tablename__ = "mkt_index_members"
+    __tablename__ = "fundamental_index_member"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

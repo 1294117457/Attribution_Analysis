@@ -1,12 +1,11 @@
-"""bo — 从 contexts/data/application/port 拆出（step7-c）"""
+﻿"""bo — 从 contexts/data/application/port 拆出（step7-c）"""
 from __future__ import annotations
 
 from datetime import date
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
-from contexts.data.application.port.base import DataPort
 from shared.interface.validators import Symbol
-from contexts.data.application.port.types import ListStatus, SymbolParams, TradeDateParams
+from contexts.collect.application.port.params import ListStatus, SymbolParams, TradeDateParams
 from contexts.market.domain.entities.stock_info.entity import StockInfo
 
 

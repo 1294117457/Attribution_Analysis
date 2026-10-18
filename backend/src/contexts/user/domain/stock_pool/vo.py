@@ -1,4 +1,4 @@
-"""操作池 - 值对象"""
+﻿"""操作池 - 值对象"""
 
 from __future__ import annotations
 

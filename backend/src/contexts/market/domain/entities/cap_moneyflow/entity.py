@@ -1,4 +1,4 @@
-"""cap_moneyflow — 领域实体"""
+﻿"""cap_moneyflow — 领域实体"""
 
 from dataclasses import dataclass
 from typing import Optional

@@ -1,4 +1,4 @@
-"""统一 API 响应格式
+﻿"""统一 API 响应格式
 
 所有 API 统一用此格式封装：
 { "code": 200, "message": "success", "data": ... }

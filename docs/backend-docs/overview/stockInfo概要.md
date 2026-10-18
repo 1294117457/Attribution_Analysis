@@ -2,11 +2,11 @@
 
 页面：`frontend/src/views/stock-info/StockInfoList.vue`
 接口：`GET /api/v1/stock-panel/`（`with_pools=true`）
-查询：`backend/src/infrastructure/persistence/repositories/panel_compose_repository.py`
-后端 DDD 现状（2026-10-13，底层采集优化后）：
-- `domain/service/market_session.py` 提供交易时段规则（`MarketSessionService` + `is_trading_time` / `ttl_for` / `market_now`），被 `infrastructure/adapter/data/core/cache.py` 的 `CacheDecorator` 调用以决定实时接口缓存 TTL
-- 实时接口 = 声明了 `cache` 的数据 Port（`application/port/data/`：`MinuteKlinePort` / `ConceptMinutePort`），统一经 `DataGateway` 取数；旧 `infrastructure/adapter/realtime/`（`RealtimeQueryFramework`）已删除
-- 业务侧 service 与实时接口的关系：`StockInfoService.get_minute_klines` 与 `ConceptRealtimeReader`（`ConceptService` / `ConceptBoardService` 共用）以 `CallPolicy.QUERY` 调 `gateway.fetch` / `fetch_many` 拉行情数据，不持有缓存/限流/单飞等横切逻辑；行情源失败时的降级（最近收盘、`stale=true`）由 `ConceptRealtimeReader` 负责
+查询：`backend/src/contexts/market/infrastructure/persistence/repositories/panel_compose_repository.py`
+后端 DDD 现状（2026-10-17，step7 统一 DDD 重构后；底层采集优化 P1–P4 2026-10-13 落地）：
+- `contexts/market/domain/service/market_session.py` 提供交易时段规则（`MarketSessionService` + `is_trading_time` / `ttl_for` / `market_now`），被 `shared/infrastructure/adapter/data/core/cache.py` 的 `CacheDecorator` 调用以决定实时接口缓存 TTL
+- 实时接口 = 声明了 `cache` 的数据 Port（`contexts/collect/application/port/data/`：`MinuteKlinePort` / `ConceptMinutePort`），统一经 `DataGateway` 取数；旧 `infrastructure/adapter/realtime/`（`RealtimeQueryFramework`）已删除
+- 业务侧 service 与实时接口的关系：`contexts/market/application/service/stock_info_service.get_minute_klines` 与 `contexts/concept/application/service/concept_realtime.ConceptRealtimeReader`（`ConceptService` / `ConceptBoardService` 共用）以 `CallPolicy.QUERY` 调 `gateway.fetch` / `fetch_many` 拉行情数据，不持有缓存/限流/单飞等横切逻辑；行情源失败时的降级（最近收盘、`stale=true`）由 `ConceptRealtimeReader` 负责
 
 ## 列 → 表
 

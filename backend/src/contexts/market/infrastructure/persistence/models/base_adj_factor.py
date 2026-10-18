@@ -1,21 +1,21 @@
-"""复权因子 ORM 模型"""
+﻿"""复权因子 ORM 模型"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Integer, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class BaseAdjFactorDB(Base, TimestampMixin):
+class BaseAdjFactorDB(RawBase, TimestampMixin):
     """复权因子
 
     物理表名: base_adj_factors
     UK: (symbol, trade_date)
     """
 
-    __tablename__ = "base_adj_factors"
+    __tablename__ = "tech_adj_factor"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

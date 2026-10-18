@@ -1,4 +1,4 @@
-"""Concept 仓储实现
+﻿"""Concept 仓储实现
 
 写侧方法只被概念采集任务使用；读侧方法实现 domain 的 ConceptRepository 协议。
 
@@ -29,7 +29,7 @@ from contexts.concept.infrastructure.persistence.models.concept import (
 from contexts.user.infrastructure.persistence.models.pool import StockPoolDB, StockPoolMemberDB
 from contexts.market.infrastructure.persistence.models.stock_info import StockInfoDB
 from contexts.market.infrastructure.persistence.models.fin_daily_basic import FinDailyBasicDB
-from contexts.data.application.port.concept import ConceptIndexTHBO, ConceptListBO
+from contexts.concept.domain.concept.bo import ConceptIndexTHBO, ConceptListBO
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +47,17 @@ def _chunks(items: list, size: int) -> Iterable[list]:
 
 
 class ConceptRepoImpl:
-    """概念仓储实现"""
+    """概念仓储实现（双 session：D4 阶段拆库后）
 
-    def __init__(self, session: AsyncSession):
-        self._session = session
+    - raw_session:  概念/股票/财务（5 张表都在 raw_data_db）
+    - attr_session: 用户自选股池（StockPool / StockPoolMember 在 attribution_db）
+    """
+
+    def __init__(self, raw_session: AsyncSession, attr_session: AsyncSession | None = None):
+        self._raw = raw_session
+        self._attr = attr_session
+        # 向后兼容：保留 _session 指向 raw，避免漏改
+        self._session = raw_session
 
     def _to_entity(self, row: ConceptsDB) -> Concept:
         return Concept(
@@ -606,7 +613,7 @@ async def _list_membership_by_symbols_impl(
             )
         )
     )
-    rows = (await self._session.execute(stmt)).mappings().all()
+    rows = (await self._attr.execute(stmt)).mappings().all() if self._attr is not None else []
     out: dict[str, list[dict]] = {s: [] for s in symbols}
     for r in rows:
         d = dict(r)

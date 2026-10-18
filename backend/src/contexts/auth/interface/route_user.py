@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from contexts.auth.application.service.auth_service import AuthService
-from shared.infrastructure.config.di import get_auth_service
+from contexts.auth.infrastructure.di import get_auth_service
 from shared.interface import _response as R
 from contexts.auth.interface.deps import require_permission
 from contexts.auth.interface.dto.request.auth import (

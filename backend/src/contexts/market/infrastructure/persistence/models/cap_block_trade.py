@@ -1,20 +1,20 @@
-"""大宗交易 ORM 模型"""
+﻿"""大宗交易 ORM 模型"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Index, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class CapBlockTradeDB(Base, TimestampMixin):
+class CapBlockTradeDB(RawBase, TimestampMixin):
     """大宗交易
 
     物理表名: cap_block_trades
     """
 
-    __tablename__ = "cap_block_trades"
+    __tablename__ = "capital_block_trade"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

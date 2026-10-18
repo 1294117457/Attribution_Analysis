@@ -1,4 +1,4 @@
-"""概念板块 ORM 模型（adata · 同花顺）
+﻿"""概念板块 ORM 模型（adata · 同花顺）
 
 全链路以同花顺指数编码 index_code（885xxx）为业务键，name 只用于展示。
 
@@ -24,13 +24,13 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 
 
-class ConceptsDB(Base):
+class ConceptsDB(RawBase):
     """概念聚合根 ORM"""
 
-    __tablename__ = "concepts"
+    __tablename__ = "fundamental_concept"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     index_code: Mapped[str] = mapped_column(String(10), nullable=False, unique=True)
@@ -57,10 +57,10 @@ class ConceptsDB(Base):
         return f"<ConceptsDB(id={self.id}, index_code={self.index_code!r}, name={self.name!r})>"
 
 
-class ConceptMemberDB(Base):
+class ConceptMemberDB(RawBase):
     """概念成员关联表 ORM（股票 ↔ 概念 M:N）"""
 
-    __tablename__ = "stock_concept_members"
+    __tablename__ = "fundamental_concept_member"
 
     symbol: Mapped[str] = mapped_column(String(10), primary_key=True)
     concept_id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -82,14 +82,14 @@ class ConceptMemberDB(Base):
         return f"<ConceptMemberDB(symbol={self.symbol!r}, concept_id={self.concept_id})>"
 
 
-class ConceptSnapshotDB(Base):
+class ConceptSnapshotDB(RawBase):
     """概念行情快照 ORM
 
     时序数据：每批采集每个概念写入 1 行（保留历史）。
     应用层取最新 1 行：ORDER BY captured_at DESC LIMIT 1。
     """
 
-    __tablename__ = "concept_snapshots"
+    __tablename__ = "fundamental_concept_snapshot"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     index_code: Mapped[str] = mapped_column(String(10), nullable=False)
@@ -125,13 +125,13 @@ class ConceptSnapshotDB(Base):
         )
 
 
-class ConceptIndexTHDB(Base):
+class ConceptIndexTHDB(RawBase):
     """概念指数日 K ORM
 
     每个 (index_code, trade_date) 唯一，ON CONFLICT DO UPDATE。
     """
 
-    __tablename__ = "concept_index_ths"
+    __tablename__ = "fundamental_concept_index"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     index_code: Mapped[str] = mapped_column(String(10), nullable=False)

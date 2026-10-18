@@ -1,21 +1,21 @@
-"""交易日历 ORM 模型"""
+﻿"""交易日历 ORM 模型"""
 
 from datetime import date
 from sqlalchemy import String, Integer, Date, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class MktCalendarDB(Base, TimestampMixin):
+class MktCalendarDB(RawBase, TimestampMixin):
     """交易日历
 
     物理表名: mkt_calendars
     UK: (cal_date, exchange)
     """
 
-    __tablename__ = "mkt_calendars"
+    __tablename__ = "tech_calendar"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

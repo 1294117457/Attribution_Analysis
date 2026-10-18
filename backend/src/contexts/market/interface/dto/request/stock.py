@@ -1,4 +1,4 @@
-"""股票应用层 DTO
+﻿"""股票应用层 DTO
 
 本文件仅保留股票单只 CRUD 所需的 DTO。
 面板列表面板（分页 + 4 表快照 + 池信息）的 DTO 已迁移至 application/dto/panel.py。

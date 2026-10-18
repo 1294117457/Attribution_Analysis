@@ -1,4 +1,4 @@
-"""JWT 密钥管理
+﻿"""JWT 密钥管理
 
 启动时若 `backend/.keys/` 不存在或缺少 RSA 密钥对,首次调用即自动生成
 (2048-bit RSA / PKCS8 PEM),私钥 `chmod 600`。

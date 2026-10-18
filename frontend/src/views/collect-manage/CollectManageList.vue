@@ -1,12 +1,11 @@
 <!--
-  CollectManageList.vue — 采集管理
+  CollectManageList.vue — 采集管理（step7 重构后简化版）
 
-  结构：
-    - 采集接口：左 CatalogTree（目录树）+ 右 CollectTaskPane（工具栏 + 任务列表），左右各自独立滚动
-    - 采集方案：PlanList
-    - 采集历史：CollectHistory（全部接口的任务记录，按接口 / 时间 / 结果 / 来源筛选）
+  简化前：3 个 tab（采集接口 / 调度计划 / 采集历史）
+  简化后：1 个 tab（采集接口），调度计划和采集历史做占位卡片
+  ── 后续如需补回 schedule / log 功能，参考旧版本恢复 el-tab-pane 即可
 
-  配套：docs/dev/step2/02datamanage/01-采集管理四维重构方案.md §3.2
+  配套：backend/src/contexts/collect/interface/router.py
 -->
 <template>
   <PageWrapper>
@@ -17,41 +16,62 @@
 
     <el-tabs v-model="pageTab" class="page-tabs">
       <el-tab-pane label="采集接口" name="tasks" />
-      <el-tab-pane label="采集方案" name="plans" />
+      <el-tab-pane label="调度计划" name="jobs" />
       <el-tab-pane label="采集历史" name="history" />
     </el-tabs>
 
-    <PlanList v-if="pageTab === 'plans'" />
-    <CollectHistory v-if="pageTab === 'history'" :catalog="catalog" />
+    <!-- 调度计划：占位（APScheduler 暂未启用） -->
+    <div v-show="pageTab === 'jobs'" class="placeholder-pane">
+      <el-empty description="调度计划 / APScheduler 暂未启用（后续接入）">
+        <template #image>
+          <el-icon :size="48" color="#cbd5e1"><Clock /></el-icon>
+        </template>
+      </el-empty>
+    </div>
 
+    <!-- 采集历史：占位（运行日志后端未实现） -->
+    <div v-show="pageTab === 'history'" class="placeholder-pane">
+      <el-empty description="采集历史 / 运行日志 后端暂未实现（后续接入）">
+        <template #image>
+          <el-icon :size="48" color="#cbd5e1"><Document /></el-icon>
+        </template>
+      </el-empty>
+    </div>
+
+    <!-- 采集接口：左树 + 右任务面板（核心功能） -->
     <div v-show="pageTab === 'tasks'" class="layout-body">
-      <CatalogTree v-model="activeTaskType" :catalog="catalog" :loading="catalogLoading" />
-      <CollectTaskPane :task-type="activeTaskType" :task-def="currentTaskDef" />
+      <CatalogTree
+        v-model="activeServiceName"
+        :catalog="catalog"
+        :loading="catalogLoading"
+      />
+      <CollectTaskPane
+        :service-name="activeServiceName"
+        :item="currentItem"
+      />
     </div>
   </PageWrapper>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { Upload } from '@element-plus/icons-vue'
+import { Upload, Clock, Document } from '@element-plus/icons-vue'
 
 import PageWrapper from '@/components/PageWrapper.vue'
 import CatalogTree from './components/CatalogTree.vue'
 import CollectTaskPane from './components/CollectTaskPane.vue'
-import PlanList from './components/PlanList.vue'
-import CollectHistory from './components/CollectHistory.vue'
 import { useCatalog } from './composables/useCatalog'
 
 const LOG_PREFIX = '[CollectManage]'
 
-const { catalog, loading: catalogLoading, load: loadCatalog, getTaskDef } = useCatalog()
+const { catalog, loading: catalogLoading, load: loadCatalog, getItem } = useCatalog()
 
-// ── 页面标签：采集接口 / 采集方案 ──────────────────────────
-const pageTab = ref<'tasks' | 'plans' | 'history'>('tasks')
+// ── 页面标签：采集接口 / 调度计划（占位）/ 采集历史（占位） ─────
+const pageTab = ref<'tasks' | 'jobs' | 'history'>('tasks')
 
-// ── 当前选中 task_type ────────────────────────────────────────
-const activeTaskType = ref<string>('daily_kline')
-const currentTaskDef = computed(() => getTaskDef(activeTaskType.value))
+// ── 当前选中 service_name ──────────────────────────────────
+const activeServiceName = ref<string>('daily_kline')
+const currentItem = computed(() => getItem(activeServiceName.value))
 
 onMounted(async () => {
   console.log(LOG_PREFIX, 'mounted, loading catalog')
@@ -73,5 +93,16 @@ onMounted(async () => {
   gap: 16px;
   align-items: stretch;
   overflow: hidden;
+}
+
+/* 占位 tab 的容器（居中显示空状态） */
+.placeholder-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  border-radius: 8px;
 }
 </style>

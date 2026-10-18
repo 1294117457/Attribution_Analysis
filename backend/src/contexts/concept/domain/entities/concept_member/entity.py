@@ -1,4 +1,4 @@
-"""概念成员实体（子实体）
+﻿"""概念成员实体（子实体）
 
 配套设计文档：
   docs/dev/06gainian/01-domain-design.md §2

@@ -1,11 +1,13 @@
-"""bo — 从 contexts/data/application/port 拆出（step7-c）"""
+﻿"""bo — 从 contexts/data/application/port 拆出（step7-c）
+
+D5 阶段：data 已合并入 collect；本文件保留 market.application.bo.kline 旧路径供兼容。
+"""
 from __future__ import annotations
 
 from datetime import date, datetime
 from enum import StrEnum
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from contexts.data.application.port.base import CachePolicy, DataPort
 from shared.interface.validators import Symbol, TradeDate
 from contexts.market.domain.entities.kline.entity import Kline
 
@@ -91,6 +93,12 @@ class MinuteKlineBO(BaseModel):
     amount: float
 
 
+class MinuteKlineParams(BaseModel):
+    """分 K 查询参数"""
+    model_config = ConfigDict(extra="forbid")
+    symbol: str
+    interval: str = "5min"
+    days: int = 1
 
 
 class MinuteInterval(StrEnum):
@@ -109,4 +117,9 @@ BARS_PER_DAY: dict[MinuteInterval, int] = {
     MinuteInterval.M60: 4,
 }
 
+
+__all__ = [
+    "KlineBO", "MinuteKlineBO", "MinuteKlineParams", "MinuteInterval",
+    "BARS_PER_DAY", "CachePolicy", "DataPort",
+]
 
