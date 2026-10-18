@@ -1,4 +1,4 @@
-"""股票信息值对象"""
+﻿"""股票信息值对象"""
 
 from __future__ import annotations
 

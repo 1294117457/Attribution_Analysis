@@ -1,4 +1,4 @@
-"""日 K 线 ORM 模型（仅 OHLCV，技术指标请求时实时计算）
+﻿"""日 K 线 ORM 模型（仅 OHLCV，技术指标请求时实时计算）
 
 表名重命名：daily_klines → tech_kline_dailys
 类名重命名：DailyKlineDB → TechKlineDailyDB
@@ -8,17 +8,17 @@ from datetime import date
 from sqlalchemy import String, Float, Integer, Date, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class TechKlineDailyDB(Base, TimestampMixin):
+class TechKlineDailyDB(RawBase, TimestampMixin):
     """日K线数据库模型（PO）
 
     一行 = (symbol, date) → 当日 OHLCV。
     """
 
-    __tablename__ = "tech_kline_dailys"
+    __tablename__ = "tech_kline_daily"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     symbol: Mapped[str] = mapped_column(String(10), nullable=False, index=True)

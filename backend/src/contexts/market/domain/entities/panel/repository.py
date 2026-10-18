@@ -1,4 +1,4 @@
-"""StockPanel 组合查询 — 领域层 Protocol
+﻿"""StockPanel 组合查询 — 领域层 Protocol
 
 设计原则：
 - 严格只服务于"列表 + 多表快照"场景，不承担单表的 CRUD

@@ -1,17 +1,18 @@
-"""概念实时行情读取（concept_service / concept_board_service 共用）
-
-经 DataGateway 以 QUERY 策略查 concept_minute（15 秒缓存 + 单飞由数据层负责）；
-数据源失败或无数据时降级为库里最近一条日 K 收盘，标 stale=true —— 降级属于业务决策，放在应用层。
-"""
+"""概念实时行情读取（step7 简化：直接调 fetcher）"""
 from __future__ import annotations
 
 import logging
 from dataclasses import asdict, dataclass
+from datetime import date, datetime
 from typing import Any, Optional
 
-from contexts.data.application.port import DataGatewayPort
-from contexts.data.application.port.base import CallPolicy, DataResult, InvalidParams
-from contexts.data.application.port.concept import ConceptMinuteBO, ConceptMinutePort
+from contexts.collect.infrastructure.fetcher.fundamental.ConceptMinuteAdataFetcher import (
+    ConceptMinuteAdataFetcher,
+)
+from contexts.collect.infrastructure.fetcher.fundamental.ConceptSnapshotAdataFetcher import (
+    ConceptSnapshotAdataFetcher,
+)
+from contexts.collect.infrastructure.connect.adata_client import get_adata_client
 from contexts.concept.domain.repository import ConceptRepository
 
 logger = logging.getLogger(__name__)
@@ -19,8 +20,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ConceptMinuteVO:
-    """data 为分时 BO 的字段字典（降级时 points 为空）；fetched_at 为 ISO 字符串"""
-
     data: Optional[dict[str, Any]]
     cached: bool = False
     stale: bool = False
@@ -32,13 +31,10 @@ class ConceptMinuteVO:
         return asdict(self)
 
     @classmethod
-    def from_result(cls, res: DataResult) -> "ConceptMinuteVO":
-        bo: ConceptMinuteBO = res.items[0]
+    def from_minute(cls, item: dict, fetched_at: str) -> "ConceptMinuteVO":
         return cls(
-            data=bo.model_dump(),
-            cached=res.cached,
-            fetched_at=res.fetched_at.isoformat() if res.fetched_at else None,
-            latency_ms=res.latency_ms,
+            data=item,
+            fetched_at=fetched_at,
         )
 
     @classmethod
@@ -62,29 +58,39 @@ class ConceptMinuteVO:
 
 
 class ConceptRealtimeReader:
-    def __init__(self, gateway: DataGatewayPort, repo: ConceptRepository) -> None:
-        self._gateway = gateway
+    def __init__(
+        self,
+        repo: ConceptRepository,
+        minute_fetcher: Optional[ConceptMinuteAdataFetcher] = None,
+        snapshot_fetcher: Optional[ConceptSnapshotAdataFetcher] = None,
+    ) -> None:
         self._repo = repo
+        self._minute = minute_fetcher
+        self._snapshot = snapshot_fetcher
 
     async def minutes(self, codes: list[str]) -> dict[str, ConceptMinuteVO]:
         """批量查询；拿不到实时也没有收盘可降级的概念，返回 data=None + error"""
         codes = list(dict.fromkeys(c for c in codes if c))
         if not codes:
             return {}
-        results = await self._gateway.fetch_many(
-            ConceptMinutePort, [{"index_code": c} for c in codes], policy=CallPolicy.QUERY,
-        )
         out: dict[str, ConceptMinuteVO] = {}
         failed: dict[str, str] = {}
-        for code, res in zip(codes, results):
-            if isinstance(res, DataResult) and res.items:
-                out[code] = ConceptMinuteVO.from_result(res)
-                continue
-            if isinstance(res, InvalidParams):
-                logger.error("concept_minute 参数错误 %s: %r", code, res)
-            elif isinstance(res, Exception):
-                logger.warning("concept_minute(%s) 请求失败: %r", code, res)
-            failed[code] = repr(res) if isinstance(res, Exception) else "无数据"
+        for code in codes:
+            try:
+                if self._minute is None:
+                    out[code] = ConceptMinuteVO(data=None, error="concept minute fetcher 未配置")
+                    continue
+                items = await self._minute.fetch(index_code=code)
+                if items:
+                    out[code] = ConceptMinuteVO.from_minute(
+                        items[0],
+                        fetched_at=datetime.now().isoformat(),
+                    )
+                else:
+                    failed[code] = "无数据"
+            except Exception as e:
+                logger.warning("concept_minute(%s) 请求失败: %r", code, e)
+                failed[code] = repr(e)
         if failed:
             try:
                 closes = await self._repo.get_latest_closes(list(failed))

@@ -1,9 +1,9 @@
 <!--
-  CatalogTree.vue — 采集管理左侧目录树
+  CatalogTree.vue — 采集管理左侧目录树（step7 重构）
 
-  - catalog 按 facet / sub_facet 二级聚合，点击任务按钮切换 v-model（task_type）
+  - 数据源：useCatalog() 返回的 catalog（按 facet/sub_facet 二级聚合）
+  - 选中：service_name（v-model）
   - 折叠状态持久化到 localStorage
-  - 自身独立纵向滚动，不随右侧列表滚动
 -->
 <template>
   <aside class="catalog-tree">
@@ -21,19 +21,20 @@
         @click="toggleCollapsed(facet.facet)"
       >
         <el-icon class="collapse-arrow" :class="{ collapsed: isCollapsed(facet.facet) }"><ArrowDown /></el-icon>
-        <el-icon class="mr-1"><TrendCharts v-if="facet.facet === 'tech'"
-          /><Money v-else-if="facet.facet === 'capital'"
-          /><PieChart v-else-if="facet.facet === 'fundamental'"
-          /><Document v-else /></el-icon>
+        <el-icon class="mr-1">
+          <TrendCharts v-if="facet.facet === 'tech'" />
+          <Money v-else-if="facet.facet === 'capital'" />
+          <PieChart v-else-if="facet.facet === 'fundamental'" />
+          <Document v-else />
+        </el-icon>
         <b>{{ facet.label }}</b>
         <span class="facet-badges">
-          <el-badge v-if="countReady(facet) > 0" :value="countReady(facet)" type="success" />
-          <el-badge v-if="countPlanned(facet) > 0" :value="countPlanned(facet)" type="info" />
+          <el-badge v-if="countActive(facet) > 0" :value="countActive(facet)" type="success" />
         </span>
       </div>
       <div v-show="!isCollapsed(facet.facet)" class="sub-facet-list">
         <div
-          v-for="(tasks, subKey) in facet.sub_groups"
+          v-for="(items, subKey) in facet.sub_groups"
           :key="subKey"
           class="sub-facet-block"
         >
@@ -45,18 +46,18 @@
           >
             <el-icon class="collapse-arrow" :class="{ collapsed: isCollapsed(`${facet.facet}/${subKey}`) }"><ArrowDown /></el-icon>
             {{ SUB_FACET_LABELS[subKey] || subKey }}
-            <span class="sub-facet-count">{{ tasks.length }}</span>
+            <span class="sub-facet-count">{{ items.length }}</span>
           </div>
           <button
             v-show="!isCollapsed(`${facet.facet}/${subKey}`)"
-            v-for="t in tasks"
-            :key="t.task_type"
+            v-for="item in items"
+            :key="item.service_name"
             class="task-btn"
-            :class="{ active: active === t.task_type, planned: t.status === 'planned' }"
-            @click="active = t.task_type"
+            :class="{ active: active === item.service_name }"
+            @click="active = item.service_name"
           >
-            <el-tooltip :content="tooltipText(t)" placement="right" :show-after="300" popper-class="task-tip">
-              <span class="task-btn-label">{{ t.label }}</span>
+            <el-tooltip :content="tooltipText(item)" placement="right" :show-after="300" popper-class="task-tip">
+              <span class="task-btn-label">{{ item.label }}</span>
             </el-tooltip>
           </button>
         </div>
@@ -68,15 +69,15 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ArrowDown, TrendCharts, Money, PieChart, Document } from '@element-plus/icons-vue'
-import type { FacetGroup, TaskDef } from '../api'
-import { countReady, countPlanned, SUB_FACET_LABELS } from '../composables/useCatalog'
+import type { CatalogGroup, CatalogItem } from '../api'
+import { countActive, SUB_FACET_LABELS } from '../composables/useCatalog'
 
 defineProps<{
-  catalog: FacetGroup[]
+  catalog: CatalogGroup[]
   loading?: boolean
 }>()
 
-/** 当前选中的 task_type */
+/** 当前选中的 service_name */
 const active = defineModel<string>({ required: true })
 
 // ── 折叠状态（key = facet 或 facet/subKey，持久化到 localStorage） ──
@@ -103,20 +104,21 @@ function toggleCollapsed(key: string) {
   localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...next]))
 }
 
-/** 任务按钮的 hover 提示：描述 + 默认参数（树里只显示名称，细节都在 tooltip） */
-function tooltipText(t: TaskDef): string {
+/** 任务按钮的 hover 提示：描述 + 默认参数 + 实时/批量标识 */
+function tooltipText(item: CatalogItem): string {
   const lines: string[] = []
-  if (t.description) lines.push(t.description)
-  const keys = Object.keys(t.default_params || {})
+  if (item.description) lines.push(item.description)
+  if (item.kind === 'realtime') lines.push('实时查询接口（不写库）')
+  else if (item.kind === 'both') lines.push('支持手动采集 + 实时查询')
+  else lines.push('手动采集（写库）')
+  const keys = Object.keys(item.default_params || {})
   if (keys.length) {
     const kv = keys
-      .map((k) => `${k}=${JSON.stringify(t.default_params[k])}`)
+      .map((k) => `${k}=${JSON.stringify(item.default_params[k])}`)
       .join(', ')
     lines.push(`默认参数：${kv}`)
   }
-  if (t.supports_run_one) lines.push('支持单只/单日同步采集（业务接口复用）')
-  if (t.kind === 'realtime' && t.source_label) lines.push(`数据源：${t.source_label}`)
-  return lines.join('\n') || t.label
+  return lines.join('\n') || item.label
 }
 </script>
 
@@ -260,11 +262,6 @@ function tooltipText(t: TaskDef): string {
   border-color: #60a5fa;
   color: #1d4ed8;
   font-weight: 600;
-}
-
-.task-btn.planned {
-  color: #94a3b8;
-  font-style: italic;
 }
 
 .task-btn-label {

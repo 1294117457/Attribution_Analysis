@@ -1,4 +1,4 @@
-"""认证授权 - 仓储接口（纯抽象）
+﻿"""认证授权 - 仓储接口（纯抽象）
 
 按 DDD.md §3.1，repository 接口定义在 domain 层，由 infrastructure 实现。
 """

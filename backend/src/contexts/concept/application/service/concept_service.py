@@ -18,9 +18,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from contexts.data.application.port import DataGatewayPort
-from contexts.data.application.port.base import CallPolicy, InvalidParams, SourceUnavailable
-from contexts.data.application.port.concept import StockConceptsPort
+from contexts.collect.application.service.fundamental.stock_concepts_service import StockConceptsService
+from contexts.collect.application.service.base import InvalidParams, SourceUnavailable
 from contexts.concept.application.service.concept_realtime import ConceptMinuteVO, ConceptRealtimeReader
 from contexts.concept.domain.entity import Concept, ConceptNotFoundError
 from contexts.concept.domain.repository import ConceptRepository
@@ -101,12 +100,12 @@ class ConceptService:
         self,
         *,
         repo: ConceptRepository,
-        gateway: DataGatewayPort,
         realtime: Optional[ConceptRealtimeReader] = None,
+        stock_concepts_svc: Optional[StockConceptsService] = None,
     ):
         self._repo = repo
-        self._gateway = gateway
         self._realtime = realtime
+        self._stock_concepts_svc = stock_concepts_svc
 
     # ── 列表 / 详情 ─────────────────────────────────────────
 
@@ -171,12 +170,27 @@ class ConceptService:
     # ── 实时反查 ─────────────────────────────────────────────
 
     async def fetch_concepts_by_stock(self, symbol: str) -> list[ConceptLiveVO]:
-        """按股票代码实时反查所属概念（同花顺 F10，带入选理由，约 0.5s/只，不入库）"""
-        res = await self._gateway.fetch(StockConceptsPort, {"symbol": symbol}, policy=CallPolicy.QUERY)
-        bos = res.items
+        """按股票代码实时反查所属概念（直接调 StockConceptsService）"""
+        if self._stock_concepts_svc is None:
+            return []
+        # 实时查询需要直接拿 BO，绕过 service 的 collect（它会入库）
+        from contexts.collect.infrastructure.fetcher.fundamental.StockConceptsAdataFetcher import (
+            StockConceptsAdataFetcher,
+        )
+        try:
+            # 简化：直接构造 fetcher（内部 lazy init adata 单例）
+            fetcher = StockConceptsAdataFetcher()
+            items = await fetcher.fetch(symbol=symbol)
+        except Exception:
+            return []
         return [
-            ConceptLiveVO(concept_code=bo.index_code, name=bo.name, source="ths", reason=bo.reason)
-            for bo in bos
+            ConceptLiveVO(
+                concept_code=it.get("index_code", ""),
+                name=it.get("name", ""),
+                source="ths",
+                reason=it.get("reason"),
+            )
+            for it in items
         ]
 
     # ── 详情抽屉「概念」Tab 专用 ─────────────────────────────

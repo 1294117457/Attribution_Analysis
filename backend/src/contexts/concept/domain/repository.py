@@ -1,4 +1,4 @@
-"""Concept 仓储协议（读侧）
+﻿"""Concept 仓储协议（读侧）
 
 写侧（清单 upsert、成分股替换、日 K）只被采集任务使用，
 直接调用 infrastructure 的 ConceptRepoImpl，不在领域协议中暴露。

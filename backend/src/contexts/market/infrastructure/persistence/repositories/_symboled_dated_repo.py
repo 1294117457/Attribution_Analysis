@@ -1,4 +1,4 @@
-"""按 (symbol, trade_date) 维度仓储的通用 upsert/find_by_symbol 实现。
+﻿"""按 (symbol, trade_date) 维度仓储的通用 upsert/find_by_symbol 实现。
 
 抽取 8 个 cap_* / fin_top10_* / base_*（SymboledDatedEntity）仓储中共用的
 批量 upsert + 按 symbol 查询逻辑，避免每个仓库复制一遍。

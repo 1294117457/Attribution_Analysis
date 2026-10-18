@@ -1,4 +1,4 @@
-"""cap_holder_num — 领域实体"""
+﻿"""cap_holder_num — 领域实体"""
 
 from dataclasses import dataclass
 from datetime import date

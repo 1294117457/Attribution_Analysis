@@ -1,4 +1,4 @@
-"""股票曾用名仓储实现（base_name_changes）
+﻿"""股票曾用名仓储实现（base_name_changes）
 
 UK: (symbol, start_date)。
 """

@@ -1,12 +1,11 @@
-"""bo — 从 contexts/data/application/port 拆出（step7-c）"""
+﻿"""bo — 从 contexts/data/application/port 拆出（step7-c）"""
 from __future__ import annotations
 
 from datetime import date
 from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from contexts.data.application.port.base import CachePolicy, DataPort
 from shared.interface.validators import IndexCode
-from contexts.data.application.port.types import EmptyParams, IndexCodeParams, SymbolParams
+from contexts.collect.application.port.params import EmptyParams, IndexCodeParams, SymbolParams
 
 
 def _clean_text(v):

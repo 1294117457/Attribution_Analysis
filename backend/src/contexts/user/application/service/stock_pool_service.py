@@ -1,4 +1,4 @@
-"""操作池应用服务（业务模块：stock-pool/）
+﻿"""操作池应用服务（业务模块：stock-pool/）
 
 合并原 2 个 service：
 - StockPoolAppService    → 池 CRUD + 成员管理

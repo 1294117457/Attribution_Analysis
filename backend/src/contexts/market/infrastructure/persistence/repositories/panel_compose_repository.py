@@ -1,4 +1,4 @@
-"""StockPanel 组合查询 — SQLAlchemy 实现
+﻿"""StockPanel 组合查询 — SQLAlchemy 实现
 
 迁移自原 StockRepoImpl.list_with_kline_stats_paginated：
 - 主表 stock_infos 先筛选 + 分页，再只对当前页关联：
@@ -49,10 +49,19 @@ class StockPanelComposeRepoImpl:
 
     def __init__(
         self,
-        session: AsyncSession,
+        raw_session: AsyncSession,
+        attr_session: AsyncSession,
         concept_repo: Optional[ConceptRepository] = None,
     ):
-        self._session = session
+        """双 session 注入
+
+        - raw_session:  5 个面数据（fundamental_stock_info / fundamental_daily_basic /
+                       fundamental_report / tech_kline_daily / fundamental_concept_member）
+        - attr_session: 业务库（stock_pools / stock_pool_members）
+        """
+        self._raw = raw_session
+        self._attr = attr_session
+        self._session = raw_session  # 向后兼容（让旧代码 self._session.execute 仍可工作，但建议明确用 self._raw / self._attr）
         self._concept_repo = concept_repo
 
     # ── 主查询：4 表快照 + 分页 + 多维筛选 ─────────────────────
@@ -240,8 +249,8 @@ class StockPanelComposeRepoImpl:
             .order_by(StockInfoDB.symbol)
         )
 
-        rows = (await self._session.execute(stmt)).all()
-        total = (await self._session.execute(count_stmt)).scalar_one()
+        rows = (await self._raw.execute(stmt)).all()
+        total = (await self._raw.execute(count_stmt)).scalar_one()
 
         items = [
             StockPanelRow(
@@ -312,7 +321,7 @@ class StockPanelComposeRepoImpl:
                 StockPoolDB.updated_at.desc(),
             )
         )
-        result = await self._session.execute(stmt)
+        result = await self._attr.execute(stmt)
         rows = result.all()
 
         out: dict[str, list[PoolMembershipVO]] = {s: [] for s in symbols}

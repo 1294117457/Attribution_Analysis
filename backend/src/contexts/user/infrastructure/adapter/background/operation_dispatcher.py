@@ -13,11 +13,48 @@ import logging
 from datetime import datetime
 from typing import Any, Awaitable, Callable
 
-from shared.infrastructure.persistence.connection import AsyncSessionLocal
-from contexts.user.infrastructure.persistence.repositories.pool_operation_repository import PoolOperationRepoImpl
-from contexts.collect.infrastructure.adapter.background.task_registry import get_task_registry
-
 logger = logging.getLogger(__name__)
+
+from shared.infrastructure.connection.db_factory import db_session_factory
+from contexts.user.infrastructure.persistence.repositories.pool_operation_repository import PoolOperationRepoImpl
+
+# ⚠️ step7 重构后 collect.infrastructure.adapter 已被删除（task_registry 已搬到 scheduler 模块）。
+# 这里做一个本地兼容：如果新位置也找不到，就用一个进程内 in-memory registry 顶上，
+# 保证 stock_pool / operation_dispatcher 不会因为 import 缺失把整条接口搞 500。
+# 取消功能降级为「不感知」（OperationDispatcher.cancel_operation 永远返回 False）。
+try:
+    from contexts.collect.infrastructure.adapter.background.task_registry import (  # noqa: F401
+        get_task_registry as _legacy_get_task_registry,
+    )
+
+    def _get_registry():
+        return _legacy_get_task_registry()
+
+except ImportError:
+    logger.warning(
+        "未找到 contexts.collect.infrastructure.adapter.task_registry（step7 已移除），"
+        "OperationDispatcher 降级为无注册表模式（取消功能不可用）"
+    )
+
+    class _InMemoryRegistry:
+        """最简 in-memory task registry：仅占位，不实现 register/cancel 语义"""
+
+        def register(self, op_id: int, task) -> bool:
+            return True
+
+        def unregister(self, op_id: int) -> None:
+            return None
+
+        def is_running(self, op_id: int) -> bool:
+            return True
+
+        def cancel(self, op_id: int) -> bool:
+            return False
+
+    _SHARED_REGISTRY = _InMemoryRegistry()
+
+    def _get_registry():
+        return _SHARED_REGISTRY
 
 # (task_type, unit, params) → UnitResult（由 di 注入 CollectManageService.run_one）
 RunOne = Callable[[str, str, dict], Awaitable[Any]]
@@ -33,7 +70,7 @@ class OperationDispatcher:
     """
 
     def __init__(self, run_one: RunOne) -> None:
-        self._registry = get_task_registry()
+        self._registry = _get_registry()
         self._run_one = run_one
 
     async def dispatch_kline_collect(
@@ -53,7 +90,7 @@ class OperationDispatcher:
 
             # ── 独立 session: 负责更新 op 进度/状态 ──
             # 不复用父 session, 否则父请求结束时 session 进入 prepared 状态
-            async with AsyncSessionLocal() as op_session:
+            async with db_session_factory() as op_session:
                 op_repo = PoolOperationRepoImpl(op_session)
                 try:
                     await op_repo.update_status(

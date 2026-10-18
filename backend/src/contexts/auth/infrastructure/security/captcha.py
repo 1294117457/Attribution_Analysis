@@ -17,7 +17,7 @@ from typing import Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
-from shared.infrastructure.cache.redis_cache import RedisCache, get_cache
+from shared.infrastructure.di.redis_session import get_redis
 
 
 class Captcha:
@@ -105,8 +105,8 @@ class Captcha:
         cls._generate_image(code).save(buf, format="PNG")
         base64_image = base64.b64encode(buf.getvalue()).decode()
 
-        cache: RedisCache = await get_cache()
-        await cache.set(captcha_id, code.lower(), expire=cls.CAPTCHA_EXPIRE)
+        cache = await get_redis()
+        await cache.set(captcha_id, code.lower(), ex=cls.CAPTCHA_EXPIRE)
         return captcha_id, base64_image
 
     @classmethod
@@ -128,7 +128,7 @@ class Captcha:
         if code.strip().upper() == cls.BYPASS_CODE:
             return True, ""
 
-        cache: RedisCache = await get_cache()
+        cache = await get_redis()
         stored = await cache.get(captcha_id)
         if not stored:
             return False, "图形验证码已过期"

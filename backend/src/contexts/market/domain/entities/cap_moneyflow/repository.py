@@ -1,4 +1,4 @@
-# TODO: DDD 仓储接口已定义，待 infrastructure 层实现对应 *_repo_impl
+﻿# TODO: DDD 仓储接口已定义，待 infrastructure 层实现对应 *_repo_impl
 """cap_moneyflow — 仓储接口"""
 
 from contexts.market.domain.entities.cap_moneyflow.entity import CapMoneyflow

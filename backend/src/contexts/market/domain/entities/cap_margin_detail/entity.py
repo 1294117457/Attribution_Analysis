@@ -1,4 +1,4 @@
-"""cap_margin_detail — 领域实体"""
+﻿"""cap_margin_detail — 领域实体"""
 
 from dataclasses import dataclass
 from typing import Optional

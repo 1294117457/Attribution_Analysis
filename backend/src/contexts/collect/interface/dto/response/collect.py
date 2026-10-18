@@ -1,4 +1,4 @@
-"""采集任务管理 — 响应 DTO
+﻿"""采集任务管理 — 响应 DTO
 
 配套设计文档：
   docs/dev/step2/02datamanage/01-采集管理四维重构方案.md §2.7
@@ -62,7 +62,7 @@ class CollectCatalogResponse(BaseModel):
 
 
 class CollectFetcherResponse(BaseModel):
-    """采集接口元数据（代码的 DB 镜像，collect_fetchers 表）"""
+    """采集端口元数据（代码的 DB 镜像，sys_data_ports 表）"""
 
     task_type: str = Field(..., description="与代码 registry 的 key 一致")
     label: str = Field(default="", description="UI 显示名（中文）")

@@ -1,4 +1,4 @@
-"""基础设施 port 适配器 — 实现 application/service/auth_app_service.py 中声明的 4 个 port
+﻿"""基础设施 port 适配器 — 实现 application/service/auth_app_service.py 中声明的 4 个 port
 
 - BcryptPasswordHasher        : PasswordHasherPort
 - CaptchaAdapter              : CaptchaPort

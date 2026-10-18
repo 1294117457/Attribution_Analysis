@@ -1,4 +1,4 @@
-"""领域层 - 仓储接口基类
+﻿"""领域层 - 仓储接口基类
 
 按 DDD.md §3.1：repository 接口定义在 domain 层，由 infrastructure 实现。
 "按 (symbol, trade_date) 维度采集"是一类高频查询，

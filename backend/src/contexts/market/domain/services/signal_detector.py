@@ -1,4 +1,4 @@
-"""技术形态信号检测器
+﻿"""技术形态信号检测器
 
 输入：Kline 列表 + 等长的 IndicatorValues 列表（按日期升序）
 输出：TechnicalSummary（含金叉/死叉/超买/突破等形态判断）

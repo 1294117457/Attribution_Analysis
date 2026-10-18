@@ -1,4 +1,4 @@
-"""fin_daily_basic — 领域实体"""
+﻿"""fin_daily_basic — 领域实体"""
 
 from dataclasses import dataclass
 from typing import Optional

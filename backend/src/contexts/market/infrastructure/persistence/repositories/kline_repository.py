@@ -1,4 +1,4 @@
-"""K线仓储实现（仅 OHLCV）"""
+﻿"""K线仓储实现（仅 OHLCV）"""
 
 from __future__ import annotations
 

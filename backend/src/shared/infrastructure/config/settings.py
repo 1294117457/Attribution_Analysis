@@ -1,4 +1,4 @@
-"""应用配置（pydantic-settings）"""
+﻿"""应用配置（pydantic-settings）"""
 
 import threading
 from functools import lru_cache
@@ -27,6 +27,8 @@ class Settings(BaseSettings):
 
     # PostgreSQL
     DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/stock_db"
+    # D4 阶段：raw_data_db（采集数据物理库；与 attribution_db 业务库隔离）
+    RAW_DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/raw_data_db"
 
     # 连接池
     DB_POOL_SIZE: int = 10

@@ -1,21 +1,21 @@
-"""龙虎榜每日 ORM 模型"""
+﻿"""龙虎榜每日 ORM 模型"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Index, UniqueConstraint, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class CapTopListDB(Base, TimestampMixin):
+class CapTopListDB(RawBase, TimestampMixin):
     """龙虎榜每日统计
 
     物理表名: cap_top_lists
     UK: (trade_date, symbol, reason)
     """
 
-    __tablename__ = "cap_top_lists"
+    __tablename__ = "capital_top_list"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

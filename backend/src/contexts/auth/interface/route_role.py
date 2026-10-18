@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from contexts.auth.application.service.auth_service import AuthService
-from shared.infrastructure.config.di import get_auth_service
+from contexts.auth.infrastructure.di import get_auth_service
 from shared.interface import _response as R
 from contexts.auth.interface.deps import require_permission
 

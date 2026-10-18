@@ -1,4 +1,4 @@
-"""StockPanel 列表 DTO
+﻿"""StockPanel 列表 DTO
 
 StockPanel 是"列表 + 4 表快照"组合视图的对外 DTO，
 所有字段均来自 stock_infos / tech_kline_dailys / fin_daily_basics / fin_reports

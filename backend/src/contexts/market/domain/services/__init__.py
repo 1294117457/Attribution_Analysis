@@ -1,4 +1,4 @@
-"""market.domain.services - 跨领域模型的领域服务
+﻿"""market.domain.services - 跨领域模型的领域服务
 
 3 个核心服务：
 - indicator_calculator: K线技术指标计算（MA/MACD/KDJ/RSI/BOLL）

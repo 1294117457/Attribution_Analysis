@@ -1,4 +1,4 @@
-"""fin_report — 领域实体"""
+﻿"""fin_report — 领域实体"""
 
 from dataclasses import dataclass
 from datetime import date

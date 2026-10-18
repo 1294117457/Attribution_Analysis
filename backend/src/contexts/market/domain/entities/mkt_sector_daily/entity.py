@@ -1,4 +1,4 @@
-"""mkt_sector_daily — 领域实体"""
+﻿"""mkt_sector_daily — 领域实体"""
 
 from dataclasses import dataclass
 from datetime import date

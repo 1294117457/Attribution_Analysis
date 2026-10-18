@@ -1,4 +1,4 @@
-"""股票信息聚合根"""
+﻿"""股票信息聚合根"""
 
 from __future__ import annotations
 

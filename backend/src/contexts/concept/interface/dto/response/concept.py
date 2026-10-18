@@ -1,4 +1,4 @@
-"""概念相关 DTO
+﻿"""概念相关 DTO
 
 配套设计文档：
   docs/dev/06gainian/03-application-and-route-design.md §1

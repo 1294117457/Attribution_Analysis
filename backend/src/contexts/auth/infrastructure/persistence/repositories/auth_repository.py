@@ -23,7 +23,7 @@ from contexts.auth.domain.repository import (
     RoleRepository,
     UserRepository,
 )
-from shared.infrastructure.cache.redis_cache import RedisCache, get_cache
+from contexts.auth.infrastructure.cache import refresh_token
 from contexts.auth.infrastructure.persistence.models.user import PermissionDB, RoleDB, UserDB
 from contexts.auth.infrastructure.persistence.models.user_role import RolePermissionDB, UserRoleDB
 
@@ -345,23 +345,16 @@ class RefreshTokenRepoImpl(RefreshTokenRepository):
         expires_in_seconds: int,
     ) -> None:
         """登记新 refresh token:把 jti 加入用户的活跃 set。"""
-        cache: RedisCache = await get_cache()
-        set_key = f"user_refresh_tokens:{user_id}"
-        await cache.sadd(set_key, jti)
-        # 集合 TTL 与 refresh 期限一致
-        await cache.expire(set_key, expires_in_seconds)
+        await refresh_token.register(user_id, jti, expires_in_seconds)
 
     async def is_active(self, jti: str) -> bool:
         """未撤销 → True。已撤销 / key 不存在 → False。"""
-        cache: RedisCache = await get_cache()
-        return not await cache.is_refresh_token_revoked(jti)
+        return await refresh_token.is_active(jti)
 
     async def revoke(self, jti: str, expires_in_seconds: int) -> None:
         """撤销该 jti(写黑名单)。"""
-        cache: RedisCache = await get_cache()
-        await cache.revoke_refresh_token(jti, ttl_seconds=expires_in_seconds)
+        await refresh_token.revoke(jti, expires_in_seconds)
 
     async def revoke_all_for_user(self, user_id: int) -> int:
         """撤销该用户所有活跃 refresh token(改密 / 封号场景)。"""
-        cache: RedisCache = await get_cache()
-        return await cache.revoke_all_user_refresh_tokens(user_id)
+        return await refresh_token.revoke_all_for_user(user_id)

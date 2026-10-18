@@ -1,4 +1,4 @@
-"""fin_report — 仓储接口"""
+﻿"""fin_report — 仓储接口"""
 
 from abc import ABC, abstractmethod
 from typing import Optional

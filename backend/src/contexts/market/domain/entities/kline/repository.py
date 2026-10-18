@@ -1,4 +1,4 @@
-"""K线仓储接口（Protocol 定义在领域层）"""
+﻿"""K线仓储接口（Protocol 定义在领域层）"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""操作池 - 仓储接口
+﻿"""操作池 - 仓储接口
 
 list_membership_by_symbols 已迁移至 domain.panel.repository.StockPanelComposeRepository，
 由面板组合仓储统一提供（让"列表快照 + 池反查"在同一组合仓储中编排）。

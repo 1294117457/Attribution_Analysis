@@ -1,21 +1,21 @@
-"""财务报表 ORM 模型"""
+﻿"""财务报表 ORM 模型"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Index, UniqueConstraint, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class FinReportDB(Base, TimestampMixin):
+class FinReportDB(RawBase, TimestampMixin):
     """财务报表（利润表/资产负债表/现金流量表）
 
     物理表名: fin_reports
     UK: (symbol, end_date)
     """
 
-    __tablename__ = "fin_reports"
+    __tablename__ = "fundamental_report"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

@@ -1,4 +1,4 @@
-"""K线值对象"""
+﻿"""K线值对象"""
 
 from __future__ import annotations
 

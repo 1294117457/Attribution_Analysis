@@ -1,4 +1,4 @@
-"""股东户数仓储实现（cap_holder_nums）
+﻿"""股东户数仓储实现（cap_holder_nums）
 
 UK: (symbol, end_date)。SymboledEntity（无 trade_date），按 end_date 列做日期范围查询。
 """

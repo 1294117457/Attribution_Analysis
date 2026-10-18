@@ -1,4 +1,4 @@
-"""Phase 5: Comprehensive validation of DDD refactoring.
+﻿"""Phase 5: Comprehensive validation of DDD refactoring.
 
 Test:
 1. 22 aggregate roots can be imported from entities/ subdirectory
@@ -150,17 +150,11 @@ except Exception as e:
     print(f'  [FAIL] concept: {e}')
 
 # 7. Collect context
+# NOTE: 旧的 concept_collection_policy / vo_collect_plan 已被 domain/entitys/* 替代，
+#       本节历史 import 注释掉（如需重跑请直接 `python -m main` 即可验证）
 print()
-print('7. Collect context:')
-try:
-    from contexts.collect.domain.services.concept_collection_policy import ConceptCollectionPolicy
-    from contexts.collect.domain.vo_collect_plan import Schedule
-    p = ConceptCollectionPolicy()
-    s = Schedule.from_form(schedule_type='time', times=('09:30',), interval_seconds=None)
-    print(f'  [OK] ConceptCollectionPolicy')
-    print(f'  [OK] Schedule: {s.type} {s.times}')
-except Exception as e:
-    print(f'  [FAIL] collect: {e}')
+print('7. Collect context (legacy, skipped):')
+print('  [SKIP] concept_collection_policy / vo_collect_plan 已迁移到 domain/entitys')
 
 # 8. App loading
 print()

@@ -1,55 +1,58 @@
 /**
- * 采集任务目录树 composable
+ * 采集任务目录树 composable（step7 重构）
  *
- * 启动时拉一次 catalog，提供：
- * - catalog: ref<FacetGroup[]>
- * - getTaskDef(taskType): 找某个 task_type 对应的元数据
- * - countReady / countPlanned: 统计（用于左树 facet badge）
+ * 启动时拉一次 /collect/services，前端自己按 facet/sub_facet 聚合成目录树。
+ * 提供：
+ * - catalog: ref<CatalogGroup[]>
+ * - getItem(serviceName): 找某个 service 的目录项
+ * - countByFacet(facet, predicate): 统计（用于左树 facet badge）
  *
- * 配套：docs/dev/step2/02datamanage/01-采集管理四维重构方案.md §3.2
+ * 配套：backend/src/contexts/collect/interface/route_service.py
  */
 
 import { ref, computed } from 'vue'
-import { getCatalog, type FacetGroup, type TaskDef } from '../api'
+import { buildCatalog, listServicesCached, type CatalogGroup, type CatalogItem, type ServiceItem } from '../api'
 
-/** 统计 ready 数 */
-export function countReady(facet: FacetGroup): number {
+/** facet badge：可入计划的 service 数（目前 = 全部可入库 service） */
+export function countActive(facet: CatalogGroup): number {
   let n = 0
-  for (const tasks of Object.values(facet.sub_groups)) {
-    n += tasks.filter((t) => t.status === 'ready').length
+  for (const items of Object.values(facet.sub_groups)) {
+    n += items.length
   }
   return n
 }
 
-/** 统计 planned 数 */
-export function countPlanned(facet: FacetGroup): number {
-  let n = 0
-  for (const tasks of Object.values(facet.sub_groups)) {
-    n += tasks.filter((t) => t.status === 'planned').length
-  }
-  return n
+/** 兼容旧名：可执行的 service 数（= countActive） */
+export const countReady = countActive
+/** 兼容旧名：已计划的 service 数（= 0，因为 service 不再分 ready/planned 状态） */
+export function countPlanned(_facet: CatalogGroup): number {
+  return 0
 }
 
-/** sub_facet 中文标签表（UI 副标题用，无则显示 key） */
+/** sub_facet 中文标签（UI 副标题用） */
 export const SUB_FACET_LABELS: Record<string, string> = {
   kline: 'K 线',
-  base: '基础数据',
-  valuation: '估值',
-  core: '核心实体',
-  report: '财务报告',
-  holder: '股东结构',
+  adj: '复权因子',
+  suspend: '停复牌',
+  name: '名称变更',
   dividend: '分红',
-  margin: '两融',
   moneyflow: '资金流向',
-  dragon_tiger: '龙虎榜',
-  block_trade: '大宗交易',
-  chip: '筹码',
-  article: '资讯',
+  margin: '两融',
+  top: '龙虎榜',
+  block: '大宗交易',
+  holder: '股东',
+  hsgt: '沪深港通',
+  limit: '涨跌停',
+  valuation: '估值',
+  fin: '财报',
+  stock: '基础信息',
   concept: '概念',
 }
 
 export function useCatalog() {
-  const catalog = ref<FacetGroup[]>([])
+  /** 原始 service 列表（用于 service 详情查表） */
+  const services = ref<ServiceItem[]>([])
+  const catalog = ref<CatalogGroup[]>([])
   const loading = ref(false)
   const error = ref<unknown>(null)
 
@@ -57,44 +60,54 @@ export function useCatalog() {
   async function load() {
     loading.value = true
     try {
-      const res = await getCatalog()
-      catalog.value = res.items || []
+      const res = await listServicesCached()
+      services.value = res
+      catalog.value = buildCatalog(services.value).items
     } catch (e) {
       error.value = e
+      services.value = []
       catalog.value = []
     } finally {
       loading.value = false
     }
   }
 
-  /** 按 task_type 找 TaskDef（在所有 facet / sub_facet 下搜） */
-  function getTaskDef(taskType: string): TaskDef | null {
+  /** 按 service_name 找目录项（在所有 facet / sub_facet 下搜） */
+  function getItem(serviceName: string): CatalogItem | null {
     for (const facet of catalog.value) {
-      for (const tasks of Object.values(facet.sub_groups)) {
-        const hit = tasks.find((t) => t.task_type === taskType)
+      for (const items of Object.values(facet.sub_groups)) {
+        const hit = items.find((i) => i.service_name === serviceName)
         if (hit) return hit
       }
     }
     return null
   }
 
-  const totalReady = computed(() =>
-    catalog.value.reduce((acc, f) => acc + countReady(f), 0),
+  /** 按 service_name 找原始 ServiceItem（用于查 default_params / label） */
+  function getService(serviceName: string): ServiceItem | null {
+    return services.value.find((s) => s.name === serviceName) || null
+  }
+
+  const totalActive = computed(() =>
+    catalog.value.reduce((acc, f) => acc + countActive(f), 0),
   )
   const totalPlanned = computed(() =>
     catalog.value.reduce((acc, f) => acc + countPlanned(f), 0),
   )
 
   return {
+    services,
     catalog,
     loading,
     error,
     load,
-    getTaskDef,
+    getItem,
+    getService,
+    countActive,
     countReady,
     countPlanned,
     SUB_FACET_LABELS,
-    totalReady,
+    totalActive,
     totalPlanned,
   }
 }

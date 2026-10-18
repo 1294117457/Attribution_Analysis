@@ -1,4 +1,4 @@
-"""自动迁移自 domain/kline/schemas.py（VO 部分）"""
+﻿"""自动迁移自 domain/kline/schemas.py（VO 部分）"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""base_adj_factor — 领域实体"""
+﻿"""base_adj_factor — 领域实体"""
 
 from dataclasses import dataclass
 

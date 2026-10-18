@@ -1,4 +1,4 @@
-"""shared.interface — 共享接口层（统一响应 + 分页 + router 聚合）
+﻿"""shared.interface — 共享接口层（统一响应 + 分页 + router 聚合）
 
 文件结构：
 - _response.py: 统一 API 响应函数（原 route/api/_response.py）

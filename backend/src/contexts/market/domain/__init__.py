@@ -1,4 +1,4 @@
-"""market domain - 领域层入口
+﻿"""market domain - 领域层入口
 
 按 DDD 方案，market 域的领域模型（Entity/VO/Repository）统一聚合在 entities/ 子目录下。
 领域服务（跨聚合根的业务逻辑）聚合在 services/ 子目录下。

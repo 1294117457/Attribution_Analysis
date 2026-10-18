@@ -15,7 +15,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from contexts.auth.application.service.auth_service import AuthService
-from shared.infrastructure.config.di import get_auth_service
+from contexts.auth.infrastructure.di import get_auth_service
 
 security = HTTPBearer(auto_error=False)
 

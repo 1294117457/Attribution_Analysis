@@ -1,21 +1,21 @@
-"""股东户数 ORM 模型"""
+﻿"""股东户数 ORM 模型"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Integer, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class CapHolderNumDB(Base, TimestampMixin):
+class CapHolderNumDB(RawBase, TimestampMixin):
     """股东户数
 
     物理表名: cap_holder_nums
     UK: (symbol, end_date)
     """
 
-    __tablename__ = "cap_holder_nums"
+    __tablename__ = "capital_holder_num"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

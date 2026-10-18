@@ -1,21 +1,21 @@
-"""股票曾用名 ORM 模型"""
+﻿"""股票曾用名 ORM 模型"""
 
 from datetime import date
 from sqlalchemy import String, Integer, Date, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shared.infrastructure.persistence.orm_base import Base
+from shared.infrastructure.persistence.orm_base import RawBase
 from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
-class BaseNameChangeDB(Base, TimestampMixin):
+class BaseNameChangeDB(RawBase, TimestampMixin):
     """股票曾用名
 
     物理表名: base_name_changes
     UK: (symbol, start_date)
     """
 
-    __tablename__ = "base_name_changes"
+    __tablename__ = "tech_name_change"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 

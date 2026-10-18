@@ -1,205 +1,129 @@
 <!--
-  CollectTaskPane.vue — 采集管理右侧主区
+  CollectTaskPane.vue — 采集管理右侧主区（step7 简化版）
 
-  - 实时类任务 → RealtimePanel
-  - 批量类任务 → CollectActionCard（采集类型 / 条件 / 开始采集）+ 任务列表 + 分页
-  - 采集卡片、分页固定，仅表格内部滚动
+  简化前：CollectActionCard + 大日志表 + 分页 + 进度轮询
+  简化后：CollectActionCard（采集模式 + 条件 + 开始采集）+ 最近一次执行结果摘要
+  ── 运行日志 / 进度轮询 / 重跑 / 取消：暂不做（占位即可）
+
+  实时 service（kind=realtime 或 both）走 RealtimePanel；其他走 CollectActionCard。
 -->
 <template>
   <main class="task-pane">
-    <div v-if="!taskDef" class="tip">请从左侧选择采集任务</div>
+    <div v-if="!item" class="tip">请从左侧选择采集任务</div>
 
-    <RealtimePanel v-else-if="isRealtime" :task-def="taskDef" class="task-pane__scroll" />
+    <RealtimePanel
+      v-else-if="isRealtime"
+      :service-name="serviceName"
+      :item="item"
+      class="task-pane__scroll"
+    />
 
     <template v-else>
       <CollectActionCard
-        :task-type="taskType"
-        :task-def="taskDef"
-        :starting="startingTasks.has(taskType)"
-        @start="startTask(taskType, $event)"
+        :service-name="serviceName"
+        :item="item"
+        :starting="running"
+        @start="runServiceAndWait(serviceName, $event)"
       />
 
-      <!-- 任务列表（内部滚动） -->
-      <div class="task-table-wrap">
-        <el-table
-          :data="tasks"
-          v-loading="tasksLoading"
-          height="100%"
-          stripe
-          size="small"
-          row-key="id"
-          :row-class-name="rowClassName"
-          :expand-row-keys="expandedRowKeys"
-          empty-text="暂无采集任务"
-        >
-          <el-table-column type="expand" width="1">
-            <template #default="{ row }">
-              <div v-if="progressMap[row.id]" class="expand-progress">
-                <el-progress
-                  :percentage="progressMap[row.id].percent"
-                  :stroke-width="14"
-                  striped
-                  striped-flow
-                  class="expand-progress-bar"
-                />
-                <div class="expand-stats">
-                  <span class="mono text-xs">已完成 <b>{{ progressMap[row.id].done }}</b> / {{ progressMap[row.id].total }}</span>
-                  <span class="mono text-xs text-green-600">成功 {{ progressMap[row.id].success }}</span>
-                  <span class="mono text-xs text-red-500">失败 {{ progressMap[row.id].fail }}</span>
-                  <span v-if="row.params?.concurrency > 1" class="mono text-xs text-indigo-500">
-                    并发 ×{{ row.params.concurrency }}
-                  </span>
-                  <span v-if="progressMap[row.id].current" class="mono text-xs text-gray-500">
-                    当前: {{ progressMap[row.id].current }}
-                  </span>
-                  <el-button type="danger" text size="small" @click="handleCancel(row)">取消任务</el-button>
-                </div>
-              </div>
-              <div v-else class="expand-progress">
-                <span class="text-sm text-gray-400">等待进度数据...</span>
-              </div>
-            </template>
-          </el-table-column>
-
-          <el-table-column label="状态" width="160">
-            <template #default="{ row }">
-              <div class="status-cell">
-                <el-tag :type="statusColor(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
-                <el-button
-                  v-if="row.status === 'running' || row.status === 'pending'"
-                  type="danger"
-                  text
-                  size="small"
-                  class="cancel-inline-btn"
-                  @click.stop="handleCancel(row)"
-                >取消</el-button>
-                <el-button
-                  v-else-if="row.status === 'failed' || row.status === 'cancelled'"
-                  type="primary"
-                  text
-                  size="small"
-                  :loading="retryingIds.has(row.id)"
-                  @click.stop="handleRetry(row)"
-                >重跑</el-button>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="来源" width="96">
-            <template #default="{ row }">
-              <el-tag size="small" effect="plain" :type="row.trigger_type === 'schedule' ? 'warning' : 'info'">
-                {{ row.trigger_type === 'schedule' ? '定时' : '手动' }}
-              </el-tag>
-              <el-tooltip v-if="row.plan_run_id" :content="`采集方案执行 #${row.plan_run_id}`" placement="top">
-                <el-tag size="small" effect="plain" type="success" class="ml-1">方案</el-tag>
-              </el-tooltip>
-            </template>
-          </el-table-column>
-          <el-table-column label="参数" min-width="150">
-            <template #default="{ row }">
-              <span class="text-sm text-gray-600">{{ formatParams(row) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="成功" width="70" align="right">
-            <template #default="{ row }">
-              <span class="mono text-sm text-green-600">{{ row.success_count }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="失败" width="70" align="right">
-            <template #default="{ row }">
-              <span class="mono text-sm text-red-500">{{ row.fail_count }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="总数" width="70" align="right">
-            <template #default="{ row }">
-              <span class="mono text-sm">{{ row.total_count }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="耗时" width="80" align="right">
-            <template #default="{ row }">
-              <span class="mono text-sm">{{ formatDuration(row.duration_ms) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="开始时间" width="145">
-            <template #default="{ row }">
-              <span class="mono text-sm">{{ formatTime(row.started_at) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="日志" min-width="200">
-            <template #default="{ row }">
-              <el-tooltip v-if="row.message" :content="row.message" placement="top" :show-after="300">
-                <span
-                  class="text-sm log-text"
-                  :class="{
-                    'text-red-500': row.status === 'failed',
-                    'text-orange-400': row.status === 'cancelled',
-                    'text-gray-500': row.status === 'success',
-                    'text-blue-500': row.status === 'running',
-                  }"
-                >{{ row.message || (row.status === 'running' ? '采集中...' : '-') }}</span>
-              </el-tooltip>
-              <span v-else class="text-sm" :class="row.status === 'running' ? 'text-blue-500' : 'text-gray-300'">
-                {{ row.status === 'running' ? '采集中... (点击展开查看进度)' : '-' }}
-              </span>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
-
-      <div class="task-pagination">
-        <el-pagination
-          v-model:current-page="taskPage"
-          v-model:page-size="taskPageSize"
-          :total="taskTotal"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next"
-          background
-          size="small"
-          @current-change="onPageChange"
-          @size-change="onPageSizeChange"
-        />
+      <!-- 最近一次执行结果（成功/失败 一次性返回） -->
+      <div v-if="lastResult" class="result-card">
+        <div class="result-card__title">
+          <el-icon :color="lastResultColor" class="mr-1">
+            <component :is="lastResultIcon" />
+          </el-icon>
+          最近一次执行结果
+        </div>
+        <div class="result-card__stats">
+          <span class="stat"><b class="text-green-600">{{ lastResult.success ?? 0 }}</b> 成功</span>
+          <span class="stat"><b class="text-red-500">{{ lastResult.fail ?? 0 }}</b> 失败</span>
+          <span class="stat"><b class="text-gray-500">{{ lastResult.skip ?? 0 }}</b> 跳过</span>
+          <span class="stat"><b>{{ lastResult.saved ?? 0 }}</b> 写入</span>
+          <span class="stat"><b>{{ lastResult.total ?? 0 }}</b> 总数</span>
+        </div>
+        <div v-if="lastResult.message" class="result-card__msg">
+          {{ lastResult.message }}
+        </div>
+        <div v-if="lastResultItems.length > 0" class="result-card__items">
+          <div class="result-card__items-title">返回数据（前 5 条）</div>
+          <pre class="result-card__items-body">{{ JSON.stringify(lastResultItems, null, 2) }}</pre>
+        </div>
       </div>
     </template>
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { ElMessage } from 'element-plus'
+import { CircleClose, CircleCheck, InfoFilled } from '@element-plus/icons-vue'
 
 import CollectActionCard from './CollectActionCard.vue'
 import RealtimePanel from './RealtimePanel.vue'
-import type { CollectTask, TaskDef } from '../api'
-import { useCollectTasks } from '../composables/useCollectTasks'
-import {
-  formatDuration, formatParams, formatTime, statusColor, statusLabel,
-} from '../composables/taskFormat'
+import type { CatalogItem, CollectStartPayload } from '../api'
+import { runService } from '../api'
 
 const props = defineProps<{
-  taskType: string
-  taskDef: TaskDef | null | undefined
+  serviceName: string
+  item: CatalogItem | null | undefined
 }>()
 
-const isRealtime = computed(() => props.taskDef?.kind === 'realtime')
+/** 实时 = kind='realtime'（纯实时，不入库）
+ *  - kind='collect' : 走 CollectActionCard（开始采集）
+ *  - kind='both'    : 也走 CollectActionCard（开始采集 + 试查入口由 Card 自身处理）
+ *  - kind='realtime': 走 RealtimePanel（只显示试查，没有开始采集按钮）
+ */
+const isRealtime = computed(() => props.item?.kind === 'realtime')
 
-// ── 任务列表 / 进度轮询 / 操作 ──────────────────────────────
-const {
-  tasks,
-  taskTotal,
-  taskPage,
-  taskPageSize,
-  tasksLoading,
-  expandedRowKeys,
-  progressMap,
-  startingTasks,
-  startTask,
-  handleCancel,
-  handleRetry,
-  retryingIds,
-  onPageChange,
-  onPageSizeChange,
-} = useCollectTasks(() => props.taskType)
+// ── 最近一次执行结果（本地状态，无后端持久化） ─────────────
+const lastResult = ref<any>(null)
+const running = ref(false)
 
-function rowClassName({ row }: { row: CollectTask }) {
-  return row.status === 'running' ? 'running-row' : ''
+const lastResultColor = computed(() => {
+  const r = lastResult.value
+  if (!r) return '#94a3b8'
+  if (r.fail > 0) return '#ef4444'
+  if (r.success > 0) return '#22c55e'
+  return '#3b82f6'
+})
+
+const lastResultIcon = computed(() => {
+  const r = lastResult.value
+  if (!r) return InfoFilled
+  if (r.fail > 0) return CircleClose
+  return CircleCheck
+})
+
+const lastResultItems = computed<any[]>(() => {
+  const items = lastResult.value?.items
+  if (Array.isArray(items)) return items.slice(0, 5)
+  return []
+})
+
+/** 触发一次 service.collect()（带 mode + params） */
+async function runServiceAndWait(
+  serviceName: string,
+  payload: CollectStartPayload,
+) {
+  console.log('[CollectTaskPane] runService', serviceName, payload)
+  running.value = true
+  try {
+    const res = await runService(serviceName, payload)
+    lastResult.value = res
+    ElMessage.success(res?.message || '采集完成')
+  } catch (e: any) {
+    lastResult.value = {
+      success: 0,
+      fail: 1,
+      skip: 0,
+      saved: 0,
+      total: 1,
+      message: e?.response?.data?.message || e?.message || '采集失败',
+    }
+    ElMessage.error(lastResult.value.message)
+  } finally {
+    running.value = false
+  }
 }
 </script>
 
@@ -210,71 +134,13 @@ function rowClassName({ row }: { row: CollectTask }) {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
 }
 
 .task-pane__scroll {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-}
-
-/* ── 任务列表 ── */
-.task-table-wrap {
-  flex: 1;
-  min-height: 0;
-}
-
-.task-pagination {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 8px;
-}
-
-.expand-progress {
-  padding: 8px 16px;
-}
-
-.expand-progress-bar {
-  margin-bottom: 8px;
-}
-
-.expand-stats {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.log-text {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-
-/* ── 行高亮 ── */
-:deep(.running-row) {
-  background-color: #eff6ff !important;
-}
-:deep(.running-row:hover > td) {
-  background-color: #dbeafe !important;
-}
-
-/* ── 展开列 ── */
-:deep(.el-table__expand-column .cell) {
-  padding: 0;
-}
-
-.status-cell {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.cancel-inline-btn {
-  padding: 2px 4px !important;
-  font-size: 12px !important;
 }
 
 .tip {
@@ -282,5 +148,70 @@ function rowClassName({ row }: { row: CollectTask }) {
   text-align: center;
   color: #94a3b8;
   font-size: 13px;
+}
+
+/* ── 最近一次执行结果卡片 ── */
+.result-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px 16px;
+  flex-shrink: 0;
+}
+
+.result-card__title {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 8px;
+}
+
+.result-card__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 13px;
+  color: #475569;
+  margin-bottom: 8px;
+}
+
+.result-card__stats .stat b {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 14px;
+  margin-right: 2px;
+}
+
+.result-card__msg {
+  font-size: 12px;
+  color: #64748b;
+  background: #f8fafc;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border-left: 3px solid #94a3b8;
+}
+
+.result-card__items {
+  margin-top: 8px;
+}
+
+.result-card__items-title {
+  font-size: 12px;
+  color: #475569;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.result-card__items-body {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 8px 10px;
+  border-radius: 4px;
+  max-height: 200px;
+  overflow: auto;
+  margin: 0;
 }
 </style>

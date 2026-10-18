@@ -1,4 +1,4 @@
-# TODO: DDD 仓储接口已定义，待 infrastructure 层实现对应 *_repo_impl
+﻿# TODO: DDD 仓储接口已定义，待 infrastructure 层实现对应 *_repo_impl
 """fin_top10_holders — 仓储接口"""
 
 from contexts.market.domain.entities.fin_top10_holders.entity import FinTop10Holders

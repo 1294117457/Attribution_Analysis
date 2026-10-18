@@ -1,4 +1,4 @@
-"""概念只读投影 VO
+﻿"""概念只读投影 VO
 
 配套设计文档：
   docs/dev/06gainian/01-domain-design.md §4
