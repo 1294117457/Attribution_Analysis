@@ -22,6 +22,9 @@ class CapMarginDetailDB(RawBase, TimestampMixin):
     symbol: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     trade_date: Mapped[date] = mapped_column(Date, nullable=False)
 
+    # §4.2 补 Tushare margin_detail 文档 name 字段
+    name: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="股票名称")
+
     rzye: Mapped[float | None] = mapped_column(Float, nullable=True, comment="融资余额")
     rqye: Mapped[float | None] = mapped_column(Float, nullable=True, comment="融券余额")
     rzmre: Mapped[float | None] = mapped_column(Float, nullable=True, comment="融资买入额")

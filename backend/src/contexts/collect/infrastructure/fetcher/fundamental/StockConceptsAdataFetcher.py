@@ -42,6 +42,8 @@ class StockConceptsAdataFetcher(BaseFetcher):
                 "index_code": index_code,
                 "name": name,
                 "reason": _str(row.get("reason")),
+                # §2.11 补 Adata get_concept_ths 文档 source 字段
+                "source": _str(row.get("source")) or "ths",
             })
         return items
 

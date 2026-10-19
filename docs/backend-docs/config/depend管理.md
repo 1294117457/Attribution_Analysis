@@ -34,3 +34,4 @@ Redis
 
     统一所有service都再di中注册后续给interface或者其他模块调用
     
+dbsession在service层注入，然后await self._repo.save(bos, session=session)这么使用，保证事务一致性

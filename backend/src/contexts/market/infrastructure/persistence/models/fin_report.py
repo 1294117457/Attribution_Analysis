@@ -45,6 +45,9 @@ class FinReportDB(RawBase, TimestampMixin):
     n_cash_flows_fnc_act: Mapped[float | None] = mapped_column(Float, nullable=True, comment="筹资活动现金流量净额")
     n_cashflow_inv_act: Mapped[float | None] = mapped_column(Float, nullable=True, comment="投资活动现金流量净额")
 
+    # §4.7 补 Tushare income 文档 end_type 字段
+    end_type: Mapped[str | None] = mapped_column(String(8), nullable=True, comment="报告期类型(Q1/Q2/Q3/Q4/半年报/年报)")
+
     data_source: Mapped[str] = mapped_column(String(16), nullable=False, default="tushare")
 
     __table_args__ = (

@@ -37,13 +37,18 @@ from contexts.concept.interface.route.concept_board import router as concept_boa
 from contexts.concept.interface.route.concept_query import router as concept_query_router
 from contexts.concept.interface.route.concept_quote import router as concept_quote_router
 
-# ── collect 上下文：28 service ↔ 28 route（按 5 个基本面分目录）──
-# URL 风格：/api/collect/{facet}/{service_name}
-# /api/collect/services
-# /api/collect/query/{name}
-from contexts.collect.interface.router import (
-    catalog_router, facet_routers,
-)
+# ── collect 上下文：catalog + 日志 + 5 个 facet ──
+# /api/collect/catalog              service catalog
+# /api/collect/logs/{service}       日志查询
+# /api/collect/query/{name}        实时查询
+# /api/collect/{facet}/{service}   各 facet 采集入口
+from contexts.collect.interface.route.catalog import router as collect_catalog_router
+from contexts.collect.interface.route.log import router as collect_log_router
+from contexts.collect.interface.route.tech import router as collect_tech_router
+from contexts.collect.interface.route.capital import router as collect_capital_router
+from contexts.collect.interface.route.fundamental import router as collect_fundamental_router
+from contexts.collect.interface.route.news import router as collect_news_router
+from contexts.collect.interface.route.sentiment import router as collect_sentiment_router
 
 # ── user 上下文：操作池（自选股） ──
 from contexts.user.interface.route.pool import router as user_pool_router
@@ -76,9 +81,13 @@ api_router.include_router(auth_user_router)
 api_router.include_router(auth_role_router)
 api_router.include_router(auth_permission_router)
 
-# collect（28 service ↔ 28 route + catalog + query，分开挂避免 prefix 嵌套问题）
-for facet_router in facet_routers:
-    api_router.include_router(facet_router)
-api_router.include_router(catalog_router)
+# collect（catalog + 日志 + 5 个 facet）
+api_router.include_router(collect_catalog_router)
+api_router.include_router(collect_log_router)
+api_router.include_router(collect_tech_router)
+api_router.include_router(collect_capital_router)
+api_router.include_router(collect_fundamental_router)
+api_router.include_router(collect_news_router)
+api_router.include_router(collect_sentiment_router)
 
 __all__ = ["api_router", "settings"]

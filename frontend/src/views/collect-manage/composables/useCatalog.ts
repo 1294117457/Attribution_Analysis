@@ -1,25 +1,28 @@
 /**
- * 采集任务目录树 composable（step7 重构）
- *
- * 启动时拉一次 /collect/services，前端自己按 facet/sub_facet 聚合成目录树。
+ * 采集任务目录树 composable（v3：扁平一级 facet）
+
+ * 启动时拉一次 /collect/catalog（2026-10 从 /collect/services 改名），
+ * 前端自己按 facet 聚合成目录树（v3 去掉 sub_facet 一级）。
  * 提供：
  * - catalog: ref<CatalogGroup[]>
  * - getItem(serviceName): 找某个 service 的目录项
- * - countByFacet(facet, predicate): 统计（用于左树 facet badge）
- *
- * 配套：backend/src/contexts/collect/interface/route_service.py
+ * - countActive(facet): 统计（用于左树 facet badge）
+
+ * 配套：backend/src/contexts/collect/interface/manage/catalog_handler.py
  */
 
 import { ref, computed } from 'vue'
-import { buildCatalog, listServicesCached, type CatalogGroup, type CatalogItem, type ServiceItem } from '../api'
+import {
+  buildCatalog,
+  listServicesCached,
+  type CatalogGroup,
+  type CatalogItem,
+  type ServiceItem,
+} from '../api'
 
 /** facet badge：可入计划的 service 数（目前 = 全部可入库 service） */
 export function countActive(facet: CatalogGroup): number {
-  let n = 0
-  for (const items of Object.values(facet.sub_groups)) {
-    n += items.length
-  }
-  return n
+  return facet.items.length
 }
 
 /** 兼容旧名：可执行的 service 数（= countActive） */
@@ -27,26 +30,6 @@ export const countReady = countActive
 /** 兼容旧名：已计划的 service 数（= 0，因为 service 不再分 ready/planned 状态） */
 export function countPlanned(_facet: CatalogGroup): number {
   return 0
-}
-
-/** sub_facet 中文标签（UI 副标题用） */
-export const SUB_FACET_LABELS: Record<string, string> = {
-  kline: 'K 线',
-  adj: '复权因子',
-  suspend: '停复牌',
-  name: '名称变更',
-  dividend: '分红',
-  moneyflow: '资金流向',
-  margin: '两融',
-  top: '龙虎榜',
-  block: '大宗交易',
-  holder: '股东',
-  hsgt: '沪深港通',
-  limit: '涨跌停',
-  valuation: '估值',
-  fin: '财报',
-  stock: '基础信息',
-  concept: '概念',
 }
 
 export function useCatalog() {
@@ -72,13 +55,11 @@ export function useCatalog() {
     }
   }
 
-  /** 按 service_name 找目录项（在所有 facet / sub_facet 下搜） */
+  /** 按 service_name 找目录项 */
   function getItem(serviceName: string): CatalogItem | null {
     for (const facet of catalog.value) {
-      for (const items of Object.values(facet.sub_groups)) {
-        const hit = items.find((i) => i.service_name === serviceName)
-        if (hit) return hit
-      }
+      const hit = facet.items.find((i) => i.service_name === serviceName)
+      if (hit) return hit
     }
     return null
   }
@@ -106,7 +87,6 @@ export function useCatalog() {
     countActive,
     countReady,
     countPlanned,
-    SUB_FACET_LABELS,
     totalActive,
     totalPlanned,
   }

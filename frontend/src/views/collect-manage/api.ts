@@ -1,74 +1,90 @@
 import http, { unwrap, type ApiResponse } from '@/common/utils/http'
 
 /**
- * 采集管理 API — step7 重构后简化版（仅保留「最基础的全量/条件采集」）
+ * 采集管理 API — v2 采集日志进度优化（2026-10-19）
  *
- * 后端路由（contexts/collect/interface/router.py）：
- *   GET  /collect/services                28 service 元数据 catalog（前端左侧目录树数据源）
- *   POST /collect/{facet}/{service_name}  触发一次 service.collect()（mode=full/condition）
- *   GET  /collect/query/{name}            实时查询 service.get()（仅 supports_query=true）
- *
- * ⚠️ schedule / log / APScheduler / 取消 / 重跑 相关功能暂时不做（用户要求先跑通基本采集）。
- *    后续如需补齐，再加 listSchedules / listLogs 等函数。
+ * 后端路由（contexts/collect/interface/manage/）：
+ *   GET  /collect/catalog                        28 service 元数据 catalog
+ *   POST /collect/{facet}/{service_name}         触发采集，返回 log_id
+ *   GET  /collect/logs/{service_name}           查询日志列表
+ *   GET  /collect/logs/{service_name}/{log_id}  查询单条日志详情
+ *   GET  /collect/query/{name}                  实时查询 service.get()
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Service — 已注册的采集服务（统一 task / fetcher / catalog）
+//  Types
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Service 元数据（GET /collect/services 列表项） */
+/** 采集日志 */
+export interface CollectLog {
+  id: string
+  service_name: string
+  facet: string
+  kind: 'incremental' | 'full_refresh' | 'realtime'
+  trigger_source: 'manual' | 'script' | 'schedule'
+  trigger_user: string | null
+  params: Record<string, any>
+  status: 'pending' | 'running' | 'success' | 'partial_fail' | 'failed' | 'skipped'
+  total_count: number
+  saved_count: number
+  fail_count: number
+  progress: number           // 0-100
+  error_message: string | null
+  started_at: string | null
+  finished_at: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+/** 日志列表响应 */
+export interface CollectLogListResponse {
+  items: CollectLog[]
+}
+
+/** 触发采集响应 */
+export interface CollectStartResponse {
+  log_id: string
+  status: string
+  service_name: string
+  facet: string
+  message: string
+}
+
+/** Service 元数据（GET /collect/catalog 列表项） */
 export interface ServiceItem {
   name: string
-  facet: string                  // 'tech' / 'capital' / 'fundamental' / 'news' / 'sentiment'
-  sub_facet: string              // 'kline' / 'moneyflow' / 'concept' ...
+  facet: string
   label: string
   description: string
   default_params: Record<string, any>
-  /** 后端推导的每个 param 的 UI schema（前端按此渲染输入控件） */
   param_schema: ParamSchema[]
   rate_limit: [string, number, number] | null
   concurrency: number
-  /** service 是否有 get() 入口（query 实时试查） */
   supports_query: boolean
-  /** 主职责：collect (入库) / realtime (实时查询不入库) / both */
-  kind: 'collect' | 'realtime' | 'both'
-  /** 实际 POST 路径 */
+  kind: 'incremental' | 'full_refresh' | 'realtime'
+  /** 增量采集（需前端提供时间范围）；true → 显示时间选择器 */
+  incremental: boolean
   path: string
-  /** 实时查询路径（supports_query=true 时才有） */
   query_path: string | null
 }
 
-/** 单个 param 的 UI schema（后端 _derive_param_schema 推导） */
+/** 单个 param 的 UI schema */
 export interface ParamSchema {
-  key: string                    // param 名称（如 'symbols' / 'trade_date'）
-  ui: ParamUiType                // 控件类型
-  required: boolean              // 是否必填
-  default?: any                  // 默认值
-  description: string            // 中文描述
-  example?: any                  // 示例值
+  key: string
+  ui: ParamUiType
+  required: boolean
+  default?: any
+  description: string
+  example?: any
 }
 
-/** UI 控件类型（后端 _infer_param_ui 定义） */
+/** UI 控件类型 */
 export type ParamUiType =
-  | 'symbols_list'      // 股票代码列表（多行文本）
-  | 'index_codes_list'  // 概念代码列表（多行文本）
-  | 'str_list'          // 通用字符串列表
-  | 'date_str'          // 日期字符串 YYYY-MM-DD
-  | 'list_status'       // L / D / P 单选
-  | 'exchange_multi'    // 交易所多选
-  | 'interval_kline'    // 分钟周期 1/5/15/30/60
-  | 'period_kline'      // 日/周/月
-  | 'bool_flag'         // 布尔开关
-  | 'minutes_int'       // 整数（回溯分钟）
-  | 'days_int'          // 整数（回溯天数）
-  | 'years_int'         // 整数（回溯年数）
-  | 'limit_int'         // 整数（限制条数）
-  | 'int'               // 通用整数
-  | 'ts_code_str'       // Tushare 代码
-  | 'symbol_str'        // 股票代码
-  | 'index_code_str'    // 概念代码
-  | 'str'               // 通用字符串
-  | 'json'              // JSON 对象（兜底）
+  | 'symbols_list' | 'index_codes_list' | 'str_list'
+  | 'date_str' | 'list_status' | 'exchange_multi'
+  | 'interval_kline' | 'period_kline' | 'bool_flag'
+  | 'minutes_int' | 'days_int' | 'years_int' | 'limit_int' | 'int'
+  | 'ts_code_str' | 'symbol_str' | 'index_code_str' | 'str' | 'json'
 
 /** Service 列表响应 */
 export interface ServiceListResponse {
@@ -76,14 +92,20 @@ export interface ServiceListResponse {
   items: ServiceItem[]
 }
 
-/** 拉一次 services（catalog 聚合） */
-export const listServices = () =>
-  http.get<ApiResponse<ServiceListResponse>>('/collect/services').then(unwrap)
+/** 采集启动 payload（删除 mode 字段） */
+export interface CollectStartPayload {
+  params: Record<string, any>
+}
 
-/**
- * 内部：缓存最近一次 listServices 的结果，用于 runService / queryService 拼路径。
- * 因为新 URL 风格是 /collect/{facet}/{name}，调用方只传 name 时需要反查 facet。
- */
+// ═══════════════════════════════════════════════════════════════════════════
+//  Catalog / Services
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** 拉 catalog */
+export const listServices = () =>
+  http.get<ApiResponse<ServiceListResponse>>('/collect/catalog').then(unwrap)
+
+/** 内部缓存 */
 let _cachedServices: ServiceItem[] | null = null
 function cacheServices(items: ServiceItem[]) {
   _cachedServices = items
@@ -97,7 +119,6 @@ function waitForServices(): Promise<ServiceItem[]> {
   if (_cachedServices && _cachedServices.length > 0) return Promise.resolve(_cachedServices)
   return new Promise((resolve) => {
     cachedResolve = resolve
-    // 兜底：若还没调过 listServices，主动拉一次
     listServices()
       .then((res) => {
         _cachedServices = res.items || []
@@ -116,8 +137,11 @@ function findServiceByName(name: string): ServiceItem | undefined {
 
 function buildPath(name: string, fallback: string): string {
   const svc = findServiceByName(name)
-  if (svc) return svc.path.replace(/^\/api/, '')  // 去掉 /api 前缀（http baseURL 已带）
-  return fallback
+  if (!svc) {
+    console.warn('[collect-manage/api] service not in cache:', name, '— using fallback:', fallback)
+    return fallback
+  }
+  return svc.path.replace(/^\/api/, '')
 }
 
 function buildQueryPath(name: string): string | null {
@@ -125,52 +149,61 @@ function buildQueryPath(name: string): string | null {
   return svc?.query_path?.replace(/^\/api/, '') ?? null
 }
 
-// 包装 listServices：拉完自动缓存（保证 useCatalog 已 mount 后再调 runService 能命中）
 export const listServicesCached = async (): Promise<ServiceItem[]> => {
   const res = await listServices()
   cacheServices(res.items || [])
   return res.items || []
 }
 
-/** 采集启动 payload（含采集模式：full = 全量 / condition = 条件） */
-export interface CollectStartPayload {
-  mode: 'full' | 'condition'
-  params: Record<string, any>
-}
+// ═══════════════════════════════════════════════════════════════════════════
+//  Collect Logs（v2 新增）
+// ═══════════════════════════════════════════════════════════════════════════
 
-/** 采集执行结果（后端 svc.collect() 返回 CollectResult.to_dict()） */
-export interface CollectRunResult {
-  total: number
-  success: number
-  fail: number
-  skip: number
-  saved: number
-  message: string
-  items?: any[]
-  [k: string]: any
-}
+/**
+ * 查询某 service 的最近采集日志
+ * @param serviceName 服务名
+ * @param limit 返回条数
+ */
+export const listCollectLogs = (serviceName: string, limit: number = 20) =>
+  http.get<ApiResponse<CollectLogListResponse>>(`/collect/logs/${serviceName}?limit=${limit}`).then(unwrap)
 
-/** 手动触发一次 service（POST /collect/{facet}/{name}） */
+/**
+ * 查询单条采集日志详情
+ * @param serviceName 服务名
+ * @param logId 日志 ID
+ */
+export const getCollectLog = (serviceName: string, logId: string) =>
+  http.get<ApiResponse<CollectLog>>(`/collect/logs/${serviceName}/${logId}`).then(unwrap)
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  触发采集
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 手动触发一次 service（POST /collect/{facet}/{name}）
+ * 返回 log_id，前端用于轮询进度
+ */
 export const runService = async (
   name: string,
-  payload: CollectStartPayload | Record<string, any> = { mode: 'condition', params: {} },
-): Promise<CollectRunResult> => {
+  payload: CollectStartPayload | Record<string, any> = { params: {} },
+): Promise<CollectStartResponse> => {
   if (!_cachedServices || _cachedServices.length === 0) {
     await waitForServices()
   }
   const path = buildPath(name, `/collect/_unknown/${name}`)
 
-  // 兼容旧调用：直接传 params dict 时自动包成 condition
-  const body: CollectStartPayload = 'params' in (payload as any) && 'mode' in (payload as any)
+  // 兼容旧调用：直接传 params dict 时自动包装
+  const body: CollectStartPayload = 'params' in (payload as any)
     ? (payload as CollectStartPayload)
-    : { mode: 'condition', params: (payload as Record<string, any>) || {} }
+    : { params: (payload as Record<string, any>) || {} }
 
-  return http
-    .post<ApiResponse<CollectRunResult>>(path, body)
+  console.log('[collect-manage/api] runService', name, '→', path, body)
+  return await http
+    .post<ApiResponse<CollectStartResponse>>(path, body)
     .then(unwrap)
 }
 
-/** service.get() 实时查询（GET /collect/query/{name}?params=<JSON>） */
+/** 实时查询 service.get() */
 export const queryService = async (
   name: string,
   params: Record<string, any> = {},
@@ -191,11 +224,9 @@ export const queryService = async (
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  聚合视图：Catalog — 由 services 列表按 facet/sub_facet 二级聚合
-//  （后端不再提供 /collect/catalog，前端自己聚）
+//  Catalog 聚合视图
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Facet 标签（前端可本地化；后端 service.facet 仍是英文 key） */
 export const FACET_LABELS: Record<string, string> = {
   tech: '技术面',
   capital: '资金面',
@@ -220,52 +251,20 @@ export const FACET_SORT: Record<string, number> = {
   sentiment: 5,
 }
 
-/** sub_facet 中文标签（前端 UI 副标题） */
-export const SUB_FACET_LABELS: Record<string, string> = {
-  kline: 'K 线',
-  adj: '复权因子',
-  suspend: '停复牌',
-  name: '名称变更',
-  dividend: '分红',
-  moneyflow: '资金流向',
-  margin: '两融',
-  top: '龙虎榜',
-  block: '大宗交易',
-  holder: '股东',
-  hsgt: '沪深港通',
-  limit: '涨跌停',
-  valuation: '估值',
-  fin: '财报',
-  stock: '基础信息',
-  concept: '概念',
-  kline_daily: 'K 线（日）',
-  kline_minute: 'K 线（分）',
-  lhb: '龙虎榜',
-  lhb_inst: '龙虎榜（机构）',
-  north_flow: '北向',
-}
-
-/** 单个 service 在 UI 目录树中的视图（由 ServiceItem 派生） */
+/** 单个 service 在 UI 目录树中的视图 */
 export interface CatalogItem {
   service_name: string
   label: string
   description: string
   default_params: Record<string, any>
-  /** 后端推导的 param UI schema（CollectActionCard 用） */
   param_schema: ParamSchema[]
-  /** service 是否有 get() 入口（query 入口） */
   supports_query: boolean
-  /** 主职责：collect / realtime / both */
-  kind: 'collect' | 'realtime' | 'both'
-  /** facet（tech/capital/...） */
+  kind: 'incremental' | 'full_refresh' | 'realtime'
+  /** 增量采集标志（true → 前端显示时间选择器） */
+  incremental: boolean
   facet: string
-  /** sub_facet（kline/...） */
-  sub_facet: string
-  /** 实际 POST 路径（去掉 /api 前缀，http baseURL 已带） */
   path: string
-  /** 实时查询路径 */
   query_path: string | null
-  /** 后端限速 [source, max_count, window_seconds] */
   rate_limit: [string, number, number] | null
 }
 
@@ -274,16 +273,14 @@ export interface CatalogGroup {
   label: string
   icon: string
   sort_order: number
-  sub_groups: Record<string, CatalogItem[]>
+  /** 扁平 service 列表（按 label 排序） */
+  items: CatalogItem[]
 }
 
 export interface Catalog {
   items: CatalogGroup[]
 }
 
-/**
- * 把 service 列表聚合成 facet / sub_facet 二级树。
- */
 export function buildCatalog(services: ServiceItem[]): Catalog {
   const groups = new Map<string, CatalogGroup>()
   for (const s of services) {
@@ -294,26 +291,28 @@ export function buildCatalog(services: ServiceItem[]): Catalog {
         label: FACET_LABELS[facetKey] || facetKey,
         icon: FACET_ICONS[facetKey] || 'Grid',
         sort_order: FACET_SORT[facetKey] ?? 99,
-        sub_groups: {},
+        items: [],
       })
     }
     const g = groups.get(facetKey)!
-    const subKey = s.sub_facet || 'other'
-    if (!g.sub_groups[subKey]) g.sub_groups[subKey] = []
-    g.sub_groups[subKey].push({
+    g.items.push({
       service_name: s.name,
       label: s.label || s.name,
       description: s.description || '',
       default_params: s.default_params || {},
       param_schema: s.param_schema || [],
       supports_query: !!s.supports_query,
-      kind: s.kind || (s.supports_query ? 'both' : 'collect'),
+      kind: s.kind || (s.supports_query ? 'realtime' : 'full_refresh'),
+      incremental: !!s.incremental,
       facet: s.facet,
-      sub_facet: s.sub_facet,
       path: s.path,
       query_path: s.query_path,
       rate_limit: s.rate_limit || null,
     })
+  }
+  // 组内按 label 排序
+  for (const g of groups.values()) {
+    g.items.sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
   }
   return {
     items: Array.from(groups.values()).sort(

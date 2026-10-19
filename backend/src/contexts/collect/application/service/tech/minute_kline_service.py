@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from contexts.collect.application.service.base import CollectResult
+from contexts.collect.application.service.base import CollectResult, ServiceKind, ServiceMeta
 from contexts.collect.infrastructure.fetcher.tech.MinuteKlinePytdxFetcher import (
     MinuteKlinePytdxFetcher,
 )
@@ -18,12 +18,25 @@ logger = logging.getLogger(__name__)
 
 class MinuteKlineService:
     """分钟 K 线 service（Pytdx 实时查询，无 collect/写库）"""
+
+    META = ServiceMeta(
+        name='minute_kline',
+        facet='tech',
+        label='分钟 K 线',
+        description='通达信 1/5/15/30/60 分钟 K 线（实时）',
+        kind=ServiceKind.REALTIME,
+    )
     name = "minute_kline"
     facet = "tech"
     sub_facet = "kline_minute"
     label = "分钟 K 线"
     description = "通达信 1/5/15/30/60 分钟 K 线（实时）"
     DEFAULT_PARAMS = {"symbol": None, "interval": "5min", "days": 1}
+    UI_SCHEMA = [
+        {"key": "symbol",   "ui": "symbol_str",     "label": "股票代码", "required": True, "placeholder": "000001"},
+        {"key": "interval", "ui": "interval_kline", "label": "分钟周期", "required": True},
+        {"key": "days",     "ui": "days_int",       "label": "回溯天数", "required": True},
+    ]
     RATE_LIMIT = ("pytdx", 60, 60)
     CONCURRENCY = 1
 

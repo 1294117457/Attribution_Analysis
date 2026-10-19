@@ -1,13 +1,14 @@
-"""fundamental routes — 基本面 12 个 service 对应 12 个 route（含 4 个概念 + 1 个股票基本信息）
+"""fundamental routes — 基本面 12 个 service 对应 12 个 route
 
-URL 风格：POST /collect/fundamental/{service_name}
+Phase3：内联 CollectBody → DTO CollectRequest / CollectResponse
 """
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
 
 from shared.interface import _response as R
+from contexts.collect.interface.dto.request.collect import CollectRequest
+from contexts.collect.interface.dto.response.collect import CollectResponse
 from contexts.collect.infrastructure.di.collect_service import (
     get_daily_basic_service,
     get_fin_income_service,
@@ -26,80 +27,98 @@ from contexts.collect.infrastructure.di.collect_service import (
 router = APIRouter(prefix="/collect/fundamental", tags=["采集-基本面"])
 
 
-class CollectBody(BaseModel):
-    """采集请求体
+async def _run(svc, body: CollectRequest) -> CollectResponse:
+    """统一执行：mode 不进 params（业务字段纯净）
 
-    新格式：{"mode": "full" | "condition", "params": {...}}
-    旧格式：{"params": {...}}    兼容：mode 默认为 condition
+    Phase 2：所有 service.collect() 都返回 dict，两种形态：
+      A) 异步派发：{"log_id": ..., "status": "pending"}
+      B) 同步结果：{"saved": N, "fail": N, "total": N, "skip": N, "message": ...}
+        （B 通常来自 INCREMENTAL/FULL_REFRESH 还没升级的 service）
+
+    mode 仅作采集模式（full/condition）的 HTTP 字段，不再注入 params。
+    service 内部如需识别模式，从 service.META.kind 派生。
     """
-    mode: str = "condition"
-    params: dict = Field(default_factory=dict)
+    result = await svc.collect(body.params)
+    if not isinstance(result, dict):
+        # 兼容旧 service 返回 CollectResult dataclass
+        result = {
+            "total": getattr(result, "total", 0),
+            "success": getattr(result, "success", 0),
+            "fail": getattr(result, "fail", 0),
+            "skip": getattr(result, "skip", 0),
+            "saved": getattr(result, "saved", 0),
+            "message": getattr(result, "message", ""),
+        }
+    return CollectResponse(
+        total=result.get("total", 0),
+        success=result.get("success", 0),
+        fail=result.get("fail", 0),
+        skip=result.get("skip", 0),
+        saved=result.get("saved", 0),
+        message=result.get("message", ""),
+        log_id=result.get("log_id"),
+        status=result.get("status"),
+    )
 
 
-async def _run(svc, body: CollectBody):
-    """统一执行：把 mode 合并进 params（让 RunLog.params 能被前端解析为采集模式）"""
-    merged = {**body.params, "mode": body.mode}
-    return R.ok((await svc.collect(merged)).to_dict())
+@router.post("/daily_basic", response_model=CollectResponse, summary="每日估值")
+async def daily_basic_trigger(body: CollectRequest, svc=Depends(get_daily_basic_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/daily_basic", summary="每日估值采集")
-async def daily_basic_trigger(body: CollectBody, svc=Depends(get_daily_basic_service)):
-    return await _run(svc, body)
+@router.post("/fin_income", response_model=CollectResponse, summary="利润表")
+async def fin_income_trigger(body: CollectRequest, svc=Depends(get_fin_income_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/fin_income", summary="利润表采集（按 symbol 批量）")
-async def fin_income_trigger(body: CollectBody, svc=Depends(get_fin_income_service)):
-    return await _run(svc, body)
+@router.post("/top10_holders", response_model=CollectResponse, summary="前 10 大股东")
+async def top10_holders_trigger(body: CollectRequest, svc=Depends(get_top10_holders_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/top10_holders", summary="前 10 大股东采集（按 symbol 批量）")
-async def top10_holders_trigger(body: CollectBody, svc=Depends(get_top10_holders_service)):
-    return await _run(svc, body)
+@router.post("/top10_floatholders", response_model=CollectResponse, summary="前 10 大流通股东")
+async def top10_float_trigger(body: CollectRequest, svc=Depends(get_top10_float_holders_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/top10_floatholders", summary="前 10 大流通股东采集（按 symbol 批量）")
-async def top10_floatholders_trigger(body: CollectBody, svc=Depends(get_top10_float_holders_service)):
-    return await _run(svc, body)
+@router.post("/dividend", response_model=CollectResponse, summary="分红送股")
+async def dividend_trigger(body: CollectRequest, svc=Depends(get_dividend_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/dividend", summary="分红送股采集（按 symbol 批量）")
-async def dividend_trigger(body: CollectBody, svc=Depends(get_dividend_service)):
-    return await _run(svc, body)
+@router.post("/stock_basic", response_model=CollectResponse, summary="股票基本信息")
+async def stock_basic_trigger(body: CollectRequest, svc=Depends(get_stock_basic_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/stock_basic", summary="股票基本信息采集")
-async def stock_basic_trigger(body: CollectBody, svc=Depends(get_stock_basic_service)):
-    return await _run(svc, body)
+@router.post("/stock_concepts", response_model=CollectResponse, summary="股票所属概念")
+async def stock_concepts_trigger(body: CollectRequest, svc=Depends(get_stock_concepts_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/stock_concepts", summary="股票所属概念采集（按 symbol 批量）")
-async def stock_concepts_trigger(body: CollectBody, svc=Depends(get_stock_concepts_service)):
-    return await _run(svc, body)
+@router.post("/concept_list", response_model=CollectResponse, summary="概念清单")
+async def concept_list_trigger(body: CollectRequest, svc=Depends(get_concept_list_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/concept_list", summary="概念清单采集")
-async def concept_list_trigger(body: CollectBody, svc=Depends(get_concept_list_service)):
-    return await _run(svc, body)
+@router.post("/concept_members", response_model=CollectResponse, summary="概念成分股")
+async def concept_members_trigger(body: CollectRequest, svc=Depends(get_concept_members_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/concept_members", summary="概念成分股采集（按 index_code 批量）")
-async def concept_members_trigger(body: CollectBody, svc=Depends(get_concept_members_service)):
-    return await _run(svc, body)
+@router.post("/concept_index_daily", response_model=CollectResponse, summary="概念指数日 K")
+async def concept_index_daily_trigger(body: CollectRequest, svc=Depends(get_concept_index_daily_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/concept_index_daily", summary="概念指数日 K 采集（按 index_code 批量）")
-async def concept_index_daily_trigger(body: CollectBody, svc=Depends(get_concept_index_daily_service)):
-    return await _run(svc, body)
+@router.post("/concept_minute", response_model=CollectResponse, summary="概念分时")
+async def concept_minute_trigger(body: CollectRequest, svc=Depends(get_concept_minute_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/concept_minute", summary="概念实时分时采集")
-async def concept_minute_trigger(body: CollectBody, svc=Depends(get_concept_minute_service)):
-    return await _run(svc, body)
-
-
-@router.post("/concept_snapshot", summary="概念行情快照采集")
-async def concept_snapshot_trigger(body: CollectBody, svc=Depends(get_concept_snapshot_service)):
-    return await _run(svc, body)
+@router.post("/concept_snapshot", response_model=CollectResponse, summary="概念行情快照")
+async def concept_snapshot_trigger(body: CollectRequest, svc=Depends(get_concept_snapshot_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
 __all__ = ["router"]

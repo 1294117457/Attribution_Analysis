@@ -1,4 +1,4 @@
-"""采集 service 抽象（step7 重构）
+"""采集 service 抽象（step7 重构 + 采集日志进度优化）
 
 替代旧 BaseCollectTask / CollectService 模式：
 - 不再有"task" 概念
@@ -7,21 +7,69 @@
 - fetcher 只负责调 SDK
 
 替代历史：
-  - 原 BaseCollectTask（task.py）           ← 删
-  - 原 CollectRunner.execute               ← 删
-  - 原 CollectManageService                ← 删
-  - 原 5 装饰器（Metrics/Retry/Throttle/Cache/Validate） ← 删
+    - 原 BaseCollectTask（task.py）           ← 删
+    - 原 CollectRunner.execute               ← 删
+    - 原 CollectManageService                ← 删
+    - 原 5 装饰器（Metrics/Retry/Throttle/Cache/Validate） ← 删
 
 参考文档：docs/backend-docs/dev/step7/01采集重构/01-精简方案总览.md §1
+
+v2 (2026-10-19): 采集日志进度优化
+    - 新增 ServiceMeta dataclass，统一元数据管理
+    - 新增 ServiceKind 枚举（incremental/full_refresh/realtime）
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
+from enum import Enum
 from typing import Any, ClassVar, Optional, Protocol
 
 # 业务级异常从 domain；port 契约错误（限流/源不可用）仍从 port
 from contexts.collect.application.port.errors import RateLimited, SourceUnavailable
 from contexts.collect.domain import InvalidParams, NotSupported
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# ServiceMeta：统一元数据（v2 新增）
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class ServiceKind(Enum):
+    """采集服务类型，决定 UI 展示和触发方式"""
+    INCREMENTAL = "incremental"     # 增量入库，需要时间范围（如日K）
+    FULL_REFRESH = "full_refresh"  # 全量覆盖，无时间范围（如股票基本信息）
+    REALTIME = "realtime"           # 实时查询，不入库（如分K）
+
+
+@dataclass
+class ServiceMeta:
+    """采集 service 的统一元数据
+
+    用于替代散落的 class 属性（name/facet/label），
+    统一在 META 类属性中声明。
+    """
+    # ── 标识 ──────────────────────────────────────
+    name: str                                       # 全局唯一标识
+    facet: str                                      # 大类（tech / capital / fundamental / news / sentiment）
+    label: str = ""                                 # 前端展示名
+    description: str = ""                           # 描述（可选）
+
+    # ── 采集行为 ──────────────────────────────────
+    kind: ServiceKind = ServiceKind.INCREMENTAL
+
+    # ── 自动派生 ──────────────────────────────────
+    @property
+    def path(self) -> str:
+        return f"/collect/{self.facet}/{self.name}"
+
+    @property
+    def query_path(self) -> str | None:
+        return f"/collect/query/{self.name}"
+
+    @property
+    def supports_query(self) -> bool:
+        return self.kind == ServiceKind.REALTIME
 
 
 @dataclass(frozen=True)
@@ -74,6 +122,18 @@ class CollectService(Protocol):
     DEFAULT_PARAMS: ClassVar[dict] = {}
     RATE_LIMIT: ClassVar[Optional[tuple[str, int, int]]] = None
     CONCURRENCY: ClassVar[int] = 1
+
+    # ── UI schema (catalog 方案 B) ────────────────────────────────
+    # 每个 service 显式声明：参数用什么控件渲染 / label / placeholder / required / help
+    # 前端 CollectActionCard.vue 直接消费，不再走 _infer_param_ui 推断
+    # 示例：
+    #   UI_SCHEMA = [
+    #     {"key": "ts_code",    "ui": "ts_code_str",   "label": "Tushare 代码",
+    #      "required": False, "placeholder": "000001.SZ", "help": "..."},
+    #     {"key": "start_date", "ui": "date_str",      "label": "开始日期"},
+    #     {"key": "end_date",   "ui": "date_str",      "label": "结束日期"},
+    #   ]
+    UI_SCHEMA: ClassVar[list[dict]] = []
 
     async def collect(self, params: dict) -> CollectResult:
         ...

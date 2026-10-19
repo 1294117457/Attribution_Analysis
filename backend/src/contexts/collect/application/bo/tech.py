@@ -17,7 +17,8 @@ class BaseAdjFactorBO(BaseModel):
 class BaseSuspendBO(BaseModel):
     symbol: str
     trade_date: date
-    suspend_timing: Optional[date] = None
+    # §2.1 修复：Tushare 文档 suspend_timing 是字符串（如 "09:30-10:00"），不是 date
+    suspend_timing: Optional[str] = None
     suspend_type: Optional[str] = None
 
 
@@ -43,6 +44,9 @@ class BaseDividendBO(BaseModel):
     stk_co_rate: Optional[float] = None
     cash_div: Optional[float] = None
     cash_div_tax: Optional[float] = None
+    # §2.8 补 Tushare dividend 文档字段
+    div_listdate: Optional[date] = None     # 红股上市日
+    imp_ann_date: Optional[date] = None     # 实施公告日
 
 
 __all__ = [

@@ -1,11 +1,12 @@
 <!--
-  CollectTaskPane.vue — 采集管理右侧主区（step7 简化版）
+  CollectTaskPane.vue — 采集管理右侧主区（v2 采集日志进度优化）
 
-  简化前：CollectActionCard + 大日志表 + 分页 + 进度轮询
-  简化后：CollectActionCard（采集模式 + 条件 + 开始采集）+ 最近一次执行结果摘要
-  ── 运行日志 / 进度轮询 / 重跑 / 取消：暂不做（占位即可）
+  v2 新增功能：
+    - 触发采集后立即返回 log_id，前端开始轮询进度
+    - 实时显示采集进度条、已保存数、失败数
+    - 日志列表展示历史采集记录
 
-  实时 service（kind=realtime 或 both）走 RealtimePanel；其他走 CollectActionCard。
+  实时 service（kind=realtime）走 RealtimePanel；其他走 CollectActionCard + 进度展示。
 -->
 <template>
   <main class="task-pane">
@@ -26,101 +27,191 @@
         @start="runServiceAndWait(serviceName, $event)"
       />
 
-      <!-- 最近一次执行结果（成功/失败 一次性返回） -->
-      <div v-if="lastResult" class="result-card">
-        <div class="result-card__title">
-          <el-icon :color="lastResultColor" class="mr-1">
-            <component :is="lastResultIcon" />
-          </el-icon>
-          最近一次执行结果
-        </div>
-        <div class="result-card__stats">
-          <span class="stat"><b class="text-green-600">{{ lastResult.success ?? 0 }}</b> 成功</span>
-          <span class="stat"><b class="text-red-500">{{ lastResult.fail ?? 0 }}</b> 失败</span>
-          <span class="stat"><b class="text-gray-500">{{ lastResult.skip ?? 0 }}</b> 跳过</span>
-          <span class="stat"><b>{{ lastResult.saved ?? 0 }}</b> 写入</span>
-          <span class="stat"><b>{{ lastResult.total ?? 0 }}</b> 总数</span>
-        </div>
-        <div v-if="lastResult.message" class="result-card__msg">
-          {{ lastResult.message }}
-        </div>
-        <div v-if="lastResultItems.length > 0" class="result-card__items">
-          <div class="result-card__items-title">返回数据（前 5 条）</div>
-          <pre class="result-card__items-body">{{ JSON.stringify(lastResultItems, null, 2) }}</pre>
-        </div>
-      </div>
+      <!-- 采集进度卡片（v2 新增） -->
+      <CollectProgressCard
+        v-if="activeLog"
+        :log="activeLog"
+        @stop="stopPolling"
+      />
+
+      <!-- 采集历史日志列表（v2 新增） -->
+      <CollectLogList
+        :logs="logs"
+        :active-log-id="activeLogId"
+        @select="onSelectLog"
+      />
     </template>
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { CircleClose, CircleCheck, InfoFilled } from '@element-plus/icons-vue'
 
 import CollectActionCard from './CollectActionCard.vue'
 import RealtimePanel from './RealtimePanel.vue'
-import type { CatalogItem, CollectStartPayload } from '../api'
-import { runService } from '../api'
+import CollectProgressCard from './CollectProgressCard.vue'
+import CollectLogList from './CollectLogList.vue'
+import type { CatalogItem, CollectStartPayload, CollectLog } from '../api'
+import { runService, listCollectLogs } from '../api'
+
+const LOG_PREFIX = '[CollectTaskPane]'
+const POLL_INTERVAL = 2000  // 轮询间隔 2 秒
 
 const props = defineProps<{
   serviceName: string
   item: CatalogItem | null | undefined
 }>()
 
-/** 实时 = kind='realtime'（纯实时，不入库）
- *  - kind='collect' : 走 CollectActionCard（开始采集）
- *  - kind='both'    : 也走 CollectActionCard（开始采集 + 试查入口由 Card 自身处理）
- *  - kind='realtime': 走 RealtimePanel（只显示试查，没有开始采集按钮）
- */
+/** 实时 = kind='realtime'（纯实时，不入库） */
 const isRealtime = computed(() => props.item?.kind === 'realtime')
 
-// ── 最近一次执行结果（本地状态，无后端持久化） ─────────────
-const lastResult = ref<any>(null)
+// ── 采集状态 ──────────────────────────────────────────────
 const running = ref(false)
+const activeLogId = ref<string | null>(null)
+const logs = ref<CollectLog[]>([])
+const activeLog = computed(() =>
+  logs.value.find(l => l.id === activeLogId.value) ?? null
+)
 
-const lastResultColor = computed(() => {
-  const r = lastResult.value
-  if (!r) return '#94a3b8'
-  if (r.fail > 0) return '#ef4444'
-  if (r.success > 0) return '#22c55e'
-  return '#3b82f6'
+// ── 轮询控制 ──────────────────────────────────────────────
+let pollTimer: ReturnType<typeof setTimeout> | null = null
+const polling = ref(false)
+
+// ── 初始化：加载日志列表 + 恢复轮询 ──────────────────────
+onMounted(async () => {
+  await loadLogs()
+  await resumePollingIfNeeded()
 })
 
-const lastResultIcon = computed(() => {
-  const r = lastResult.value
-  if (!r) return InfoFilled
-  if (r.fail > 0) return CircleClose
-  return CircleCheck
+// service 切换时重新加载日志
+watch(() => props.serviceName, async () => {
+  stopPolling()
+  activeLogId.value = null
+  await loadLogs()
+  await resumePollingIfNeeded()
 })
 
-const lastResultItems = computed<any[]>(() => {
-  const items = lastResult.value?.items
-  if (Array.isArray(items)) return items.slice(0, 5)
-  return []
-})
+/** 加载日志列表 */
+async function loadLogs() {
+  if (!props.serviceName) return
+  try {
+    const res = await listCollectLogs(props.serviceName, 20)
+    logs.value = res.items || []
+  } catch (e) {
+    console.error(LOG_PREFIX, 'loadLogs error:', e)
+  }
+}
 
-/** 触发一次 service.collect()（带 mode + params） */
+/** 如果有待采集的日志（pending/running），恢复轮询 */
+async function resumePollingIfNeeded() {
+  const active = logs.value.find(
+    l => l.status === 'pending' || l.status === 'running'
+  )
+  if (active) {
+    console.log(LOG_PREFIX, '发现进行中的采集任务，恢复轮询:', active.id)
+    activeLogId.value = active.id
+    startPolling()
+  }
+}
+
+/** 开始轮询 */
+function startPolling() {
+  if (polling.value) return
+  polling.value = true
+  pollProgress()
+}
+
+/** 停止轮询 */
+function stopPolling() {
+  polling.value = false
+  if (pollTimer) {
+    clearTimeout(pollTimer)
+    pollTimer = null
+  }
+}
+
+/** 轮询进度 */
+async function pollProgress() {
+  if (!polling.value || !props.serviceName) return
+
+  try {
+    const res = await listCollectLogs(props.serviceName, 50)
+    const latestLogs = res.items || []
+
+    // 更新本地日志列表
+    for (const log of latestLogs) {
+      const idx = logs.value.findIndex(l => l.id === log.id)
+      if (idx >= 0) {
+        logs.value[idx] = log
+      } else {
+        // 新日志加入列表
+        logs.value.unshift(log)
+        if (logs.value.length > 20) logs.value.pop()
+      }
+    }
+
+    // 找到当前 activeLogId 对应的最新状态
+    const currentLog = latestLogs.find(l => l.id === activeLogId.value)
+
+    // 终态停止轮询
+    if (currentLog && ['success', 'partial_fail', 'failed', 'skipped'].includes(currentLog.status)) {
+      console.log(LOG_PREFIX, '采集完成，停止轮询:', currentLog.status)
+      stopPolling()
+
+      // 提示用户
+      if (currentLog.status === 'success') {
+        ElMessage.success(`采集完成：已保存 ${currentLog.saved_count} 条`)
+      } else if (currentLog.status === 'partial_fail') {
+        ElMessage.warning(`采集完成：成功 ${currentLog.saved_count} 条，失败 ${currentLog.fail_count} 条`)
+      } else if (currentLog.status === 'failed') {
+        ElMessage.error(`采集失败：${currentLog.error_message || '未知错误'}`)
+      }
+    }
+  } catch (e) {
+    console.error(LOG_PREFIX, 'pollProgress error:', e)
+  }
+
+  // 继续轮询
+  if (polling.value) {
+    pollTimer = setTimeout(pollProgress, POLL_INTERVAL)
+  }
+}
+
+/** 选择日志 */
+function onSelectLog(log: CollectLog) {
+  activeLogId.value = log.id
+  if (log.status === 'pending' || log.status === 'running') {
+    startPolling()
+  } else {
+    stopPolling()
+  }
+}
+
+/** 触发采集 */
 async function runServiceAndWait(
   serviceName: string,
   payload: CollectStartPayload,
 ) {
-  console.log('[CollectTaskPane] runService', serviceName, payload)
+  console.log(LOG_PREFIX, 'runService', serviceName, payload)
   running.value = true
+  stopPolling()  // 先停止当前轮询
+
   try {
     const res = await runService(serviceName, payload)
-    lastResult.value = res
-    ElMessage.success(res?.message || '采集完成')
+    console.log(LOG_PREFIX, 'runService result:', res)
+
+    // 设置 activeLogId 开始轮询
+    activeLogId.value = res.log_id
+
+    // 重新加载日志列表（把新日志加进去）
+    await loadLogs()
+
+    // 开始轮询
+    startPolling()
   } catch (e: any) {
-    lastResult.value = {
-      success: 0,
-      fail: 1,
-      skip: 0,
-      saved: 0,
-      total: 1,
-      message: e?.response?.data?.message || e?.message || '采集失败',
-    }
-    ElMessage.error(lastResult.value.message)
+    console.error(LOG_PREFIX, 'runService error:', e)
+    ElMessage.error(e?.response?.data?.message || e?.message || '采集失败')
   } finally {
     running.value = false
   }
@@ -148,70 +239,5 @@ async function runServiceAndWait(
   text-align: center;
   color: #94a3b8;
   font-size: 13px;
-}
-
-/* ── 最近一次执行结果卡片 ── */
-.result-card {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 12px 16px;
-  flex-shrink: 0;
-}
-
-.result-card__title {
-  display: flex;
-  align-items: center;
-  font-size: 13px;
-  font-weight: 600;
-  color: #1e293b;
-  margin-bottom: 8px;
-}
-
-.result-card__stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  font-size: 13px;
-  color: #475569;
-  margin-bottom: 8px;
-}
-
-.result-card__stats .stat b {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 14px;
-  margin-right: 2px;
-}
-
-.result-card__msg {
-  font-size: 12px;
-  color: #64748b;
-  background: #f8fafc;
-  padding: 6px 10px;
-  border-radius: 4px;
-  border-left: 3px solid #94a3b8;
-}
-
-.result-card__items {
-  margin-top: 8px;
-}
-
-.result-card__items-title {
-  font-size: 12px;
-  color: #475569;
-  font-weight: 500;
-  margin-bottom: 4px;
-}
-
-.result-card__items-body {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
-  background: #0f172a;
-  color: #e2e8f0;
-  padding: 8px 10px;
-  border-radius: 4px;
-  max-height: 200px;
-  overflow: auto;
-  margin: 0;
 }
 </style>

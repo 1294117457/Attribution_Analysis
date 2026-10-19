@@ -15,6 +15,10 @@ from shared.infrastructure.di.db_session import (
     get_raw_db_context,
 )
 from shared.infrastructure.di.redis_session import close_redis, get_redis
+from shared.infrastructure.connection.db_factory import (
+    db_session_factory,
+    raw_session_factory,
+)
 
 __all__ = [
     # db_session
@@ -25,4 +29,7 @@ __all__ = [
     # redis_session
     "get_redis",
     "close_redis",
+    # db_factory
+    "db_session_factory",
+    "raw_session_factory",
 ]

@@ -1,4 +1,15 @@
-"""NewsTushareFetcher：新闻快讯（Tushare news）—— step7 重构版"""
+"""NewsTushareFetcher：新闻快讯（Tushare news）—— 字段对齐 §1.6
+
+接口：Tushare pro.news
+⚠️ pro.news 需单独开通权限（5000+ 积分）；fetcher 增加权限检测
+
+输出字段（对齐 Tushare news 文档）:
+    datetime  → published_at
+    content   → content
+    title     → title
+    channels  → channels
+    (Tushare 文档返回的) ts_code 关联 → symbols 列表
+"""
 from __future__ import annotations
 
 import logging
@@ -9,7 +20,7 @@ import pandas as pd
 from pydantic import BaseModel
 
 from contexts.collect.infrastructure.fetcher.base import BaseFetcher
-from contexts.collect.infrastructure.connect.tushare_client import get_tushare_client
+from contexts.collect.infrastructure.connect.tushare_client import get_tushare_client, TushareClient
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +35,12 @@ class NewsTushareFetcher(BaseFetcher):
 
     async def fetch(self, **params) -> list[BaseModel]:
         minutes: int = int(params.get("minutes", 30))
-        df = await self._tushare.query("news")
+        try:
+            df = await self._tushare.query("news")
+        except Exception as e:
+            # §1.6 pro.news 需单独权限；捕获异常并打日志，不抛错
+            logger.warning("Tushare pro.news 调用失败（可能权限未开通）: %r", e)
+            return []
         if df is None or df.empty:
             return []
         cutoff = datetime.now() - timedelta(minutes=minutes)
@@ -34,24 +50,33 @@ class NewsTushareFetcher(BaseFetcher):
         out = []
         for _, row in df.iterrows():
             try:
-                pub_time = datetime.fromisoformat(str(row["datetime"]).replace("Z", "+00:00"))
+                raw_dt = row.get("datetime")
+                if pd.isna(raw_dt):
+                    continue
+                pub_time = datetime.fromisoformat(str(raw_dt).replace("Z", "+00:00"))
                 if pub_time < cutoff:
                     continue
             except Exception:
                 continue
             out.append({
-                "published_at": pub_time.isoformat(),
-                "title": str(row.get("title", "")),
+                # §1.6 字段对齐 Tushare news 文档
+                "published_at": str(pub_time.isoformat()),
+                "title": str(row.get("title", "")) if pd.notna(row.get("title")) else "",
                 "content": str(row.get("content", "")) if pd.notna(row.get("content")) else None,
                 "source": str(row.get("source", "")) if pd.notna(row.get("source")) else None,
                 "url": str(row.get("url", "")) if pd.notna(row.get("url")) else None,
-                "symbols": self._parse_symbols(row.get("ts_codes", "")),
+                # §1.6 文档字段叫 channels（频道），并尝试从 ts_code 关联提取 symbols
+                "channels": str(row.get("channels", "")) if pd.notna(row.get("channels")) else None,
+                "symbols": self._parse_symbols(row.get("ts_code")),
                 "category": self._infer_category(str(row.get("title", ""))),
+                # sentiment 字段占位（后续 AI 分类）
+                "sentiment": None,
             })
         return out
 
     @staticmethod
     def _parse_symbols(codes) -> list[str]:
+        """§1.6 兼容：尝试多种字段名（ts_code / ts_codes / symbols）"""
         if not codes:
             return []
         if isinstance(codes, list):

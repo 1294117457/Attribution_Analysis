@@ -8,19 +8,23 @@ import logging
 from datetime import date
 from typing import Iterable
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.infrastructure.connection.db_factory import db_session_factory
 from contexts.market.infrastructure.persistence.models.stock_info import StockInfoDB
 
 logger = logging.getLogger(__name__)
 
 
 class StockInfoRepository:
-    """股票基本信息仓储（直接 upsert）"""
+    """股票基本信息仓储（直接 upsert / replace_all）
 
-    async def save_batch(self, rows: list[dict]) -> int:
+    所有方法接受 session: AsyncSession 入参（由 service 工厂注入或 Depends 入口），
+    不再自己 async with db_session_factory()。
+    """
+
+    async def save_batch(self, rows: list[dict], session: AsyncSession) -> int:
         """批量 upsert；返回受影响行数
 
         rows 每条 dict 必须含 symbol，其它字段可选
@@ -47,47 +51,104 @@ class StockInfoRepository:
             clean.append(row)
         if not clean:
             return 0
-        async with db_session_factory() as session:
-            stmt = pg_insert(StockInfoDB).values(clean)
-            # symbol 冲突时全列更新（None 仍会覆盖旧值，符合 upsert 语义）
-            update_cols = {c.name: stmt.excluded[c.name] for c in StockInfoDB.__table__.columns
-                           if c.name not in ("id", "symbol", "created_at", "updated_at")}
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["symbol"],
-                set_=update_cols,
+        stmt = pg_insert(StockInfoDB).values(clean)
+        # symbol 冲突时全列更新（None 仍会覆盖旧值，符合 upsert 语义）
+        update_cols = {c.name: stmt.excluded[c.name] for c in StockInfoDB.__table__.columns
+                       if c.name not in ("id", "symbol", "created_at", "updated_at")}
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["symbol"],
+            set_=update_cols,
+        )
+        result = await session.execute(stmt)
+        return result.rowcount or len(clean)
+
+    async def replace_all(
+        self,
+        rows: list[dict],
+        list_status: str,
+        session: AsyncSession,
+    ) -> int:
+        """FULL_REFRESH：同 list_status 子集整体覆盖（事务内 DELETE + INSERT）
+
+        语义：清空 list_status=? 的所有行，INSERT 新行。
+        典型用途：stock_basic 每次"全市场最新"覆盖。
+
+        注意：
+          - 只覆盖传入的 list_status 子集，不动其他子集
+            （如传 L 时 D / P 不动）
+          - 入参 rows 缺字段按 None 补齐（与 save_batch 一致）
+          - symbol 必填，无效行跳过
+          - 事务由调用方管理（service 层 session 已在事务中）
+
+        Returns:
+            实际写入行数
+        """
+        # 1. DELETE 旧子集
+        await session.execute(
+            delete(StockInfoDB).where(StockInfoDB.list_status == list_status)
+        )
+
+        if not rows:
+            logger.info(
+                "[replace_all] list_status=%s, 0 rows → DELETE 0 行（无 INSERT）",
+                list_status,
             )
-            result = await session.execute(stmt)
-            await session.commit()
-            return result.rowcount or len(clean)
+            return 0
 
-    async def find(self, symbol: str) -> dict | None:
-        async with db_session_factory() as session:
-            row = await session.get(StockInfoDB, symbol)
-            if row is None:
-                return None
-            return self._to_dict(row)
+        # 2. 补齐列（缺则 None）
+        all_cols = [
+            c.name for c in StockInfoDB.__table__.columns
+            if c.name not in ("id", "created_at", "updated_at")
+        ]
+        clean: list[dict] = []
+        for r in rows:
+            if "symbol" not in r or r["symbol"] is None:
+                continue
+            row = {col: r.get(col) for col in all_cols}
+            row["symbol"] = str(row["symbol"]).zfill(6)
+            # list_status 强制对齐（防止 BO 里写错）
+            row["list_status"] = list_status
+            clean.append(row)
 
-    async def list_symbols(self, list_status: str = "L") -> list[str]:
-        async with db_session_factory() as session:
-            rows = (await session.execute(
-                select(StockInfoDB.symbol)
-                .where(StockInfoDB.list_status == list_status)
-                .order_by(StockInfoDB.symbol)
-            )).all()
-            return [r[0] for r in rows]
+        if not clean:
+            return 0
+
+        # 3. INSERT 新子集（bulk_insert_mappings 走 executemany，高效）
+        await session.execute(StockInfoDB.__table__.insert(), clean)
+
+        logger.info(
+            "[replace_all] list_status=%s, 写入 %d 行",
+            list_status, len(clean),
+        )
+        return len(clean)
+
+    async def find(self, symbol: str, session: AsyncSession) -> dict | None:
+        row = await session.get(StockInfoDB, symbol)
+        if row is None:
+            return None
+        return self._to_dict(row)
+
+    async def list_symbols(
+        self, session: AsyncSession, list_status: str = "L",
+    ) -> list[str]:
+        rows = (await session.execute(
+            select(StockInfoDB.symbol)
+            .where(StockInfoDB.list_status == list_status)
+            .order_by(StockInfoDB.symbol)
+        )).all()
+        return [r[0] for r in rows]
 
     async def list_dates(
-        self, symbols: Iterable[str],
+        self, symbols: Iterable[str], session: AsyncSession,
     ) -> dict[str, date | None]:
         symbols = list(symbols)
         if not symbols:
             return {}
-        async with db_session_factory() as session:
-            rows = (await session.execute(
-                select(StockInfoDB.symbol, StockInfoDB.list_date)
-                .where(StockInfoDB.symbol.in_(symbols))
-            )).all()
-            return {r[0]: r[1] for r in rows}
+        rows = (await session.execute(
+            select(StockInfoDB.symbol, StockInfoDB.list_date)
+            .where(StockInfoDB.symbol.in_(symbols))
+        )).all()
+        return {r[0]: r[1] for r in rows}
 
     @staticmethod
     def _to_dict(r) -> dict:
@@ -95,6 +156,9 @@ class StockInfoRepository:
             "symbol": r.symbol,
             "ts_code": r.ts_code,
             "name": r.name,
+            "fullname": getattr(r, "fullname", None),
+            "enname": getattr(r, "enname", None),
+            "cnspell": getattr(r, "cnspell", None),
             "area": r.area,
             "industry": r.industry,
             "market": r.market,
@@ -106,6 +170,7 @@ class StockInfoRepository:
             "total_shares": r.total_shares,
             "act_name": r.act_name,
             "act_ent_type": r.act_ent_type,
+            "curr_type": getattr(r, "curr_type", None),
         }
 
 

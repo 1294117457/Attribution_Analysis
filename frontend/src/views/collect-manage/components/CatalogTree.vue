@@ -1,7 +1,7 @@
 <!--
-  CatalogTree.vue — 采集管理左侧目录树（step7 重构）
+  CatalogTree.vue — 采集管理左侧目录树（v3 扁平化：facet → service）
 
-  - 数据源：useCatalog() 返回的 catalog（按 facet/sub_facet 二级聚合）
+  - 数据源：useCatalog() 返回的 catalog（v3 去掉 sub_facet 一级，扁平 items）
   - 选中：service_name（v-model）
   - 折叠状态持久化到 localStorage
 -->
@@ -32,36 +32,18 @@
           <el-badge v-if="countActive(facet) > 0" :value="countActive(facet)" type="success" />
         </span>
       </div>
-      <div v-show="!isCollapsed(facet.facet)" class="sub-facet-list">
-        <div
-          v-for="(items, subKey) in facet.sub_groups"
-          :key="subKey"
-          class="sub-facet-block"
-        >
-          <div
-            class="sub-facet-label"
-            role="button"
-            :aria-expanded="!isCollapsed(`${facet.facet}/${subKey}`)"
-            @click="toggleCollapsed(`${facet.facet}/${subKey}`)"
-          >
-            <el-icon class="collapse-arrow" :class="{ collapsed: isCollapsed(`${facet.facet}/${subKey}`) }"><ArrowDown /></el-icon>
-            {{ SUB_FACET_LABELS[subKey] || subKey }}
-            <span class="sub-facet-count">{{ items.length }}</span>
-          </div>
-          <button
-            v-show="!isCollapsed(`${facet.facet}/${subKey}`)"
-            v-for="item in items"
-            :key="item.service_name"
-            class="task-btn"
-            :class="{ active: active === item.service_name }"
-            @click="active = item.service_name"
-          >
-            <el-tooltip :content="tooltipText(item)" placement="right" :show-after="300" popper-class="task-tip">
-              <span class="task-btn-label">{{ item.label }}</span>
-            </el-tooltip>
-          </button>
-        </div>
-      </div>
+      <button
+        v-show="!isCollapsed(facet.facet)"
+        v-for="item in facet.items"
+        :key="item.service_name"
+        class="task-btn"
+        :class="{ active: active === item.service_name }"
+        @click="active = item.service_name"
+      >
+        <el-tooltip :content="tooltipText(item)" placement="right" :show-after="300" popper-class="task-tip">
+          <span class="task-btn-label">{{ item.label }}</span>
+        </el-tooltip>
+      </button>
     </div>
   </aside>
 </template>
@@ -70,7 +52,7 @@
 import { ref } from 'vue'
 import { ArrowDown, TrendCharts, Money, PieChart, Document } from '@element-plus/icons-vue'
 import type { CatalogGroup, CatalogItem } from '../api'
-import { countActive, SUB_FACET_LABELS } from '../composables/useCatalog'
+import { countActive } from '../composables/useCatalog'
 
 defineProps<{
   catalog: CatalogGroup[]
@@ -80,7 +62,7 @@ defineProps<{
 /** 当前选中的 service_name */
 const active = defineModel<string>({ required: true })
 
-// ── 折叠状态（key = facet 或 facet/subKey，持久化到 localStorage） ──
+// ── 折叠状态（key = facet，持久化到 localStorage） ──
 const COLLAPSE_STORAGE_KEY = 'collect-manage:collapsed'
 
 function loadCollapsed(): Set<string> {
@@ -104,20 +86,14 @@ function toggleCollapsed(key: string) {
   localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...next]))
 }
 
-/** 任务按钮的 hover 提示：描述 + 默认参数 + 实时/批量标识 */
+/** 任务按钮的 hover 提示：描述 + 增量标志 */
 function tooltipText(item: CatalogItem): string {
   const lines: string[] = []
   if (item.description) lines.push(item.description)
-  if (item.kind === 'realtime') lines.push('实时查询接口（不写库）')
-  else if (item.kind === 'both') lines.push('支持手动采集 + 实时查询')
-  else lines.push('手动采集（写库）')
-  const keys = Object.keys(item.default_params || {})
-  if (keys.length) {
-    const kv = keys
-      .map((k) => `${k}=${JSON.stringify(item.default_params[k])}`)
-      .join(', ')
-    lines.push(`默认参数：${kv}`)
-  }
+  if (item.kind === 'realtime') lines.push('实时查询（不写库）')
+  else if (item.incremental) lines.push('增量采集（支持时间范围）')
+  else if (item.kind === 'full_refresh') lines.push('全量采集')
+  else lines.push('手动采集')
   return lines.join('\n') || item.label
 }
 </script>
@@ -134,10 +110,7 @@ function tooltipText(item: CatalogItem): string {
   padding: 12px 8px;
 }
 
-/*
-  三层高度统一 26，字号递减 14 / 13 / 12，
-  背景由深到浅、边框由深到浅，逐层缩进 8px
-*/
+/* 两层：facet → service（v3 去掉 sub_facet） */
 .facet-block + .facet-block {
   margin-top: 10px;
 }
@@ -170,8 +143,6 @@ function tooltipText(item: CatalogItem): string {
   margin-left: auto;
 }
 
-/* 无默认插槽的 el-badge 气泡是 <sup>：Tailwind preflight 给 sup 设了
-   position: relative; top: -0.5em; line-height: 0，会把气泡整体上移 */
 .facet-header :deep(.el-badge) {
   display: flex;
   align-items: center;
@@ -196,49 +167,12 @@ function tooltipText(item: CatalogItem): string {
   transform: rotate(-90deg);
 }
 
-.sub-facet-list {
-  margin-top: 4px;
-  padding-left: 8px;
-}
-
-.sub-facet-block + .sub-facet-block {
-  margin-top: 4px;
-}
-
-/* ── 第二层：sub_facet ── */
-.sub-facet-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 26px;
-  padding: 0 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #475569;
-  background: #f1f5f9;
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.sub-facet-label:hover {
-  background: #e2e8f0;
-}
-
-.sub-facet-count {
-  margin-left: auto;
-  font-size: 12px;
-  font-weight: 400;
-  color: #94a3b8;
-}
-
-/* ── 第三层：task ── */
+/* ── 第二层：service 任务按钮 ── */
 .task-btn {
   display: block;
-  width: calc(100% - 8px);
+  width: 100%;
   height: 26px;
-  margin: 2px 0 0 8px;
+  margin-top: 4px;
   padding: 0 8px;
   font-size: 12px;
   line-height: 24px;

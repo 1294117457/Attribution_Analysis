@@ -111,6 +111,8 @@ class ConceptListAdataFetcher(BaseFetcher):
                 "index_code": index_code,
                 "concept_code": _code(row.get("concept_code")),
                 "name": name,
+                # §2.9 补 Adata all_concept_code_ths 文档 source 字段
+                "source": _str(row.get("source")) or "ths",
             })
         return items
 

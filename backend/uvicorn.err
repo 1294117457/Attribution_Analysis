@@ -1,0 +1,13 @@
+INFO:     Started server process [19796]
+INFO:     Waiting for application startup.
+2026-10-19 16:44:49,010  INFO      app.init_db  [init_db] AttribBase 注册表数: 4
+2026-10-19 16:44:49,010  INFO      app.init_db  [init_db]   - collect_logs
+2026-10-19 16:44:49,010  INFO      app.init_db  [init_db]   - pool_operations
+2026-10-19 16:44:49,010  INFO      app.init_db  [init_db]   - stock_pool_members
+2026-10-19 16:44:49,010  INFO      app.init_db  [init_db]   - stock_pools
+2026-10-19 16:44:49,823  INFO      app.init_db  [init_db] ✅ 所有 4 张 AttribBase 表已就绪
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-10-19 16:44:51,541  INFO      shared.infrastructure.di.redis_session  Redis 客户端初始化完成
+2026-10-19 16:45:15,616  INFO      contexts.collect.infrastructure.adapter.background.collect_task_runner  派发采集任务: log_id=c046c5c8-4d20-4ae0-8b7c-07a31f0bbd3b, service=fundamental/stock_basic
+2026-10-19 16:45:18,347  INFO      contexts.collect.infrastructure.persistence.repositories.stock_info_repo  [replace_all] list_status=L, 写入 5575 行

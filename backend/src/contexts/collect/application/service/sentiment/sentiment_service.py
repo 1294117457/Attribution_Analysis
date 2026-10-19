@@ -15,6 +15,7 @@ class SentimentService:
     label = "情绪面"
     description = "占位（暂无 fetcher）"
     DEFAULT_PARAMS = {}
+    UI_SCHEMA = []  # 空壳/占位 service，catalog 中会自动隐藏
     RATE_LIMIT = None
     CONCURRENCY = 1
 

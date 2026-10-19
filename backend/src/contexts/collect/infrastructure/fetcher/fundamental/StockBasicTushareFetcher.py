@@ -33,7 +33,8 @@ class StockBasicParams(BaseModel):
 
 _STOCK_BASIC_FIELDS = (
     "ts_code,symbol,name,area,industry,market,exchange,list_date,delist_date,"
-    "list_status,is_hs,act_name,act_ent_type"
+    "list_status,is_hs,act_name,act_ent_type,"
+    "fullname,enname,cnspell,curr_type"
 )
 _EXCHANGES = ("SSE", "SZSE", "BSE")
 
@@ -82,6 +83,11 @@ class StockBasicTushareFetcher(BaseFetcher):
                         is_hs=text(r, "is_hs") or "N",
                         act_name=text(r, "act_name"),
                         act_ent_type=text(r, "act_ent_type"),
+                        # §1.1 补 Tushare stock_basic 文档 4 字段
+                        fullname=text(r, "fullname"),
+                        enname=text(r, "enname"),
+                        cnspell=text(r, "cnspell"),
+                        curr_type=text(r, "curr_type"),
                     ))
                 except Exception as e:
                     logger.warning("跳过无效行: %s", e)

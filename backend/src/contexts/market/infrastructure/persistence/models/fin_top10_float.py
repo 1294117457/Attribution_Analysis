@@ -25,7 +25,11 @@ class FinTop10FloatHolderDB(RawBase, TimestampMixin):
 
     holder_name: Mapped[str] = mapped_column(String(128), nullable=False)
     hold_amount: Mapped[float | None] = mapped_column(Float, nullable=True)
-    hold_ratio: Mapped[float | None] = mapped_column(Float, nullable=True, comment="占流通股本比例%")
+    hold_ratio: Mapped[float | None] = mapped_column(Float, nullable=True, comment="占总股本比例%")
+
+    # §4.4 补 Tushare top10_floatholders 文档 hold_float_ratio 字段
+    hold_float_ratio: Mapped[float | None] = mapped_column(Float, nullable=True, comment="占流通股本比例%")
+
     hold_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     holder_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
 

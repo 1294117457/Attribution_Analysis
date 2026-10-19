@@ -1,61 +1,61 @@
-"""AdjFactorService：复权因子 service（按 symbol 维度的批量采集）"""
+"""AdjFactorService：复权因子 service（按 symbol 维度的批量采集）
+
+走 repo：AdjFactorRepository（已抽离）
+session 由 DI 工厂注入，透传给 repo.save()。
+"""
 from __future__ import annotations
 
 import asyncio
 import logging
 
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-from shared.infrastructure.connection.db_factory import db_session_factory
-from contexts.collect.application.service.base import CollectResult, RateLimited, list_all_a_symbols
+from contexts.collect.application.service.base import CollectResult, RateLimited, list_all_a_symbols, ServiceKind, ServiceMeta
 from contexts.collect.infrastructure.fetcher.tech.AdjFactorTushareFetcher import (
     AdjFactorTushareFetcher,
 )
+from contexts.collect.infrastructure.persistence.repositories import AdjFactorRepository
 from contexts.collect.infrastructure.cache.rate_limit import check
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 
-class AdjFactorRepository:
-    """adj_factor 写库（容错：表不存在则跳过）"""
-
-    async def save_batch(self, rows: list[dict]) -> int:
-        try:
-            from contexts.collect.infrastructure.persistence.models.adj_factor import (
-                AdjFactorDB,
-            )
-        except ImportError:
-            logger.debug("adj_factor 表未建，跳过入库")
-            return 0
-        if not rows:
-            return 0
-        clean = [{k: v for k, v in r.items() if v is not None} for r in rows if "symbol" in r]
-        async with db_session_factory() as session:
-            stmt = pg_insert(AdjFactorDB).values(clean)
-            update_cols = {c.name: stmt.excluded[c.name] for c in AdjFactorDB.__table__.columns
-                           if c.name not in ("id", "symbol", "trade_date", "created_at")}
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["symbol", "trade_date"],
-                set_=update_cols,
-            )
-            r = await session.execute(stmt)
-            await session.commit()
-            return r.rowcount or 0
-
-
 class AdjFactorService:
+
+    META = ServiceMeta(
+        name='adj_factor',
+        facet='tech',
+        label='复权因子',
+        description='单只股票复权因子（Tushare adj_factor）',
+        kind=ServiceKind.INCREMENTAL,
+    )
     name = "adj_factor"
     facet = "tech"
     sub_facet = "adj"
     label = "复权因子"
     description = "单只股票复权因子"
     DEFAULT_PARAMS = {"symbols": []}
+    UI_SCHEMA = [
+        {
+            "key": "symbols",
+            "ui": "symbols_list",
+            "label": "股票代码",
+            "required": False,
+            "placeholder": "每行一只：000001\n000002\n600000",
+            "help": "留空表示全量采集（全市场 5000+ 只）",
+        },
+    ]
     RATE_LIMIT = ("tushare", 200, 60)
     CONCURRENCY = 5
 
-    def __init__(self, fetcher: AdjFactorTushareFetcher | None = None) -> None:
+    def __init__(
+        self,
+        fetcher: AdjFactorTushareFetcher | None = None,
+        repo: AdjFactorRepository | None = None,
+        session: AsyncSession | None = None,
+    ) -> None:
         self._fetcher = fetcher or AdjFactorTushareFetcher()
-        self._repo = AdjFactorRepository()
+        self._repo = repo or AdjFactorRepository()
+        self._session = session
 
     async def collect(self, params: dict) -> CollectResult:
         symbols = params.get("symbols") or []
@@ -74,8 +74,8 @@ class AdjFactorService:
                 await check(self.RATE_LIMIT)
                 for attempt in range(3):
                     try:
-                        rows = await self._fetcher.fetch(symbol=symbol)
-                        return await self._repo.save_batch(rows)
+                        bos = await self._fetcher.fetch(symbol=symbol)
+                        return await self._repo.save(bos, self._session)
                     except RateLimited as e:
                         if attempt < 2:
                             import asyncio as _a

@@ -1,45 +1,64 @@
-"""BlockTradeService：大宗交易 service（按 trade_date 一次性）"""
+"""BlockTradeService：大宗交易 service
+
+走 repo：BlockTradeRepository
+"""
 from __future__ import annotations
 
 import logging
 from datetime import date
 
-from sqlalchemy import delete
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-from shared.infrastructure.connection.db_factory import db_session_factory
-from contexts.collect.application.service.base import CollectResult, RateLimited
+from contexts.collect.application.service.base import CollectResult, RateLimited, ServiceKind, ServiceMeta
 from contexts.collect.infrastructure.fetcher.capital.BlockTradeTushareFetcher import (
     BlockTradeTushareFetcher,
 )
+from contexts.collect.infrastructure.persistence.repositories import BlockTradeRepository
 from contexts.collect.infrastructure.cache.rate_limit import check
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 
 class BlockTradeService:
+
+    META = ServiceMeta(
+        name='block_trade',
+        facet='capital',
+        label='大宗交易',
+        description='每日大宗交易（Tushare block_trade）',
+        kind=ServiceKind.INCREMENTAL,
+    )
     name = "block_trade"
     facet = "capital"
     sub_facet = "block"
     label = "大宗交易"
     DEFAULT_PARAMS = {"trade_date": None}
+    UI_SCHEMA = [
+        {"key": "trade_date", "ui": "date_str", "label": "交易日期", "required": True, "placeholder": "2024-10-17"},
+    ]
     RATE_LIMIT = ("tushare", 200, 60)
     CONCURRENCY = 1
 
-    def __init__(self, fetcher: BlockTradeTushareFetcher | None = None) -> None:
+    def __init__(
+        self,
+        fetcher: BlockTradeTushareFetcher | None = None,
+        repo: BlockTradeRepository | None = None,
+        session: AsyncSession | None = None,
+    ) -> None:
         self._fetcher = fetcher or BlockTradeTushareFetcher()
+        self._repo = repo or BlockTradeRepository()
+        self._session = session
 
     async def collect(self, params: dict) -> CollectResult:
         td = params.get("trade_date")
         if not td:
-            td = date.today()  # 全量模式：默认今天
+            td = date.today()
         if not isinstance(td, date):
             td = date.fromisoformat(str(td))
         await check(self.RATE_LIMIT)
         for attempt in range(3):
             try:
                 bos = await self._fetcher.fetch(trade_date=td)
-                saved = await self._save(td, bos)
+                saved = await self._repo.save(bos, self._session)
                 return CollectResult(
                     total=1, success=1, saved=saved,
                     message=f"大宗交易 {td}: {len(bos)} 条, 写入 {saved}",
@@ -51,31 +70,6 @@ class BlockTradeService:
                 else:
                     raise
         return CollectResult(fail=1, message="重试耗尽")
-
-    async def _save(self, td: date, bos: list) -> int:
-        if not bos:
-            return 0
-        try:
-            from contexts.collect.infrastructure.persistence.models.cap_block_trade import (
-                CapBlockTradeDB,
-            )
-        except ImportError:
-            logger.debug("cap_block_trade 表未建，跳过入库")
-            return 0
-        rows = [
-            {
-                "trade_date": bo.trade_date, "symbol": bo.symbol, "name": bo.name,
-                "price": bo.price, "vol": bo.vol, "amount": bo.amount,
-                "buyer": bo.buyer, "seller": bo.seller,
-            }
-            for bo in bos
-        ]
-        async with db_session_factory() as session:
-            await session.execute(delete(CapBlockTradeDB).where(CapBlockTradeDB.trade_date == td))
-            stmt = pg_insert(CapBlockTradeDB).values(rows)
-            r = await session.execute(stmt)
-            await session.commit()
-            return r.rowcount or 0
 
 
 __all__ = ["BlockTradeService"]

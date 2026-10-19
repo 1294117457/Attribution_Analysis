@@ -42,6 +42,9 @@ class DividendTushareFetcher(BaseFetcher):
                 stk_co_rate=num(r, "stk_co_rate"),
                 cash_div=num(r, "cash_div"),
                 cash_div_tax=num(r, "cash_div_tax"),
+                # §2.8 补 Tushare dividend 文档 div_listdate / imp_ann_date
+                div_listdate=parse_list_date(r.get("div_listdate")),
+                imp_ann_date=parse_list_date(r.get("imp_ann_date")),
             ))
         return out
 

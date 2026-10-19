@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from contexts.collect.application.bo import CapBlockTradeBO
 from contexts.collect.infrastructure.fetcher.base import BaseFetcher
@@ -16,6 +16,12 @@ from shared.interface.validators import TradeDate
 logger = logging.getLogger(__name__)
 
 
+# §2.2 修复：把局部 class TradeDateParams 提到模块顶层（与其他 fetcher 一致）
+class BlockTradeParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    trade_date: TradeDate
+
+
 class BlockTradeTushareFetcher(BaseFetcher):
     fetcher_type = "block_trade_tushare"
     source = "tushare"
@@ -25,13 +31,7 @@ class BlockTradeTushareFetcher(BaseFetcher):
         self._c = get_tushare_client()
 
     async def fetch(self, **params) -> list[BaseModel]:
-        from pydantic import BaseModel as _BM, ConfigDict
-
-        class TradeDateParams(_BM):
-            model_config = ConfigDict(extra="forbid")
-            trade_date: TradeDate
-
-        p = TradeDateParams.model_validate(params)
+        p = BlockTradeParams.model_validate(params)
         df = await self._c.query("block_trade", trade_date=ymd(p.trade_date))
         out: list[CapBlockTradeBO] = []
         for r in rows(df):
@@ -45,6 +45,4 @@ class BlockTradeTushareFetcher(BaseFetcher):
                 buyer=text(r, "buyer"), seller=text(r, "seller"),
             ))
         return out
-
-
-__all__ = ["BlockTradeTushareFetcher"]
+__all__ = ["BlockTradeParams", "BlockTradeTushareFetcher"]

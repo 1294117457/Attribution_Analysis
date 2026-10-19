@@ -33,6 +33,10 @@ class BaseDividendDB(RawBase, TimestampMixin):
     cash_div: Mapped[float | None] = mapped_column(Float, nullable=True, comment="每股派息(税前)")
     cash_div_tax: Mapped[float | None] = mapped_column(Float, nullable=True, comment="每股派息(税后)")
 
+    # §4.5 补 Tushare dividend 文档字段
+    div_listdate: Mapped[date | None] = mapped_column(Date, nullable=True, comment="红股上市日")
+    imp_ann_date: Mapped[date | None] = mapped_column(Date, nullable=True, comment="实施公告日")
+
     data_source: Mapped[str] = mapped_column(String(16), nullable=False, default="tushare")
 
     __table_args__ = (

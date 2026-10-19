@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from contexts.collect.infrastructure.fetcher.base import BaseFetcher
 from contexts.collect.infrastructure.connect.adata_client import get_adata_client
 from contexts.collect.infrastructure.fetcher.fundamental.ConceptListAdataFetcher import (
-    _rows, _symbol,
+    _rows, _str, _symbol,
 )
 
 
@@ -33,7 +33,14 @@ class ConceptMembersAdataFetcher(BaseFetcher):
             sym = _symbol(row.get("stock_code"))
             if sym and sym not in seen:
                 seen.add(sym)
-                items.append({"index_code": index_code, "symbol": sym})
+                # §2.10 补 Adata concept_constituent_ths 文档 short_name 字段
+                # source 固定为 ths（与 ORM 对齐），无 reason
+                items.append({
+                    "index_code": index_code,
+                    "symbol": sym,
+                    "short_name": _str(row.get("short_name")),
+                    "source": "ths",
+                })
         return items
 
 

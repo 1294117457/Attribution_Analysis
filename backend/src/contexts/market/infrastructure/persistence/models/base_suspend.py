@@ -20,7 +20,8 @@ class BaseSuspendDB(RawBase, TimestampMixin):
 
     symbol: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     trade_date: Mapped[date] = mapped_column(Date, nullable=False)
-    suspend_timing: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Tushare 文档 suspend_timing 类型为 str（"09:30-10:00"），存为 varchar
+    suspend_timing: Mapped[str | None] = mapped_column(String(32), nullable=True)
     suspend_type: Mapped[str | None] = mapped_column(String(8), nullable=True, comment="S=停牌/R=复牌")
 
     data_source: Mapped[str] = mapped_column(String(16), nullable=False, default="tushare")

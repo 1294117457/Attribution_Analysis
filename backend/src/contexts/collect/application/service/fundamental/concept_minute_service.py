@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from contexts.collect.application.service.base import CollectResult, RateLimited
+from contexts.collect.application.service.base import CollectResult, RateLimited, ServiceKind, ServiceMeta
 from contexts.collect.infrastructure.fetcher.fundamental.ConceptMinuteAdataFetcher import (
     ConceptMinuteAdataFetcher,
 )
@@ -13,11 +13,22 @@ logger = logging.getLogger(__name__)
 
 
 class ConceptMinuteService:
+
+    META = ServiceMeta(
+        name='concept_minute',
+        facet='fundamental',
+        label='概念实时分时',
+        description='概念实时分时（Adata concept_minute）',
+        kind=ServiceKind.REALTIME,
+    )
     name = "concept_minute"
     facet = "fundamental"
     sub_facet = "concept"
     label = "概念实时分时"
     DEFAULT_PARAMS = {"index_code": None}
+    UI_SCHEMA = [
+        {"key": "index_code", "ui": "index_code_str", "label": "概念指数代码", "required": True, "placeholder": "BK0001"},
+    ]
     RATE_LIMIT = ("adata", 100, 60)
     CONCURRENCY = 1
 

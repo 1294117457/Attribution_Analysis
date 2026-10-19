@@ -34,6 +34,9 @@ class ConceptMemberBO(BaseModel):
 
     index_code: str
     symbol: str = Field(..., min_length=6, max_length=6)
+    # §2.10 补 Adata concept_constituent_ths 文档 short_name 字段
+    short_name: Optional[str] = Field(default=None, max_length=50)
+    # 该接口文档无 reason 字段（注意别误加）
 
 
 
@@ -70,22 +73,26 @@ class ConceptIndexTHBO(BaseModel):
 
 
 class ConceptSnapshotBO(BaseModel):
-    """概念当前行情快照"""
+    """概念当前行情快照（§1.7 字段语义修复）"""
 
     index_code: str
+    # §1.7 修复：change 是涨跌额（元）→ 表里叫 p_change；change_pct 是涨跌幅(%) → 表里叫 pct_change
+    p_change: Optional[float] = None        # 涨跌额(元) — Adata 文档 change
+    pct_change: Optional[float] = None      # 涨跌幅(%) — Adata 文档 change_pct
     price: Optional[float] = None
-    change: Optional[float] = None
-    change_pct: Optional[float] = None
-    volume: Optional[float] = None
-    amount: Optional[float] = None
-    open: Optional[float] = None
+    open_price: Optional[float] = None      # 表里叫 open_price
     high: Optional[float] = None
     low: Optional[float] = None
     prev_close: Optional[float] = None
+    volume: Optional[float] = None
+    amount: Optional[float] = None
     turnover_rate: Optional[float] = None
     pe: Optional[float] = None
     pb: Optional[float] = None
     trade_time: Optional[str] = None
+    # §1.7 补 Adata 文档 trade_date + concept_name（业务需要）
+    trade_date: Optional[date] = None
+    concept_name: Optional[str] = None
 
 
 

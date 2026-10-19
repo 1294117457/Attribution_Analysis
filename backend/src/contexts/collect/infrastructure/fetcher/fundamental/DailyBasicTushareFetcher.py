@@ -51,6 +51,8 @@ class DailyBasicTushareFetcher(BaseFetcher):
                 float_share=num(r, "float_share"),
                 free_share=num(r, "free_share"),
                 total_mv=num(r, "total_mv"), circ_mv=num(r, "circ_mv"),
+                # §2.7 补 Tushare daily_basic 文档 limit_status
+                limit_status=int(num(r, "limit_status") or 0) if num(r, "limit_status") is not None else None,
             ))
         return out
 

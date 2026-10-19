@@ -39,6 +39,9 @@ class FinDailyBasicDB(RawBase, TimestampMixin):
     total_mv: Mapped[float | None] = mapped_column(Float, nullable=True, comment="总市值(万元)")
     circ_mv: Mapped[float | None] = mapped_column(Float, nullable=True, comment="流通市值(万元)")
 
+    # §4.3 补 Tushare daily_basic 文档 limit_status 字段
+    limit_status: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="涨跌状态: 0=平/1=涨/2=涨停/3=一字涨停/4=跌/5=跌停/6=一字跌停")
+
     data_source: Mapped[str] = mapped_column(String(16), nullable=False, default="tushare")
 
     __table_args__ = (

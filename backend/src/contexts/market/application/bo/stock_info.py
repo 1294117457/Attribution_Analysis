@@ -26,6 +26,12 @@ class StockInfoBO(BaseModel):
     act_name: Optional[str] = Field(None, description="实控人名称")
     act_ent_type: Optional[str] = Field(None, description="实控人企业性质")
 
+    # §1.1 补 Tushare stock_basic 文档 4 字段
+    fullname: Optional[str] = Field(None, description="股票全称")
+    enname: Optional[str] = Field(None, description="英文全称")
+    cnspell: Optional[str] = Field(None, description="拼音缩写")
+    curr_type: Optional[str] = Field(None, description="交易货币")
+
 
 
 

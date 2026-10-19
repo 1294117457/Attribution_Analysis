@@ -37,11 +37,14 @@ class HolderNumberTushareFetcher(BaseFetcher):
             sym, ed = symbol_of(r), parse_list_date(r.get("end_date"))
             if not sym or not ed:
                 continue
+            holder_num_val = num(r, "holder_num")
             out.append(CapHolderNumBO(
                 symbol=sym,
                 ann_date=parse_list_date(r.get("ann_date")),
                 end_date=ed,
-                holder_num=int(num(r, "holder_num") or 0) if num(r, "holder_num") else None,
+                holder_num=int(holder_num_val) if holder_num_val is not None else None,
+                # §2.6 holder_nums 冗余 holder_num（双轨兼容）
+                holder_nums=holder_num_val,
             ))
         return out
 

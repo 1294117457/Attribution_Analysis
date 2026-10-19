@@ -65,6 +65,10 @@ class ConceptMemberDB(RawBase):
     symbol: Mapped[str] = mapped_column(String(10), primary_key=True)
     concept_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # §4.6 补 Adata concept_constituent_ths 文档 short_name 字段
+    short_name: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="股票简称")
+
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.now
     )
@@ -87,6 +91,11 @@ class ConceptSnapshotDB(RawBase):
 
     时序数据：每批采集每个概念写入 1 行（保留历史）。
     应用层取最新 1 行：ORDER BY captured_at DESC LIMIT 1。
+
+    §2.2 字段语义修复（与 Adata get_market_concept_current_ths 文档对齐）：
+    - pct_change 改为 p_change（涨跌额,元），原 pct_change 列存的是"涨跌额"
+    - 新增 pct_change（涨跌幅, %）
+    - 新增 trade_date（与 trade_time 互补，按天聚合）
     """
 
     __tablename__ = "fundamental_concept_snapshot"
@@ -94,13 +103,20 @@ class ConceptSnapshotDB(RawBase):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     index_code: Mapped[str] = mapped_column(String(10), nullable=False)
     concept_name: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # §2.2 补 Adata 文档 trade_date
+    trade_date: Mapped[date | None] = mapped_column(Date, nullable=True, comment="交易日期(由 trade_time 提取)")
     trade_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
     open_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     high: Mapped[float | None] = mapped_column(Float, nullable=True)
     low: Mapped[float | None] = mapped_column(Float, nullable=True)
     price: Mapped[float | None] = mapped_column(Float, nullable=True)
     prev_close: Mapped[float | None] = mapped_column(Float, nullable=True)
-    pct_change: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # §2.2 p_change(原 pct_change 装的是涨跌额) + 新加 pct_change(涨跌幅)
+    p_change: Mapped[float | None] = mapped_column(Float, nullable=True, comment="涨跌额(元) — Adata 文档 change")
+    pct_change: Mapped[float | None] = mapped_column(Float, nullable=True, comment="涨跌幅(%) — Adata 文档 change_pct")
     rank_current: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rank_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     up_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

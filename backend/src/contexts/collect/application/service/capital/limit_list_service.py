@@ -1,48 +1,67 @@
-"""LimitListService：每日涨跌停板 service（按 trade_date 一次性）"""
+"""LimitListService：每日涨跌停板 service
+
+走 repo：LimitListRepository
+"""
 from __future__ import annotations
 
 import logging
 from datetime import date
 
-from sqlalchemy import delete
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-from shared.infrastructure.connection.db_factory import db_session_factory
-from contexts.collect.application.service.base import CollectResult, RateLimited
+from contexts.collect.application.service.base import CollectResult, RateLimited, ServiceKind, ServiceMeta
 from contexts.collect.infrastructure.fetcher.capital.LimitListTushareFetcher import (
     LimitListTushareFetcher,
 )
+from contexts.collect.infrastructure.persistence.repositories import LimitListRepository
 from contexts.collect.infrastructure.cache.rate_limit import check
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 
 class LimitListService:
+
+    META = ServiceMeta(
+        name='limit_list_d',
+        facet='capital',
+        label='每日涨跌停板',
+        description='每日涨跌停板（Tushare limit_list_d）',
+        kind=ServiceKind.INCREMENTAL,
+    )
     name = "limit_list_d"
     facet = "capital"
     sub_facet = "limit"
     label = "每日涨跌停板"
     DEFAULT_PARAMS = {"trade_date": None}
+    UI_SCHEMA = [
+        {"key": "trade_date", "ui": "date_str", "label": "交易日期", "required": True, "placeholder": "2024-10-17"},
+    ]
     RATE_LIMIT = ("tushare", 100, 60)
     CONCURRENCY = 1
 
-    def __init__(self, fetcher: LimitListTushareFetcher | None = None) -> None:
+    def __init__(
+        self,
+        fetcher: LimitListTushareFetcher | None = None,
+        repo: LimitListRepository | None = None,
+        session: AsyncSession | None = None,
+    ) -> None:
         self._fetcher = fetcher or LimitListTushareFetcher()
+        self._repo = repo or LimitListRepository()
+        self._session = session
 
     async def collect(self, params: dict) -> CollectResult:
         td = params.get("trade_date")
         if not td:
-            td = date.today()  # 全量模式：默认今天
+            td = date.today()
         if not isinstance(td, date):
             td = date.fromisoformat(str(td))
         await check(self.RATE_LIMIT)
         for attempt in range(3):
             try:
-                items = await self._fetcher.fetch(trade_date=td)
-                saved = await self._save(td, items)
+                bos = await self._fetcher.fetch(trade_date=td)
+                saved = await self._repo.save(bos, self._session)
                 return CollectResult(
-                    total=1, success=1, saved=saved, skip=1 if not items else 0,
-                    message=f"涨跌停 {td}: {len(items)} 条, 写入 {saved}",
+                    total=1, success=1, saved=saved, skip=1 if not bos else 0,
+                    message=f"涨跌停 {td}: {len(bos)} 条, 写入 {saved}",
                 )
             except RateLimited as e:
                 if attempt < 2:
@@ -51,33 +70,6 @@ class LimitListService:
                 else:
                     raise
         return CollectResult(fail=1, message="重试耗尽")
-
-    async def _save(self, td, items) -> int:
-        if not items:
-            return 0
-        try:
-            from contexts.collect.infrastructure.persistence.models.market_limit_list import (
-                MarketLimitListDB,
-            )
-        except ImportError:
-            logger.debug("market_limit_list 表未建，跳过入库")
-            return 0
-        rows = [
-            {
-                "trade_date": r["trade_date"], "symbol": r["symbol"], "name": r["name"],
-                "close_price": r["close_price"], "change_rate": r["change_rate"],
-                "limit_type": r["limit_type"], "board_count": r["board_count"],
-                "first_limit_time": r["first_limit_time"],
-                "board_strength": r["board_strength"], "reason": r["reason"],
-            }
-            for r in items
-        ]
-        async with db_session_factory() as session:
-            await session.execute(delete(MarketLimitListDB).where(MarketLimitListDB.trade_date == td))
-            stmt = pg_insert(MarketLimitListDB).values(rows)
-            r = await session.execute(stmt)
-            await session.commit()
-            return r.rowcount or 0
 
 
 __all__ = ["LimitListService"]

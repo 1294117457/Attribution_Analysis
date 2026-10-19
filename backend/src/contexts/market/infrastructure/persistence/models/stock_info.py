@@ -78,6 +78,24 @@ class StockInfoDB(RawBase, TimestampMixin):
         comment="实控人企业性质",
     )
 
+    # §4.1 补 Tushare stock_basic 文档字段
+    fullname: Mapped[str | None] = mapped_column(
+        String(200), nullable=True,
+        comment="股票全称",
+    )
+    enname: Mapped[str | None] = mapped_column(
+        String(200), nullable=True,
+        comment="英文全称",
+    )
+    cnspell: Mapped[str | None] = mapped_column(
+        String(20), nullable=True,
+        comment="拼音缩写",
+    )
+    curr_type: Mapped[str | None] = mapped_column(
+        String(8), nullable=True,
+        comment="交易货币",
+    )
+
     __table_args__ = (
         Index("ix_stock_industry_market", "industry", "market"),
         Index("ix_stock_exchange_status", "exchange", "list_status"),

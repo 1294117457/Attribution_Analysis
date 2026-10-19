@@ -13,8 +13,11 @@ from contexts.collect.application.bo.tech import (
 from contexts.collect.application.bo.capital import (
     CapBlockTradeBO,
     CapHolderNumBO,
+    CapHsgtTop10BO,                  # §1.4
+    CapLimitListDBO,                 # §1.3
     CapMarginDetailBO,
     CapMoneyflowBO,
+    CapMoneyflowHsgtBO,              # §1.2
     CapTopInstBO,
     CapTopListBO,
 )
@@ -29,7 +32,8 @@ __all__ = [
     # tech
     "BaseAdjFactorBO", "BaseSuspendBO", "BaseNameChangeBO", "BaseDividendBO",
     # capital
-    "CapMoneyflowBO", "CapMarginDetailBO", "CapTopListBO", "CapTopInstBO",
+    "CapMoneyflowBO", "CapMoneyflowHsgtBO", "CapHsgtTop10BO", "CapLimitListDBO",
+    "CapMarginDetailBO", "CapTopListBO", "CapTopInstBO",
     "CapBlockTradeBO", "CapHolderNumBO",
     # fundamental
     "FinDailyBasicBO", "FinReportBO",

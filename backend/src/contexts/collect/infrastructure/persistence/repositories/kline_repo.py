@@ -10,9 +10,9 @@ from datetime import date
 from typing import Iterable
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from shared.infrastructure.connection.db_factory import db_session_factory
 from contexts.market.domain.entities.kline.entity import Kline
 from contexts.market.infrastructure.persistence.models.tech_kline import TechKlineDailyDB
 
@@ -20,137 +20,132 @@ logger = logging.getLogger(__name__)
 
 
 class KlineRepository:
-    """日 K 线仓储（直接 ORM upsert，不再走 KlineEntity 中转）"""
+    """日 K 线仓储（直接 ORM upsert，不再走 KlineEntity 中转）
 
-    async def save_klines(self, klines: list[Kline]) -> int:
+    所有方法接受 session: AsyncSession 入参（由 service 工厂注入或 Depends 入口），
+    不再自己 async with db_session_factory()。
+    """
+
+    async def save_klines(self, klines: list[Kline], session: AsyncSession) -> int:
         """批量 upsert；返回受影响行数"""
         if not klines:
             return 0
         rows = [self._to_row(k) for k in klines]
-        async with db_session_factory() as session:
-            stmt = pg_insert(TechKlineDailyDB).values(rows)
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["symbol", "date"],
-                set_={
-                    "name": stmt.excluded.name,
-                    "open": stmt.excluded.open,
-                    "high": stmt.excluded.high,
-                    "low": stmt.excluded.low,
-                    "close": stmt.excluded.close,
-                    "volume": stmt.excluded.volume,
-                    "amount": stmt.excluded.amount,
-                    "change_pct": stmt.excluded.change_pct,
-                },
-            )
-            result = await session.execute(stmt)
-            await session.commit()
-            return result.rowcount or len(rows)
+        stmt = pg_insert(TechKlineDailyDB).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["symbol", "date"],
+            set_={
+                "name": stmt.excluded.name,
+                "open": stmt.excluded.open,
+                "high": stmt.excluded.high,
+                "low": stmt.excluded.low,
+                "close": stmt.excluded.close,
+                "volume": stmt.excluded.volume,
+                "amount": stmt.excluded.amount,
+                "change_pct": stmt.excluded.change_pct,
+            },
+        )
+        result = await session.execute(stmt)
+        return result.rowcount or len(rows)
 
     async def find(
         self, symbol: str, start: date | None, end: date | None,
+        session: AsyncSession,
     ) -> list[Kline]:
-        async with db_session_factory() as session:
-            stmt = select(TechKlineDailyDB).where(TechKlineDailyDB.symbol == symbol)
-            if start:
-                stmt = stmt.where(TechKlineDailyDB.date >= start)
-            if end:
-                stmt = stmt.where(TechKlineDailyDB.date <= end)
-            stmt = stmt.order_by(TechKlineDailyDB.date)
-            rows = (await session.execute(stmt)).scalars().all()
-            return [self._to_entity(r) for r in rows]
+        stmt = select(TechKlineDailyDB).where(TechKlineDailyDB.symbol == symbol)
+        if start:
+            stmt = stmt.where(TechKlineDailyDB.date >= start)
+        if end:
+            stmt = stmt.where(TechKlineDailyDB.date <= end)
+        stmt = stmt.order_by(TechKlineDailyDB.date)
+        rows = (await session.execute(stmt)).scalars().all()
+        return [self._to_entity(r) for r in rows]
 
     async def find_by_symbol(
-        self, symbol, start_date=None, end_date=None, limit: int = 1000,
-        order_desc: bool = False,
+        self, symbol, session: AsyncSession, start_date=None, end_date=None,
+        limit: int = 1000, order_desc: bool = False,
     ) -> list[Kline]:
         """兼容 stock_info_service 旧 API"""
         from sqlalchemy import desc
-        async with db_session_factory() as session:
-            stmt = select(TechKlineDailyDB).where(TechKlineDailyDB.symbol == str(symbol))
-            if start_date:
-                stmt = stmt.where(TechKlineDailyDB.date >= start_date)
-            if end_date:
-                stmt = stmt.where(TechKlineDailyDB.date <= end_date)
-            stmt = stmt.order_by(desc(TechKlineDailyDB.date) if order_desc else TechKlineDailyDB.date)
-            if limit:
-                stmt = stmt.limit(limit)
-            rows = (await session.execute(stmt)).scalars().all()
-            return [self._to_entity(r) for r in rows]
+        stmt = select(TechKlineDailyDB).where(TechKlineDailyDB.symbol == str(symbol))
+        if start_date:
+            stmt = stmt.where(TechKlineDailyDB.date >= start_date)
+        if end_date:
+            stmt = stmt.where(TechKlineDailyDB.date <= end_date)
+        stmt = stmt.order_by(desc(TechKlineDailyDB.date) if order_desc else TechKlineDailyDB.date)
+        if limit:
+            stmt = stmt.limit(limit)
+        rows = (await session.execute(stmt)).scalars().all()
+        return [self._to_entity(r) for r in rows]
 
-    async def count_by_symbol(self, symbol) -> int:
-        async with db_session_factory() as session:
-            r = await session.execute(
-                select(func.count()).select_from(TechKlineDailyDB)
-                .where(TechKlineDailyDB.symbol == str(symbol))
+    async def count_by_symbol(self, symbol, session: AsyncSession) -> int:
+        r = await session.execute(
+            select(func.count()).select_from(TechKlineDailyDB)
+            .where(TechKlineDailyDB.symbol == str(symbol))
+        )
+        return r.scalar() or 0
+
+    async def delete_one(
+        self, symbol, trade_date, session: AsyncSession,
+    ) -> int:
+        r = await session.execute(
+            delete(TechKlineDailyDB).where(
+                TechKlineDailyDB.symbol == str(symbol),
+                TechKlineDailyDB.date == trade_date,
             )
-            return r.scalar() or 0
+        )
+        return r.rowcount or 0
 
-    async def delete_one(self, symbol, trade_date) -> int:
-        async with db_session_factory() as session:
-            r = await session.execute(
-                delete(TechKlineDailyDB).where(
-                    TechKlineDailyDB.symbol == str(symbol),
-                    TechKlineDailyDB.date == trade_date,
-                )
-            )
-            await session.commit()
-            return r.rowcount or 0
-
-    async def delete_by_symbol(self, symbol) -> int:
-        return await self.delete(str(symbol))
+    async def delete_by_symbol(self, symbol, session: AsyncSession) -> int:
+        return await self.delete(str(symbol), session)
 
     async def get_coverage(
-        self, symbols: Iterable[str],
+        self, symbols: Iterable[str], session: AsyncSession,
     ) -> dict[str, tuple[date, date]]:
         symbols = list(symbols)
         if not symbols:
             return {}
-        async with db_session_factory() as session:
-            rows = (await session.execute(
-                select(
-                    TechKlineDailyDB.symbol,
-                    func.min(TechKlineDailyDB.date),
-                    func.max(TechKlineDailyDB.date),
-                )
-                .where(TechKlineDailyDB.symbol.in_(symbols))
-                .group_by(TechKlineDailyDB.symbol)
-            )).all()
-            return {r[0]: (r[1], r[2]) for r in rows if r[1] and r[2]}
+        rows = (await session.execute(
+            select(
+                TechKlineDailyDB.symbol,
+                func.min(TechKlineDailyDB.date),
+                func.max(TechKlineDailyDB.date),
+            )
+            .where(TechKlineDailyDB.symbol.in_(symbols))
+            .group_by(TechKlineDailyDB.symbol)
+        )).all()
+        return {r[0]: (r[1], r[2]) for r in rows if r[1] and r[2]}
 
     async def list_symbol_dates(
-        self, symbols: Iterable[str],
+        self, symbols: Iterable[str], session: AsyncSession,
     ) -> dict[str, date | None]:
         """每只股票的上市日（从 stock_info 拿）"""
         from contexts.market.infrastructure.persistence.models.stock_info import StockInfoDB
         symbols = list(symbols)
         if not symbols:
             return {}
-        async with db_session_factory() as session:
-            rows = (await session.execute(
-                select(StockInfoDB.symbol, StockInfoDB.list_date)
-                .where(StockInfoDB.symbol.in_(symbols))
-            )).all()
-            return {r[0]: r[1] for r in rows}
+        rows = (await session.execute(
+            select(StockInfoDB.symbol, StockInfoDB.list_date)
+            .where(StockInfoDB.symbol.in_(symbols))
+        )).all()
+        return {r[0]: r[1] for r in rows}
 
     async def list_symbols(
-        self, list_status: str = "L",
+        self, session: AsyncSession, list_status: str = "L",
     ) -> list[str]:
         from contexts.market.infrastructure.persistence.models.stock_info import StockInfoDB
-        async with db_session_factory() as session:
-            rows = (await session.execute(
-                select(StockInfoDB.symbol)
-                .where(StockInfoDB.list_status == list_status)
-                .order_by(StockInfoDB.symbol)
-            )).all()
-            return [r[0] for r in rows]
+        rows = (await session.execute(
+            select(StockInfoDB.symbol)
+            .where(StockInfoDB.list_status == list_status)
+            .order_by(StockInfoDB.symbol)
+        )).all()
+        return [r[0] for r in rows]
 
-    async def delete(self, symbol: str) -> int:
-        async with db_session_factory() as session:
-            result = await session.execute(
-                delete(TechKlineDailyDB).where(TechKlineDailyDB.symbol == symbol)
-            )
-            await session.commit()
-            return result.rowcount or 0
+    async def delete(self, symbol: str, session: AsyncSession) -> int:
+        result = await session.execute(
+            delete(TechKlineDailyDB).where(TechKlineDailyDB.symbol == symbol)
+        )
+        return result.rowcount or 0
 
     # ── 私有 ──
 

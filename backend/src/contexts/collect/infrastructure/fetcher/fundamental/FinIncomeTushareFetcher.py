@@ -42,6 +42,8 @@ class FinIncomeTushareFetcher(BaseFetcher):
                 ann_date=parse_list_date(r.get("ann_date")),
                 report_type=text(r, "report_type"),
                 comp_type=text(r, "comp_type"),
+                # §1.5 补 Tushare income 文档 end_type 字段
+                end_type=text(r, "end_type"),
                 basic_eps=num(r, "basic_eps"),
                 diluted_eps=num(r, "diluted_eps"),
                 total_revenue=num(r, "total_revenue"),

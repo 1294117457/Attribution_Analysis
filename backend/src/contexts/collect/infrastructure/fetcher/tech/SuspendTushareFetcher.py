@@ -38,7 +38,8 @@ class SuspendTushareFetcher(BaseFetcher):
                 continue
             out.append(BaseSuspendBO(
                 symbol=sym, trade_date=t,
-                suspend_timing=parse_list_date(r.get("suspend_timing")),
+                # §2.1 修复：suspend_timing 是字符串（如 "09:30-10:00"），不再用 parse_list_date
+                suspend_timing=text(r, "suspend_timing"),
                 suspend_type=text(r, "suspend_type"),
             ))
         return out

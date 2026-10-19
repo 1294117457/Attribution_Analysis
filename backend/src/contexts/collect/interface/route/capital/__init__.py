@@ -1,13 +1,14 @@
 """capital routes — 资金面 9 个 service 对应 9 个 route
 
-URL 风格：POST /collect/capital/{service_name}
+Phase3：内联 CollectBody → DTO CollectRequest / CollectResponse
 """
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
 
 from shared.interface import _response as R
+from contexts.collect.interface.dto.request.collect import CollectRequest
+from contexts.collect.interface.dto.response.collect import CollectResponse
 from contexts.collect.infrastructure.di.collect_service import (
     get_moneyflow_service,
     get_moneyflow_hsgt_service,
@@ -23,65 +24,57 @@ from contexts.collect.infrastructure.di.collect_service import (
 router = APIRouter(prefix="/collect/capital", tags=["采集-资金面"])
 
 
-class CollectBody(BaseModel):
-    """采集请求体
-
-    新格式：{"mode": "full" | "condition", "params": {...}}
-    旧格式：{"params": {...}}    兼容：mode 默认为 condition
-    """
-    mode: str = "condition"  # 'full' = 全量 / 'condition' = 条件
-    params: dict = Field(default_factory=dict)
+async def _run(svc, body: CollectRequest) -> CollectResponse:
+    result = await svc.collect(body.params)
+    return CollectResponse(
+        total=result.total, success=result.success, fail=result.fail,
+        skip=result.skip, saved=result.saved, message=result.message,
+    )
 
 
-async def _run(svc, body: CollectBody):
-    """统一执行：把 mode 合并进 params（让 RunLog.params 后续能被前端解析）"""
-    merged = {**body.params, "mode": body.mode}
-    return R.ok((await svc.collect(merged)).to_dict())
+@router.post("/moneyflow", response_model=CollectResponse, summary="个股资金流向")
+async def moneyflow_trigger(body: CollectRequest, svc=Depends(get_moneyflow_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/moneyflow", summary="个股资金流向采集")
-async def moneyflow_trigger(body: CollectBody, svc=Depends(get_moneyflow_service)):
-    return await _run(svc, body)
+@router.post("/moneyflow_hsgt", response_model=CollectResponse, summary="沪深港通资金流向")
+async def moneyflow_hsgt_trigger(body: CollectRequest, svc=Depends(get_moneyflow_hsgt_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/moneyflow_hsgt", summary="沪深港通资金流向采集")
-async def moneyflow_hsgt_trigger(body: CollectBody, svc=Depends(get_moneyflow_hsgt_service)):
-    return await _run(svc, body)
+@router.post("/top_list", response_model=CollectResponse, summary="龙虎榜每日明细")
+async def top_list_trigger(body: CollectRequest, svc=Depends(get_top_list_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/top_list", summary="龙虎榜每日明细采集")
-async def top_list_trigger(body: CollectBody, svc=Depends(get_top_list_service)):
-    return await _run(svc, body)
+@router.post("/top_inst", response_model=CollectResponse, summary="龙虎榜机构明细")
+async def top_inst_trigger(body: CollectRequest, svc=Depends(get_top_inst_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/top_inst", summary="龙虎榜机构明细采集")
-async def top_inst_trigger(body: CollectBody, svc=Depends(get_top_inst_service)):
-    return await _run(svc, body)
+@router.post("/block_trade", response_model=CollectResponse, summary="大宗交易")
+async def block_trade_trigger(body: CollectRequest, svc=Depends(get_block_trade_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/block_trade", summary="大宗交易采集")
-async def block_trade_trigger(body: CollectBody, svc=Depends(get_block_trade_service)):
-    return await _run(svc, body)
+@router.post("/margin", response_model=CollectResponse, summary="融资融券明细")
+async def margin_trigger(body: CollectRequest, svc=Depends(get_margin_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/margin", summary="融资融券明细采集")
-async def margin_trigger(body: CollectBody, svc=Depends(get_margin_service)):
-    return await _run(svc, body)
+@router.post("/hsgt_top10", response_model=CollectResponse, summary="沪深港通前 10 持仓")
+async def hsgt_top10_trigger(body: CollectRequest, svc=Depends(get_hsgt_top10_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/hsgt_top10", summary="沪深港通前 10 持仓采集")
-async def hsgt_top10_trigger(body: CollectBody, svc=Depends(get_hsgt_top10_service)):
-    return await _run(svc, body)
+@router.post("/limit_list_d", response_model=CollectResponse, summary="每日涨跌停板")
+async def limit_list_trigger(body: CollectRequest, svc=Depends(get_limit_list_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
-@router.post("/limit_list_d", summary="涨跌停板采集")
-async def limit_list_d_trigger(body: CollectBody, svc=Depends(get_limit_list_service)):
-    return await _run(svc, body)
-
-
-@router.post("/holder_number", summary="股东户数采集（按 symbol 批量）")
-async def holder_number_trigger(body: CollectBody, svc=Depends(get_holder_number_service)):
-    return await _run(svc, body)
+@router.post("/holder_number", response_model=CollectResponse, summary="股东户数")
+async def holder_number_trigger(body: CollectRequest, svc=Depends(get_holder_number_service)):
+    return R.ok((await _run(svc, body)).model_dump())
 
 
 __all__ = ["router"]

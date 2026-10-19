@@ -30,15 +30,18 @@ class ConceptSnapshotAdataFetcher(BaseFetcher):
         for row in _rows(df):
             return [{
                 "index_code": index_code,
+                # §1.7 字段语义修复 + 补 trade_date / concept_name
+                "concept_name": _str(row.get("name")),
+                "trade_date": _str(row.get("trade_date")),
                 "price": _float(row.get("price")),
-                "change": _float(row.get("change")),
-                "change_pct": _float(row.get("change_pct")),
-                "volume": _float(row.get("volume")),
-                "amount": _float(row.get("amount")),
-                "open": _float(row.get("open")),
+                "open_price": _float(row.get("open")),
                 "high": _float(row.get("high")),
                 "low": _float(row.get("low")),
                 "prev_close": _float(row.get("prev_close")),
+                "p_change": _float(row.get("change")),
+                "pct_change": _float(row.get("change_pct")),
+                "volume": _float(row.get("volume")),
+                "amount": _float(row.get("amount")),
                 "turnover_rate": _float(row.get("turnover_rate")),
                 "pe": _float(row.get("pe")),
                 "pb": _float(row.get("pb")),

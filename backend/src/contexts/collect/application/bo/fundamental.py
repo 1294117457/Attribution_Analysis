@@ -7,7 +7,6 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-
 class FinDailyBasicBO(BaseModel):
     symbol: str
     trade_date: date
@@ -27,6 +26,8 @@ class FinDailyBasicBO(BaseModel):
     free_share: Optional[float] = None
     total_mv: Optional[float] = None
     circ_mv: Optional[float] = None
+    # §2.7 补 Tushare daily_basic 文档 limit_status 字段
+    limit_status: Optional[int] = None
 
 
 class FinReportBO(BaseModel):
@@ -35,6 +36,8 @@ class FinReportBO(BaseModel):
     ann_date: Optional[date] = None
     report_type: Optional[str] = None
     comp_type: Optional[str] = None
+    # §1.5 补 Tushare income 文档 end_type 字段
+    end_type: Optional[str] = None
     basic_eps: Optional[float] = None
     diluted_eps: Optional[float] = None
     total_revenue: Optional[float] = None
@@ -55,8 +58,6 @@ class FinTop10HoldersBO(BaseModel):
     hold_float_ratio: Optional[float] = None
     hold_change: Optional[float] = None
     holder_type: Optional[str] = None
-
-
 class FinTop10FloatHoldersBO(BaseModel):
     symbol: str
     ann_date: Optional[date] = None
@@ -66,7 +67,6 @@ class FinTop10FloatHoldersBO(BaseModel):
     hold_ratio: Optional[float] = None
     hold_change: Optional[float] = None
     holder_type: Optional[str] = None
-
 
 __all__ = [
     "FinDailyBasicBO", "FinReportBO",

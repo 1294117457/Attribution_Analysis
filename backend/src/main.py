@@ -13,6 +13,10 @@ from shared.interface.router_compat import api_router
 from contexts.auth.infrastructure.security import key_manager
 from app.exception_handler import register_exception_handlers
 from app.middleware import register_middlewares
+from app.init_db import ensure_attrib_tables
+
+# 导入所有 ORM 模型（确保 SQLAlchemy 自动建表）
+from contexts.collect.infrastructure.persistence.models.collect_log import CollectLogDB  # noqa: F401
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,6 +37,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     # JWT key warmup
     key_manager.warmup()
+
+    # 自动建表（Phase 2 修复：v2 新增 collect_logs 等表，幂等）
+    await ensure_attrib_tables()
+
     yield
 
     await close_db()
