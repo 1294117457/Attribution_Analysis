@@ -25,20 +25,9 @@ class MinuteKlineService:
         label='分钟 K 线',
         description='通达信 1/5/15/30/60 分钟 K 线（实时）',
         kind=ServiceKind.REALTIME,
+        rate_limit=("pytdx", 60, 60),
+        concurrency=1,
     )
-    name = "minute_kline"
-    facet = "tech"
-    sub_facet = "kline_minute"
-    label = "分钟 K 线"
-    description = "通达信 1/5/15/30/60 分钟 K 线（实时）"
-    DEFAULT_PARAMS = {"symbol": None, "interval": "5min", "days": 1}
-    UI_SCHEMA = [
-        {"key": "symbol",   "ui": "symbol_str",     "label": "股票代码", "required": True, "placeholder": "000001"},
-        {"key": "interval", "ui": "interval_kline", "label": "分钟周期", "required": True},
-        {"key": "days",     "ui": "days_int",       "label": "回溯天数", "required": True},
-    ]
-    RATE_LIMIT = ("pytdx", 60, 60)
-    CONCURRENCY = 1
 
     # 兼容前端/旧调用方传 '5'（裸数字）的情况
     _INTERVAL_ALIAS = {"1": "1min", "5": "5min", "15": "15min", "30": "30min", "60": "60min"}
@@ -71,7 +60,7 @@ class MinuteKlineService:
             "interval": normalized,
             "days": days,
         }
-        await check(self.RATE_LIMIT)
+        await check(self.META.rate_limit)
         bos = await self._fetcher.fetch(**p)
         return [
             {

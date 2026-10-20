@@ -1,5 +1,11 @@
 """AdjFactorService：复权因子 service（按 symbol 维度的批量采集）
 
+Phase 2 重构（2026-10-19）：
+    - 注入 CollectLogService + CollectTaskRunner
+    - collect() 改为编排入口：创建日志 + 派发任务（不执行实际采集）
+    - _run_collect() 为执行入口：实际采集，yield 进度（TaskRunner 消费）
+    - 无 AOP 装饰器，日志全手动调
+
 走 repo：AdjFactorRepository（已抽离）
 session 由 DI 工厂注入，透传给 repo.save()。
 """
@@ -7,14 +13,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import AsyncGenerator, TYPE_CHECKING
 
-from contexts.collect.application.service.base import CollectResult, RateLimited, list_all_a_symbols, ServiceKind, ServiceMeta
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from contexts.collect.application.service.base import (
+    RateLimited,
+    ServiceKind,
+    ServiceMeta,
+    list_all_a_symbols,
+)
+from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.tech.AdjFactorTushareFetcher import (
     AdjFactorTushareFetcher,
 )
 from contexts.collect.infrastructure.persistence.repositories import AdjFactorRepository
-from contexts.collect.infrastructure.cache.rate_limit import check
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from contexts.collect.application.service.manage import CollectLogService
+    from contexts.collect.infrastructure.adapter.background import CollectTaskRunner
 
 logger = logging.getLogger(__name__)
 
@@ -27,71 +44,123 @@ class AdjFactorService:
         label='复权因子',
         description='单只股票复权因子（Tushare adj_factor）',
         kind=ServiceKind.INCREMENTAL,
+        rate_limit=("tushare", 200, 60),
+        concurrency=1,  # ★ step8: AsyncSession 非并发安全，收敛为 1（见 08 方案 §5.7）
     )
-    name = "adj_factor"
-    facet = "tech"
-    sub_facet = "adj"
-    label = "复权因子"
-    description = "单只股票复权因子"
-    DEFAULT_PARAMS = {"symbols": []}
-    UI_SCHEMA = [
-        {
-            "key": "symbols",
-            "ui": "symbols_list",
-            "label": "股票代码",
-            "required": False,
-            "placeholder": "每行一只：000001\n000002\n600000",
-            "help": "留空表示全量采集（全市场 5000+ 只）",
-        },
-    ]
-    RATE_LIMIT = ("tushare", 200, 60)
-    CONCURRENCY = 5
 
     def __init__(
         self,
+        session: AsyncSession,
+        log_service: "CollectLogService",
+        task_runner: "CollectTaskRunner",
         fetcher: AdjFactorTushareFetcher | None = None,
         repo: AdjFactorRepository | None = None,
-        session: AsyncSession | None = None,
     ) -> None:
+        self._session = session
+        self._log_service = log_service
+        self._task_runner = task_runner
         self._fetcher = fetcher or AdjFactorTushareFetcher()
         self._repo = repo or AdjFactorRepository()
-        self._session = session
 
-    async def collect(self, params: dict) -> CollectResult:
+    # ═══════════════════════════════════════════════════════════════
+    # 入口 A：HTTP 触发（Route 层调）
+    # ═══════════════════════════════════════════════════════════════
+
+    async def collect(self, params: dict) -> dict:
+        """HTTP 触发入口：编排（不执行实际采集）
+
+        流程：
+            1. log_service.create_pending() ← 创建日志（落库 + Redis）
+            2. task_runner.dispatch()      ← 派发后台任务
+            3. dispatch 失败 → mark_failed() ← 回滚日志
+            4. return { log_id, status }
+
+        Returns:
+            { log_id, status }
+        """
+        # 1. 创建日志
+        log_id = await self._log_service.create_pending(
+            service_name=self.META.name,
+            facet=self.META.facet,
+            kind=self.META.kind.value,
+            params=params,
+            trigger_source="manual",
+        )
+
+        # 2. 派发后台任务
+        try:
+            self._task_runner.dispatch(
+                log_id=log_id,
+                service_name=self.META.name,
+                params=params,
+            )
+        except Exception as e:
+            logger.exception(f"派发采集任务失败: {e}")
+            await self._log_service.mark_failed(
+                service_name=self.META.name,
+                log_id=log_id,
+                error=f"派发失败: {e}",
+            )
+            raise
+
+        return {"log_id": log_id, "status": "pending"}
+
+    # ═══════════════════════════════════════════════════════════════
+    # 入口 B：后台执行（TaskRunner 调）
+    # ═══════════════════════════════════════════════════════════════
+
+    async def _run_collect(
+        self,
+        params: dict,
+    ) -> AsyncGenerator[dict, None]:
+        """后台任务执行入口：实际采集，yield 进度
+
+        facet/kind 不再由 Runner 传入 —— service 自身从 self.META 派生。
+        session 直接用 self._session（Runner 已通过 service_class(session=...) 注入）。
+
+        Yields:
+            每批结果 { saved, fail, total }
+        """
         symbols = params.get("symbols") or []
         if not symbols:
             symbols = await self._list_all_symbols()
             if not symbols:
-                return CollectResult(
-                    fail=1,
-                    message="symbols 为空，且 stock_basic 暂无数据（请先采集 stock_basic）",
-                )
-        symbols = [str(s).zfill(6) for s in symbols]
-        sem = asyncio.Semaphore(self.CONCURRENCY)
+                yield {
+                    "saved": 0,
+                    "fail": 1,
+                    "total": 0,
+                    "skip": 0,
+                    "message": "symbols 为空，且 stock_basic 暂无数据（请先采集 stock_basic）",
+                }
+                return
 
-        async def one(symbol: str) -> int:
+        symbols = [str(s).zfill(6) for s in symbols]
+        total = len(symbols)
+        sem = asyncio.Semaphore(self.META.concurrency)
+
+        async def one(symbol: str) -> dict:
             async with sem:
-                await check(self.RATE_LIMIT)
+                await check(self.META.rate_limit)
                 for attempt in range(3):
                     try:
                         bos = await self._fetcher.fetch(symbol=symbol)
-                        return await self._repo.save(bos, self._session)
+                        saved = await self._repo.save(bos, self._session)
+                        return {"saved": saved, "fail": 0, "total": total}
                     except RateLimited as e:
                         if attempt < 2:
-                            import asyncio as _a
-                            await _a.sleep(e.retry_after)
+                            await asyncio.sleep(e.retry_after)
                         else:
                             raise
-                return 0
+                return {"saved": 0, "fail": 1, "total": total}
 
-        results = await asyncio.gather(*[one(s) for s in symbols], return_exceptions=True)
-        success = sum(1 for r in results if isinstance(r, int) and r >= 0)
-        saved = sum(r for r in results if isinstance(r, int))
-        fail = sum(1 for r in results if isinstance(r, BaseException))
-        return CollectResult(
-            total=len(symbols), success=success, fail=fail, saved=saved,
-            message=f"复权因子: 共 {len(symbols)} 只, 成功 {success}, 写入 {saved}",
-        )
+        # ★ 使用 as_completed 边完成边 yield
+        tasks = [asyncio.create_task(one(s)) for s in symbols]
+        for coro in asyncio.as_completed(tasks):
+            yield await coro
+
+    # ═══════════════════════════════════════════════════════════════
+    # 内部方法（业务逻辑，不涉及日志）
+    # ═══════════════════════════════════════════════════════════════
 
     async def _list_all_symbols(self) -> list[str]:
         return await list_all_a_symbols()

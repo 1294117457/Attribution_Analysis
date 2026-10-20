@@ -6,7 +6,8 @@
 - get_password_hasher / get_jwt_service / get_captcha / get_email_verification_store
 - get_auth_service
 
-**不包含** 纯资源 DI（get_db / get_redis 等）—— 那些在 `shared.infrastructure.di`。
+**不包含** 纯资源 DI（get_db 等）—— 那些在 `shared.infrastructure.di`。
+**Redis** 改为全局单例：直接 `from shared.infrastructure.connection.redis_client import redis`。
 **不包含** lifespan 初始化 —— auth 没有 lifespan init（装配在 service 首次构造时 lazy）。
 """
 from __future__ import annotations

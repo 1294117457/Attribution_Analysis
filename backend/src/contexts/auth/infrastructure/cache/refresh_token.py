@@ -15,7 +15,8 @@ from __future__ import annotations
 import logging
 from typing import Set
 
-from shared.infrastructure.di.redis_session import get_redis
+# ★ 全局单例直连，无需 Depends 注入
+from shared.infrastructure.connection.redis_client import redis as redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -41,22 +42,19 @@ async def register(user_id: int, jti: str, expires_in_seconds: int) -> None:
         jti: refresh token unique id (JWT claim)
         expires_in_seconds: refresh TTL, set TTL sync with it
     """
-    redis = await get_redis()
     set_key = _user_set_key(user_id)
-    await redis.sadd(set_key, jti)
-    await redis.expire(set_key, expires_in_seconds)
+    await redis_client.sadd(set_key, jti)
+    await redis_client.expire(set_key, expires_in_seconds)
 
 
 async def is_active(jti: str) -> bool:
     """not revoked -> True. revoked / key not exist -> False."""
-    redis = await get_redis()
-    return (await redis.exists(_revoked_key(jti))) == 0
+    return (await redis_client.exists(_revoked_key(jti))) == 0
 
 
 async def revoke(jti: str, expires_in_seconds: int) -> None:
     """revoke single jti (write blacklist). TTL = refresh remaining TTL."""
-    redis = await get_redis()
-    await redis.set(_revoked_key(jti), "1", ex=expires_in_seconds)
+    await redis_client.set(_revoked_key(jti), "1", ex=expires_in_seconds)
 
 
 async def revoke_all_for_user(user_id: int) -> int:
@@ -65,13 +63,12 @@ async def revoke_all_for_user(user_id: int) -> int:
     Returns:
         count of revoked jti
     """
-    redis = await get_redis()
     set_key = _user_set_key(user_id)
-    jtis: Set[str] = await redis.smembers(set_key)
+    jtis: Set[str] = await redis_client.smembers(set_key)
     if not jtis:
         return 0
     # use pipeline to write multiple keys in one go, high efficiency
-    async with redis.pipeline(transaction=True) as pipe:
+    async with redis_client.pipeline(transaction=True) as pipe:
         for jti in jtis:
             pipe.set(_revoked_key(jti), "1", ex=_REVOKE_TTL_SECONDS)
         pipe.delete(set_key)

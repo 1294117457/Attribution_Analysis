@@ -86,14 +86,13 @@ function toggleCollapsed(key: string) {
   localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...next]))
 }
 
-/** 任务按钮的 hover 提示：描述 + 增量标志 */
+/** 任务按钮的 hover 提示：描述 + kind 说明 */
 function tooltipText(item: CatalogItem): string {
   const lines: string[] = []
   if (item.description) lines.push(item.description)
   if (item.kind === 'realtime') lines.push('实时查询（不写库）')
-  else if (item.incremental) lines.push('增量采集（支持时间范围）')
-  else if (item.kind === 'full_refresh') lines.push('全量采集')
-  else lines.push('手动采集')
+  else if (item.kind === 'incremental') lines.push('增量采集（支持时间范围）')
+  else if (item.kind === 'full_refresh') lines.push('全量采集（覆盖式刷新）')
   return lines.join('\n') || item.label
 }
 </script>

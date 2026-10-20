@@ -1,37 +1,31 @@
-"""采集 service 抽象（step7 重构 + 采集日志进度优化）
+"""采集 service 抽象
 
-替代旧 BaseCollectTask / CollectService 模式：
-- 不再有"task" 概念
-- 每个 service 实现 collect() 即可（统一入口，HTTP 和调度都调它）
-- 限流/并发/缓存/入库全部在 service 内自决
-- fetcher 只负责调 SDK
+v4 自管协议（2026-10-20）：
+    - 移除 CollectTaskSpec 和 self_collect_log 机制
+    - collect() 简化为：asyncio.create_task(run_collect(params)) + return {"status": "pending"}
+    - run_collect(params) 包揽全生命周期：create_pending → mark_running → fetch → save
+      → update_progress → mark_finished/mark_failed
+    - log_id 不透出任何边界，前端按 service_name 查日志列表
 
-替代历史：
-    - 原 BaseCollectTask（task.py）           ← 删
-    - 原 CollectRunner.execute               ← 删
-    - 原 CollectManageService                ← 删
-    - 原 5 装饰器（Metrics/Retry/Throttle/Cache/Validate） ← 删
-
-参考文档：docs/backend-docs/dev/step7/01采集重构/01-精简方案总览.md §1
-
-v2 (2026-10-19): 采集日志进度优化
-    - 新增 ServiceMeta dataclass，统一元数据管理
-    - 新增 ServiceKind 枚举（incremental/full_refresh/realtime）
+历史：
+    - v1: BaseCollectTask 模式（含 AOP 装饰器）
+    - v2: ServiceKind / ServiceMeta 统一元数据
+    - v3: TaskRunner 统一派发 + CollectTaskSpec
+    - v4: 移除 TaskRunner，日志全生命周期收拢到 run_collect()
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
-from typing import Any, ClassVar, Optional, Protocol
+from typing import Any, ClassVar, Protocol
 
-# 业务级异常从 domain；port 契约错误（限流/源不可用）仍从 port
 from contexts.collect.application.port.errors import RateLimited, SourceUnavailable
 from contexts.collect.domain import InvalidParams, NotSupported
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# ServiceMeta：统一元数据（v2 新增）
+# ServiceMeta：统一元数据
 # ═══════════════════════════════════════════════════════════════════════
 
 
@@ -39,7 +33,7 @@ class ServiceKind(Enum):
     """采集服务类型，决定 UI 展示和触发方式"""
     INCREMENTAL = "incremental"     # 增量入库，需要时间范围（如日K）
     FULL_REFRESH = "full_refresh"  # 全量覆盖，无时间范围（如股票基本信息）
-    REALTIME = "realtime"           # 实时查询，不入库（如分K）
+    REALTIME = "realtime"          # 实时查询，不入库（如分K）
 
 
 @dataclass
@@ -48,15 +42,28 @@ class ServiceMeta:
 
     用于替代散落的 class 属性（name/facet/label），
     统一在 META 类属性中声明。
+
+    字段说明：
+      name        全局唯一标识（对应 fetcher 的索引 key）
+      facet       大类：tech / capital / fundamental / news / sentiment
+      label       前端展示名称
+      description 描述（可选）
+      kind        采集行为类型（决定 UI 展示）
+      rate_limit  限速配置：(source, count, window)，None 表示不限制
+      concurrency 并发上限（asyncio.Semaphore 容量）
     """
     # ── 标识 ──────────────────────────────────────
     name: str                                       # 全局唯一标识
     facet: str                                      # 大类（tech / capital / fundamental / news / sentiment）
     label: str = ""                                 # 前端展示名
-    description: str = ""                           # 描述（可选）
+    description: str = ""                            # 描述（可选）
 
     # ── 采集行为 ──────────────────────────────────
     kind: ServiceKind = ServiceKind.INCREMENTAL
+
+    # ── 运行时配置 ────────────────────────────────
+    rate_limit: tuple[str, int, int] | None = None  # (source, count, window)
+    concurrency: int = 1                             # 并发上限
 
     # ── 自动派生 ──────────────────────────────────
     @property
@@ -74,7 +81,7 @@ class ServiceMeta:
 
 @dataclass(frozen=True)
 class CollectResult:
-    """一次采集执行的结果——调度日志和 HTTP 返回都用这个"""
+    """一次采集执行的结果——同步模式下用（仅 REALTIME 兼容保留）"""
     total: int = 0
     success: int = 0
     fail: int = 0
@@ -99,43 +106,43 @@ class CollectResult:
 
 
 class CollectService(Protocol):
-    """采集 service 抽象接口
+    """采集 service 抽象接口（v4 自管协议）
 
-    约束：
-      ① name 必须全局唯一（用于 schedule.service_name 关联，见 scheduler 模块）
-      ② facet 必须是 tech / capital / fundamental / news / sentiment 之一
-      ③ collect(params) 是统一入口：调度（scheduler 模块）和 HTTP 都调这个
-      ④ DEFAULT_PARAMS 用于 params 为空时的兜底
-      ⑤ RATE_LIMIT 用于 service 内部的限流（RedisCache.rate_limit 滑动窗口）
-         格式: (source, max_count, window_seconds) 或 None
-      ⑥ CONCURRENCY 用于 service 内部的并发（asyncio.Semaphore 容量）
+    所有 service 必须：
+      1. 声明 META: ClassVar[ServiceMeta]
+      2. 实现 collect(params) → dict（HTTP 编排入口：派发后台，立即返回）
+      3. 实现 run_collect(params) → None（后台全生命周期，自己管日志）
 
-    可选方法（用于实时查询）：
-      get(...) → list[dict] | dict :  HTTP GET 入口（不走 collect）
+    collect() 约定：
+        - 只管派发：asyncio.create_task(self.run_collect(params))
+        - 立即返回：{"status": "pending"}
+        - 不写任何 DB，不返回 log_id
+        - 前端按 service_name 查日志列表，不依赖 log_id
+
+    run_collect(params) 约定：
+        - 第一步：log_id = await self._log_service.create_pending(...)
+        - 全流程：create_pending → mark_running → 限流 → fetch → save
+          → update_progress（多次）→ mark_finished/mark_failed
+        - log_id 仅内部使用，不透出任何边界
+        - 异常：捕获后 mark_failed（独立 session），不 re-raise
+
+    可选：
+      - get(**kwargs) → list[dict] | dict   （REALTIME service 的实时查询入口）
     """
-    name: ClassVar[str]
-    facet: ClassVar[str]
-    sub_facet: ClassVar[str] = ""
-    label: ClassVar[str] = ""
-    description: ClassVar[str] = ""
+    META: ClassVar[ServiceMeta]
 
-    DEFAULT_PARAMS: ClassVar[dict] = {}
-    RATE_LIMIT: ClassVar[Optional[tuple[str, int, int]]] = None
-    CONCURRENCY: ClassVar[int] = 1
+    async def collect(self, params: dict) -> dict:
+        """HTTP 编排入口：派发后台任务，立即返回
 
-    # ── UI schema (catalog 方案 B) ────────────────────────────────
-    # 每个 service 显式声明：参数用什么控件渲染 / label / placeholder / required / help
-    # 前端 CollectActionCard.vue 直接消费，不再走 _infer_param_ui 推断
-    # 示例：
-    #   UI_SCHEMA = [
-    #     {"key": "ts_code",    "ui": "ts_code_str",   "label": "Tushare 代码",
-    #      "required": False, "placeholder": "000001.SZ", "help": "..."},
-    #     {"key": "start_date", "ui": "date_str",      "label": "开始日期"},
-    #     {"key": "end_date",   "ui": "date_str",      "label": "结束日期"},
-    #   ]
-    UI_SCHEMA: ClassVar[list[dict]] = []
+        Returns:
+            {"status": "pending"}  ← 派发即完成，前端按 service_name 查日志
+        """
 
-    async def collect(self, params: dict) -> CollectResult:
+    def run_collect(self, params: dict) -> Any:
+        """后台全生命周期（内部包含 create_pending / mark_running / mark_finished 等）"""
+
+    async def get(self, **kwargs: Any) -> Any:
+        """实时查询入口（仅 REALTIME service 实现）"""
         ...
 
 
@@ -154,7 +161,7 @@ __all__ = [
 async def list_all_a_symbols() -> list[str]:
     """从 tushare stock_basic 拉全 A 股票代码（list_status=L，6 位补零）
 
-    用途：service.collect() 在 symbols 为空时（前端"全量采集"）走默认拉全 A。
+    用途：service.run_collect() 在 symbols 为空时（前端"全量采集"）走默认拉全 A。
     返回 [] 时表示 tushare 拉失败，调用方应给出明确错误。
     """
     import logging
@@ -181,14 +188,15 @@ async def list_all_concept_codes() -> list[str]:
     logger = logging.getLogger(__name__)
     try:
         from sqlalchemy import select
-        from shared.infrastructure.connection.db_factory import db_session_factory
-        from contexts.concept.infrastructure.persistence.models.concept import ConceptDB
-        async with db_session_factory() as session:
+        from shared.infrastructure.connection.db_factory import raw_session_factory
+        from contexts.concept.infrastructure.persistence.models.concept import (
+            ConceptsDB,
+        )
+        async with raw_session_factory() as session:
             rows_db = (await session.execute(
-                select(ConceptDB.index_code)
+                select(ConceptsDB.index_code)
             )).scalars().all()
             return [str(c) for c in rows_db if c]
     except Exception as e:
-        logger.warning("list_all_concept_codes 失败: %r", e)
-        return []
-
+        logger.error("list_all_concept_codes 失败（抛出让上层感知）: %r", e)
+        raise

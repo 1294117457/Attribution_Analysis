@@ -1,24 +1,26 @@
-"""Redis 异步客户端构造
+"""Redis 全局单例客户端。
 
-仅负责：按当前 settings 构造一个 aioredis.Redis 客户端（含连接池）。
+直接 import 即用，无需 Depends注入：
+    from shared.infrastructure.connection.redis_client import redis as redis_client
+    await redis_client.hset("k", mapping={...})
 
-**不包含** 单例管理 —— 那是 `get_redis()` 的职责，在 `shared.infrastructure.di.redis_session`。
-**不包含** FastAPI Depends 工厂 —— 也在 `di/redis_session.py`。
+设计：
+    - 模块级单例 `redis`（连接池复用 + 进程级一致）
+    - aioredis.from_url() 是纯构造：不打开 TCP 连接，只建 ConnectionPool 对象
+      → 真正的 TCP 连接在首次命令时 lazy 建立（redis-py 标准行为）
+    - shutdown 阶段必须 await redis.aclose() 释放连接池 socket
 
-设计理由：
-- `_build_client()` 是纯函数：输入 settings → 输出 aioredis.Redis
-- 便于单测：直接调 `_build_client(stub_settings)` 拿到独立客户端
-- 单例管理（事件循环内 lazy init + Lock）放 di 层
-
-使用示例：
-    from shared.infrastructure.connection.redis_client import _build_client
-    client = _build_client()
+Redis-py 5.x 推荐使用 aclose()（旧 close() 是兼容别名）。
 """
 from __future__ import annotations
+
+import logging
 
 import redis.asyncio as aioredis
 
 from shared.infrastructure.config.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 # 连接池上限（远端 Redis 服务端 maxclients 通常 10000，但共享实例要克制）
 MAX_CONNECTIONS = 20
@@ -44,4 +46,21 @@ def _build_client() -> aioredis.Redis:
     )
 
 
-__all__ = ["_build_client", "MAX_CONNECTIONS"]
+# ★ 全局单例：from_url 只建连接池对象，不建 TCP 连接
+redis: aioredis.Redis = _build_client()
+
+
+async def close_redis_client() -> None:
+    """关闭连接池（lifespan shutdown 调用）
+
+    释放所有 pooled socket；调用后 `redis` 不可再用。
+    """
+    await redis.aclose()
+
+
+__all__ = [
+    "MAX_CONNECTIONS",
+    "_build_client",
+    "close_redis_client",
+    "redis",
+]

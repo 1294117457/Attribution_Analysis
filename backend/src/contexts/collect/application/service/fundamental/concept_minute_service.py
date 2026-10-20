@@ -20,17 +20,9 @@ class ConceptMinuteService:
         label='概念实时分时',
         description='概念实时分时（Adata concept_minute）',
         kind=ServiceKind.REALTIME,
+        rate_limit=("adata", 100, 60),
+        concurrency=1,
     )
-    name = "concept_minute"
-    facet = "fundamental"
-    sub_facet = "concept"
-    label = "概念实时分时"
-    DEFAULT_PARAMS = {"index_code": None}
-    UI_SCHEMA = [
-        {"key": "index_code", "ui": "index_code_str", "label": "概念指数代码", "required": True, "placeholder": "BK0001"},
-    ]
-    RATE_LIMIT = ("adata", 100, 60)
-    CONCURRENCY = 1
 
     def __init__(self, fetcher: ConceptMinuteAdataFetcher | None = None) -> None:
         self._fetcher = fetcher or ConceptMinuteAdataFetcher()
@@ -39,7 +31,7 @@ class ConceptMinuteService:
         ic = params.get("index_code")
         if not ic:
             return CollectResult(fail=1, message="index_code 必填")
-        await check(self.RATE_LIMIT)
+        await check(self.META.rate_limit)
         for attempt in range(3):
             try:
                 items = await self._fetcher.fetch(index_code=ic)

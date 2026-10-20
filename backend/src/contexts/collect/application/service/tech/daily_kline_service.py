@@ -1,41 +1,46 @@
 """DailyKlineService：日 K 线 service（按 symbol 维度批量采集 + DB upsert）
 
-Phase 2 重构（2026-10-19）：
-    - 注入 CollectLogService + CollectTaskRunner
-    - collect() 改为编排入口：创建日志 + 派发任务（不执行实际采集）
-    - _run_collect() 为执行入口：实际采集，yield 进度（TaskRunner 消费）
-    - 无 AOP 装饰器，日志全手动调
+v4 自管协议（2026-10-20）：
+    - collect()      HTTP 入口：asyncio.create_task(run_collect(params))，立即返回 { status: "pending" }
+                     不再暴露 log_id 前端，前端按 service_name 查日志列表
+    - run_collect() 后台全生命周期：create_pending → mark_running → fetch → save
+                     → update_progress（多次）→ mark_finished/mark_failed
+                     日志在 run_collect 内部生成，不透出任何边界
+
+设计原则：
+    - collect() 真·零状态：只派发，不写任何 DB
+    - 日志生命周期全在 run_collect() 内部，与业务逻辑同生同死
+    - log_id 仅内部使用，DB 表 join 用（前端不感知）
 
 提供：
-  - collect(params): HTTP 入口，立即返回 { log_id, status }
-  - _run_collect(params, session, log_id, facet, kind): 后台执行入口
+  - collect(params): HTTP 入口，立即返回 { status: "pending" }
+  - run_collect(params): 后台全生命周期（见 class docstring）
   - get(...): 从 DB 读（实时查询入口，前端 RealtimePanel 用）
 
-session 由 DI 工厂注入（get_db，写业务库 kline），不再自己 async with db_session_factory()。
+session 由 DI 工厂注入（get_db，写业务库 kline），但 run_collect 自己再开 raw_data session。
 """
 from __future__ import annotations
 
 import asyncio
 import logging
 from datetime import date, timedelta
-from typing import TYPE_CHECKING, AsyncGenerator, Optional
+from typing import TYPE_CHECKING, Optional
 
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from contexts.collect.application.service.base import (
     ServiceKind,
     ServiceMeta,
-    list_all_a_symbols,
 )
 from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.tech.DailyKlineTushareFetcher import (
     DailyKlineTushareFetcher,
 )
-from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
     from contexts.collect.application.service.manage import CollectLogService
-    from contexts.collect.infrastructure.adapter.background import CollectTaskRunner
 
 logger = logging.getLogger(__name__)
 
@@ -49,18 +54,18 @@ class DailyKlineService:
         label="日 K 线",
         description="Tushare pro.daily 日 K 线",
         kind=ServiceKind.INCREMENTAL,
+        rate_limit=("tushare", 200, 60),
+        concurrency=1,  # AsyncSession 非并发安全，收敛为 1
     )
 
     def __init__(
         self,
-        session: AsyncSession,
         log_service: "CollectLogService",
-        task_runner: "CollectTaskRunner",
+        session: AsyncSession | None = None,  # 仅 get() 实时查询用；run_collect 自己开
         fetcher: DailyKlineTushareFetcher | None = None,
     ) -> None:
-        self._session = session
+        self._session = session  # 仅 get() 用
         self._log_service = log_service
-        self._task_runner = task_runner
         self._fetcher = fetcher or DailyKlineTushareFetcher()
 
     # ═══════════════════════════════════════════════════════════════
@@ -68,68 +73,37 @@ class DailyKlineService:
     # ═══════════════════════════════════════════════════════════════
 
     async def collect(self, params: dict) -> dict:
-        """HTTP 触发入口：编排（不执行实际采集）
+        """HTTP 入口：只管派发，立即返回
 
         流程：
-            1. log_service.create_pending() ← 创建日志（落库 + Redis）
-            2. task_runner.dispatch()      ← 派发后台任务
-            3. dispatch 失败 → mark_failed() ← 回滚日志
-            4. return { log_id, status }
+            1. asyncio.create_task(run_collect(params))  ← 派发后台
+            2. return { status: "pending" }             ← 前端按 service_name 查日志
 
-        Returns:
-            { log_id, status }
+        ★ 不返回 log_id：前端按 /collect/logs/daily_kline 查日志列表，
+          无需知道内部 log_id。派发即完成，不等待结果。
         """
-        # 1. 创建日志（业务语义上的"同一事务"：先 create_log，再 dispatch）
-        log_id = await self._log_service.create_pending(
-            service_name=self.META.name,
-            facet=self.META.facet,
-            kind=self.META.kind.value,
-            params=params,
-            trigger_source="manual",
-        )
-
-        # 2. 派发后台任务
-        try:
-            self._task_runner.dispatch(
-                log_id=log_id,
-                service_name=self.META.name,
-                service_class=type(self),  # 传递 class，Runner 内实例化
-                facet=self.META.facet,
-                kind=self.META.kind.value,
-                params=params,
-            )
-        except Exception as e:
-            # 派发失败 → 回滚日志状态
-            logger.exception(f"派发采集任务失败: {e}")
-            await self._log_service.mark_failed(
-                service_name=self.META.name,
-                log_id=log_id,
-                error=f"派发失败: {e}",
-            )
-            raise
-
-        return {"log_id": log_id, "status": "pending"}
+        asyncio.create_task(self.run_collect(params))
+        return {"status": "pending"}
 
     # ═══════════════════════════════════════════════════════════════
-    # 入口 B：后台执行（TaskRunner 调）
+    # 入口 B：后台执行（全生命周期）
     # ═══════════════════════════════════════════════════════════════
 
-    async def _run_collect(
-        self,
-        params: dict,
-        session: AsyncSession,
-        log_id: str,
-        *,
-        facet: str = "",
-        kind: str = "incremental",
-    ) -> AsyncGenerator[dict, None]:
-        """后台任务执行入口：实际采集
+    async def run_collect(self, params: dict) -> None:
+        """INCREMENTAL 后台全生命周期
 
-        注意：日志更新全在 TaskRunner._run() 内调 self._log_service
-        （本方法只 yield 进度，不直接写日志）
+        包揽：
+            1. create_pending（生成 log_id）
+            2. 解析参数（symbols / start_date / end_date）
+            3. 拉 symbols（全量模式走 stock_info 表）
+            4. mark_running
+            5. 并发采集 + _save（每只 commit）+ 实时 update_progress
+            6. mark_finished（success / partial_fail / failed）
 
-        Yields:
-            每批结果 { saved, fail, total }
+        ★ 异常处理：
+            - 单只 _collect_one 失败仅计入 fail_total（不抛出），继续其它 symbol
+            - 外层 try/except 兜底 mark_failed（防日志卡在 running）
+        ★ log_id 仅内部使用，不透出任何边界。
         """
         symbols = params.get("symbols") or []
         start_date = params.get("start_date")
@@ -140,41 +114,141 @@ class DailyKlineService:
         if isinstance(end_date, str):
             end_date = date.fromisoformat(end_date)
 
-        # 全量模式
-        if not symbols:
-            symbols = await self._list_all_symbols()
-            if not symbols:
-                yield {"saved": 0, "fail": 1, "total": 0}
-                return
-
         if not start_date:
             start_date = end_date - timedelta(days=30)
 
         symbols = [str(s).zfill(6) for s in symbols]
-        total = len(symbols)
         sem = asyncio.Semaphore(self.META.concurrency)
 
-        async def one(symbol: str) -> dict:
-            async with sem:
-                saved = await self._collect_one(symbol, start_date, end_date)
-                return {"saved": saved, "fail": 0, "total": total}
+        # 1. 创建日志（拿到内部 log_id）
+        log_id = await self._log_service.create_pending(
+            service_name=self.META.name,
+            facet=self.META.facet,
+            kind=self.META.kind.value,
+            params=params,
+            trigger_source="manual",
+        )
 
-        # ★ 使用 as_completed 边完成边 yield
-        tasks = [asyncio.create_task(one(s)) for s in symbols]
-        for coro in asyncio.as_completed(tasks):
-            yield await coro
+        # 2. 开 raw_data session（每只 commit 必须同一 session）
+        from shared.infrastructure.di.db_session import get_raw_db_context
+        async with get_raw_db_context() as session:
+            try:
+                # 3. 拉 symbols（全量模式走 stock_info 表）
+                if not symbols:
+                    symbols = await self._list_all_symbols_via_session(session)
+                    if not symbols:
+                        await self._log_service.mark_failed(
+                            service_name=self.META.name,
+                            log_id=log_id,
+                            error="全量模式拉不到任何 symbol（stock_info 表为空？）",
+                        )
+                        return
+
+                total = len(symbols)
+
+                # 4. mark_running
+                await self._log_service.mark_running(self.META.name, log_id)
+
+                # 5. 并发采集（concurrency=1，单只顺序执行）
+                async def one(symbol: str) -> dict:
+                    async with sem:
+                        try:
+                            saved = await self._collect_one(
+                                symbol, start_date, end_date, session,
+                            )
+                            return {"saved": saved, "fail": 0}
+                        except Exception as e:
+                            logger.exception(
+                                "daily_kline %s 失败: %r", symbol, e,
+                            )
+                            return {"saved": 0, "fail": 1}
+
+                tasks = [asyncio.create_task(one(s)) for s in symbols]
+
+                saved_total = 0
+                fail_total = 0
+                for coro in asyncio.as_completed(tasks):
+                    result = await coro
+                    saved_total += result["saved"]
+                    fail_total += result["fail"]
+
+                    # 实时进度（每完成一只就更新一次）
+                    progress = (
+                        min(100, int((saved_total + fail_total) / total * 100))
+                        if total > 0 else 0
+                    )
+                    await self._log_service.update_progress(
+                        service_name=self.META.name,
+                        log_id=log_id,
+                        progress=progress,
+                        saved_count=saved_total,
+                        fail_count=fail_total,
+                        total_count=total,
+                    )
+
+                # 6. 终态
+                if fail_total == 0:
+                    status = "success"
+                elif saved_total == 0:
+                    status = "failed"
+                else:
+                    status = "partial_fail"
+
+                await self._log_service.mark_finished(
+                    service_name=self.META.name,
+                    log_id=log_id,
+                    status=status,
+                    saved_count=saved_total,
+                    fail_count=fail_total,
+                )
+                logger.info(
+                    "daily_kline 完成: log_id=%s, status=%s, saved=%d, fail=%d, total=%d",
+                    log_id, status, saved_total, fail_total, total,
+                )
+
+            except Exception as e:
+                logger.exception("daily_kline 采集失败: %r", e)
+                # ★ 兜底 mark_failed（防日志卡在 running）
+                try:
+                    await self._log_service.mark_failed(
+                        service_name=self.META.name,
+                        log_id=log_id,
+                        error=str(e),
+                    )
+                except Exception as e2:
+                    logger.error(
+                        "mark_failed 失败（log_id=%s）: %r", log_id, e2,
+                    )
 
     # ═══════════════════════════════════════════════════════════════
     # 内部方法（业务逻辑，不涉及日志）
     # ═══════════════════════════════════════════════════════════════
 
-    async def _list_all_symbols(self) -> list[str]:
-        return await list_all_a_symbols()
+    async def _list_all_symbols_via_session(self, session: AsyncSession) -> list[str]:
+        """全量模式：通过传入的 session 拉全 A 股票代码（list_status=L）
+
+        直接读 stock_info 表（采集库已有数据，不重复调外部 API）。
+        """
+        from contexts.market.infrastructure.persistence.models.stock_info import (
+            StockInfoDB,
+        )
+        rows_db = (
+            await session.execute(
+                select(StockInfoDB.symbol)
+                .where(StockInfoDB.list_status == "L")
+                .order_by(StockInfoDB.symbol)
+            )
+        ).scalars().all()
+        return [str(s) for s in rows_db if s]
 
     async def _collect_one(
-        self, symbol: str, start_date: date, end_date: date,
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date,
+        session: AsyncSession,
     ) -> int:
-        """采集单只股票的日 K 线"""
+        """采集单只股票的日 K 线（使用外层 session，每只 commit）"""
         await check(self.META.rate_limit)
         for attempt in range(3):
             try:
@@ -183,29 +257,25 @@ class DailyKlineService:
                 )
                 if not klines:
                     return 0
-                return await self._save(symbol, klines)
-            except Exception as e:
-                # RateLimited 在 check 里处理，这里只处理其他异常
+                return await self._save(symbol, klines, session)
+            except Exception:
                 if attempt < 2:
+                    # 重试前必须 rollback —— 事务已 abort，不 rollback
+                    # 直接重试只会拿到 InFailedSQLTransactionError
+                    await session.rollback()
                     await asyncio.sleep(1)
                 else:
                     raise
         return 0
 
-    async def _save(self, symbol: str, klines) -> int:
-        """保存 K 线数据到 DB"""
+    async def _save(self, symbol: str, klines, session: AsyncSession) -> int:
+        """保存 K 线数据到 DB（tech_kline_daily @ raw_data_db）+ 每只 commit"""
         if not klines:
             return 0
-        try:
-            from contexts.market.infrastructure.persistence.models.tech_kline import (
-                TechKlineDailyDB,
-            )
-        except ImportError:
-            logger.debug("tech_kline_daily 表未建，跳过入库")
-            return 0
-        # ★ ORM 模型实际列名是 "date"，不是 "trade_date"。
-        #   rows dict 的 key 必须和 ORM column 名严格一致，否则 SQLAlchemy 报
-        #   "Unconsumed column names: trade_date"。
+        from contexts.market.infrastructure.persistence.models.tech_kline import (
+            TechKlineDailyDB,
+        )
+        # ORM 模型实际列名是 "date"，不是 "trade_date"。
         rows = [
             {
                 "symbol": k.symbol, "date": k.trade_date,
@@ -215,8 +285,8 @@ class DailyKlineService:
             for k in klines
         ]
         stmt = pg_insert(TechKlineDailyDB).values(rows)
-        # ★ 只能更新"rows 中实际存在的列"，否则 UPSERT 会把数据库里
-        #   name / change_pct 覆盖成 NULL。
+        # 只能更新 rows 中实际存在的列，否则 UPSERT 会把数据库里
+        # name / change_pct 覆盖成 NULL。
         update_cols = {
             c.name: stmt.excluded[c.name]
             for c in [TechKlineDailyDB.open, TechKlineDailyDB.high, TechKlineDailyDB.low,
@@ -226,7 +296,9 @@ class DailyKlineService:
             index_elements=["symbol", "date"],
             set_=update_cols,
         )
-        r = await self._session.execute(stmt)
+        r = await session.execute(stmt)
+        # 每只 commit（失败时 _collect_one 重试回滚整只）
+        await session.commit()
         return r.rowcount or 0
 
     # ── 实时查询：从 DB 读（前端"试查"用）─────────────────────
@@ -239,12 +311,14 @@ class DailyKlineService:
     ) -> list[dict]:
         """实时查询日 K 线（从 DB 读，不发 tushare 请求）"""
         try:
-            from sqlalchemy import select
             from contexts.market.infrastructure.persistence.models.tech_kline import (
                 TechKlineDailyDB,
             )
         except ImportError:
             logger.debug("tech_kline_daily 表未建，返回空")
+            return []
+        if self._session is None:
+            logger.warning("daily_kline.get() 缺少 session，返回空")
             return []
         stmt = select(TechKlineDailyDB).order_by(TechKlineDailyDB.date.desc())
         if symbol:

@@ -31,9 +31,8 @@ _svc = CatalogService()
 async def list_catalog() -> dict[str, Any]:
     """列出全部 service 的元数据
 
-    响应 data: { total, items: [{name, facet, sub_facet, label, description,
-                                 default_params, param_schema, rate_limit,
-                                 concurrency, supports_query, kind, path, query_path}, ...] }
+    响应 data: { total, items: [{name, facet, label, description,
+                                 kind, supports_query, path, query_path}, ...] }
     """
     items = _svc.list()
     return R.ok({"total": len(items), "items": items})

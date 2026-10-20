@@ -64,7 +64,7 @@ export function useCatalog() {
     return null
   }
 
-  /** 按 service_name 找原始 ServiceItem（用于查 default_params / label） */
+  /** 按 service_name 找原始 ServiceItem（用于查 label / kind） */
   function getService(serviceName: string): ServiceItem | null {
     return services.value.find((s) => s.name === serviceName) || null
   }

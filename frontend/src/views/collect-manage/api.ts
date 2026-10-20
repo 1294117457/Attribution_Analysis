@@ -1,11 +1,15 @@
 import http, { unwrap, type ApiResponse } from '@/common/utils/http'
 
 /**
- * 采集管理 API — v2 采集日志进度优化（2026-10-19）
- *
- * 后端路由（contexts/collect/interface/manage/）：
+ * 采集管理 API — v3 TaskRunner 统一派发（2026-10-19）
+
+ * 后端路由（contexts/collect/interface/）：
  *   GET  /collect/catalog                        28 service 元数据 catalog
- *   POST /collect/{facet}/{service_name}         触发采集，返回 log_id
+ *   POST /collect/{facet}/{service_name}         触发采集，立即返回 {log_id, status}
+ *                                                ★ 所有 INCREMENTAL/FULL_REFRESH service
+ *                                                  都返回此格式（v3 统一）；REALTIME
+ *                                                  service（minute_kline / concept_minute /
+ *                                                  concept_snapshot）走 GET /collect/query/{name}
  *   GET  /collect/logs/{service_name}           查询日志列表
  *   GET  /collect/logs/{service_name}/{log_id}  查询单条日志详情
  *   GET  /collect/query/{name}                  实时查询 service.get()
@@ -56,29 +60,13 @@ export interface ServiceItem {
   facet: string
   label: string
   description: string
-  default_params: Record<string, any>
-  param_schema: ParamSchema[]
-  rate_limit: [string, number, number] | null
-  concurrency: number
-  supports_query: boolean
   kind: 'incremental' | 'full_refresh' | 'realtime'
-  /** 增量采集（需前端提供时间范围）；true → 显示时间选择器 */
-  incremental: boolean
+  supports_query: boolean
   path: string
   query_path: string | null
 }
 
-/** 单个 param 的 UI schema */
-export interface ParamSchema {
-  key: string
-  ui: ParamUiType
-  required: boolean
-  default?: any
-  description: string
-  example?: any
-}
-
-/** UI 控件类型 */
+/** UI 控件类型（保留供 RealtimePanel 内部使用） */
 export type ParamUiType =
   | 'symbols_list' | 'index_codes_list' | 'str_list'
   | 'date_str' | 'list_status' | 'exchange_multi'
@@ -256,16 +244,11 @@ export interface CatalogItem {
   service_name: string
   label: string
   description: string
-  default_params: Record<string, any>
-  param_schema: ParamSchema[]
   supports_query: boolean
   kind: 'incremental' | 'full_refresh' | 'realtime'
-  /** 增量采集标志（true → 前端显示时间选择器） */
-  incremental: boolean
   facet: string
   path: string
   query_path: string | null
-  rate_limit: [string, number, number] | null
 }
 
 export interface CatalogGroup {
@@ -299,15 +282,11 @@ export function buildCatalog(services: ServiceItem[]): Catalog {
       service_name: s.name,
       label: s.label || s.name,
       description: s.description || '',
-      default_params: s.default_params || {},
-      param_schema: s.param_schema || [],
       supports_query: !!s.supports_query,
       kind: s.kind || (s.supports_query ? 'realtime' : 'full_refresh'),
-      incremental: !!s.incremental,
       facet: s.facet,
       path: s.path,
       query_path: s.query_path,
-      rate_limit: s.rate_limit || null,
     })
   }
   // 组内按 label 排序

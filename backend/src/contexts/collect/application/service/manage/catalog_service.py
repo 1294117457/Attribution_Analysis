@@ -3,7 +3,16 @@
 从 collect 模块 5 个 facet 下的 28 个 service class 反射出元数据，
 提供给前端的 GET /collect/catalog 端点（2026-10 从 /services 改名为 /catalog）。
 
-service 自己声明 UI_SCHEMA（class attribute），catalog 直接读取，不再推导。
+service 只需在 META 中声明：
+  - name        全局唯一标识（对应 fetcher 索引 key）
+  - facet       大类（tech / capital / fundamental / news / sentiment）
+  - label       前端展示名
+  - description 描述
+  - kind        采集类型（incremental / full_refresh / realtime）— 决定 UI 展示
+
+可选的运行期配置：
+  - rate_limit  (source, count, window)
+  - concurrency 并发上限
 """
 from __future__ import annotations
 
@@ -37,13 +46,6 @@ from contexts.collect.application.service.sentiment import SentimentService
 # catalog 中隐藏（前端不展示）
 _HIDDEN_SERVICES: frozenset[str] = frozenset({
     "sentiment",  # 暂无 fetcher（空壳）
-})
-
-# 实时查询 service（只 get()，无 collect() 入库）
-_REAL_TIME_ONLY: frozenset[str] = frozenset({
-    "minute_kline",      # 分 K 线
-    "concept_minute",    # 概念分时
-    "concept_snapshot",  # 概念快照
 })
 
 
@@ -114,61 +116,41 @@ class CatalogService:
     def _to_item(self, cls: type) -> dict[str, Any]:
         """service class → catalog item dict
 
-        兼容两种写法：
-            v1 旧写法: class attribute  (cls.name / cls.facet / cls.label / ...)
-            v2 新写法: META dataclass    (cls.META.name / cls.META.facet / ...)
-        优先读 META，没有再 fallback 到 class attribute。
+        直接读 cls.META（service 唯一元数据来源），不再有 class 层级 fallback。
+        返回字段：
+          name            全局唯一标识
+          facet           大类
+          label           前端展示名
+          description     描述
+          kind            采集类型（incremental/full_refresh/realtime）— 决定 UI
+          supports_query  是否有 get() 方法（用于实时查询）
+          path            POST 触发路径
+          query_path      GET 实时查询路径（仅 supports_query=true）
         """
-        # ★ 优先读 META（新写法）
         meta = getattr(cls, "META", None)
-        if meta is not None:
-            name = meta.name
-            facet = meta.facet
-            label = meta.label or name
-            description = meta.description or ""
-        else:
-            # fallback: 旧写法（class attribute）
+        if meta is None:
+            # 兜底：旧写法（class attribute）；但所有 service 都应该用 META
             name = getattr(cls, "name", cls.__name__)
             facet = getattr(cls, "facet", "") or ""
             label = getattr(cls, "label", "") or name
             description = getattr(cls, "description", "")
+            kind = "full_refresh"
+        else:
+            name = meta.name
+            facet = meta.facet
+            label = meta.label or name
+            description = meta.description
+            kind = meta.kind.value
 
-        default_params = dict(getattr(cls, "DEFAULT_PARAMS", {}) or {})
         has_get = hasattr(cls, "get") and callable(getattr(cls, "get", None))
-
-        # kind 决定：优先读 META（新写法）；回退到黑名单（兼容旧 service）
-        meta_kind = getattr(meta, "kind", None) if meta is not None else None
-        if meta_kind is not None:
-            # META 已声明（v2 新写法）
-            kind = meta_kind.value
-        elif name in _REAL_TIME_ONLY:
-            kind = "realtime"
-        elif has_get:
-            kind = "both"
-        else:
-            kind = "collect"
-
-        # incremental：是否需要时间范围（前端用于显示时间选择器）
-        #   - INCREMENTAL → True
-        #   - FULL_REFRESH / REALTIME / 旧 service 无 META → False
-        if meta_kind is not None:
-            incremental = meta_kind.value == "incremental"
-        else:
-            incremental = False
 
         return {
             "name": name,
             "facet": facet,
             "label": label,
             "description": description,
-            "default_params": default_params,
-            "param_schema": [],
-            "rate_limit": None,
-            "concurrency": 1,
-            "supports_query": has_get,
             "kind": kind,
-            # 增量采集标志（true → 前端显示时间选择器）
-            "incremental": incremental,
+            "supports_query": has_get,
             # 实际可调用的 POST 路径
             "path": f"{self._api_prefix}/collect/{facet}/{name}",
             # 实时查询（仅 has_get 时使用）

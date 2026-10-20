@@ -3,21 +3,19 @@ from __future__ import annotations
 
 import logging
 
-from contexts.collect.application.service.base import CollectResult
+from contexts.collect.application.service.base import CollectResult, ServiceKind, ServiceMeta
 
 logger = logging.getLogger(__name__)
 
 
 class SentimentService:
-    name = "sentiment"
-    facet = "sentiment"
-    sub_facet = ""
-    label = "情绪面"
-    description = "占位（暂无 fetcher）"
-    DEFAULT_PARAMS = {}
-    UI_SCHEMA = []  # 空壳/占位 service，catalog 中会自动隐藏
-    RATE_LIMIT = None
-    CONCURRENCY = 1
+    META = ServiceMeta(
+        name='sentiment',
+        facet='sentiment',
+        label='情绪面',
+        description='占位（暂无 fetcher）',
+        kind=ServiceKind.FULL_REFRESH,
+    )
 
     def __init__(self) -> None:
         """空占位 —— 无 fetcher、无 cache 依赖。"""

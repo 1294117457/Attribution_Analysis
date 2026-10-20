@@ -1,19 +1,36 @@
 """NameChangeService：股票曾用名 service
 
+Phase 2 重构（2026-10-19）：
+    - 注入 CollectLogService + CollectTaskRunner
+    - collect() 改为编排入口：创建日志 + 派发任务（不执行实际采集）
+    - _run_collect() 为执行入口：实际采集，yield 进度（TaskRunner 消费）
+    - 无 AOP 装饰器，日志全手动调
+
 走 repo：NameChangeRepository
 session 由 DI 工厂注入，透传给 repo.save()。
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+from typing import AsyncGenerator, TYPE_CHECKING
 
-from contexts.collect.application.service.base import CollectResult, RateLimited, ServiceKind, ServiceMeta
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from contexts.collect.application.service.base import (
+    RateLimited,
+    ServiceKind,
+    ServiceMeta,
+)
+from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.tech.NameChangeTushareFetcher import (
     NameChangeTushareFetcher,
 )
 from contexts.collect.infrastructure.persistence.repositories import NameChangeRepository
-from contexts.collect.infrastructure.cache.rate_limit import check
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from contexts.collect.application.service.manage import CollectLogService
+    from contexts.collect.infrastructure.adapter.background import CollectTaskRunner
 
 logger = logging.getLogger(__name__)
 
@@ -26,44 +43,104 @@ class NameChangeService:
         label='股票曾用名',
         description='全 A 股股票曾用名（Tushare name_change）',
         kind=ServiceKind.FULL_REFRESH,
+        rate_limit=("tushare", 200, 60),
+        concurrency=1,
     )
-    name = "name_change"
-    facet = "tech"
-    sub_facet = "name"
-    label = "股票曾用名"
-    DEFAULT_PARAMS = {}
-    UI_SCHEMA = []
-    RATE_LIMIT = ("tushare", 200, 60)
-    CONCURRENCY = 1
 
     def __init__(
         self,
+        session: AsyncSession,
+        log_service: "CollectLogService",
+        task_runner: "CollectTaskRunner",
         fetcher: NameChangeTushareFetcher | None = None,
         repo: NameChangeRepository | None = None,
-        session: AsyncSession | None = None,
     ) -> None:
+        self._session = session
+        self._log_service = log_service
+        self._task_runner = task_runner
         self._fetcher = fetcher or NameChangeTushareFetcher()
         self._repo = repo or NameChangeRepository()
-        self._session = session
 
-    async def collect(self, params: dict) -> CollectResult:
-        await check(self.RATE_LIMIT)
+    # ═══════════════════════════════════════════════════════════════
+    # 入口 A：HTTP 触发（Route 层调）
+    # ═══════════════════════════════════════════════════════════════
+
+    async def collect(self, params: dict) -> dict:
+        """HTTP 触发入口：编排（不执行实际采集）
+
+        Returns:
+            { log_id, status }
+        """
+        # 1. 创建日志
+        log_id = await self._log_service.create_pending(
+            service_name=self.META.name,
+            facet=self.META.facet,
+            kind=self.META.kind.value,
+            params=params,
+            trigger_source="manual",
+        )
+
+        # 2. 派发后台任务
+        try:
+            self._task_runner.dispatch(
+                log_id=log_id,
+                service_name=self.META.name,
+                params=params,
+            )
+        except Exception as e:
+            logger.exception(f"派发采集任务失败: {e}")
+            await self._log_service.mark_failed(
+                service_name=self.META.name,
+                log_id=log_id,
+                error=f"派发失败: {e}",
+            )
+            raise
+
+        return {"log_id": log_id, "status": "pending"}
+
+    # ═══════════════════════════════════════════════════════════════
+    # 入口 B：后台执行（TaskRunner 调）
+    # ═══════════════════════════════════════════════════════════════
+
+    async def _run_collect(
+        self,
+        params: dict,
+    ) -> AsyncGenerator[dict, None]:
+        """后台任务执行入口：全 A 股曾用名采集，yield 一次进度
+
+        facet/kind 不再由 Runner 传入 —— service 自身从 self.META 派生。
+        session 直接用 self._session（Runner 已通过 service_class(session=...) 注入）。
+
+        Yields:
+            单次结果 { saved, fail, total, skip, message }
+        """
+        await check(self.META.rate_limit)
         for attempt in range(3):
             try:
                 bos = await self._fetcher.fetch()
                 saved = await self._repo.save(bos, self._session)
-                return CollectResult(
-                    total=1, success=1 if bos else 0, saved=saved,
-                    skip=1 if not bos else 0,
-                    message=f"曾用名: 共 {len(bos)} 条, 写入 {saved}",
-                )
+                yield {
+                    "saved": saved,
+                    "fail": 0 if bos else 1,
+                    "total": 1,
+                    "skip": 1 if not bos else 0,
+                    "message": f"曾用名: 共 {len(bos)} 条, 写入 {saved}",
+                }
+                return
             except RateLimited as e:
                 if attempt < 2:
-                    import asyncio as _a
-                    await _a.sleep(e.retry_after)
+                    await asyncio.sleep(e.retry_after)
                 else:
                     raise
-        return CollectResult(fail=1, message="重试耗尽")
+
+        # 重试耗尽
+        yield {
+            "saved": 0,
+            "fail": 1,
+            "total": 1,
+            "skip": 0,
+            "message": "重试耗尽",
+        }
 
 
 __all__ = ["NameChangeService"]

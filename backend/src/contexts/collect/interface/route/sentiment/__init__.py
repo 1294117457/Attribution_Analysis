@@ -9,13 +9,14 @@ from fastapi import APIRouter, Depends
 
 from shared.interface import _response as R
 from contexts.collect.interface.dto.request.collect import CollectRequest
-from contexts.collect.interface.dto.response.collect import CollectResponse
+from contexts.collect.interface.dto.response.collect import ApiResponse, CollectResponse
 from contexts.collect.infrastructure.di.collect_service import get_sentiment_service
 
 router = APIRouter(prefix="/collect/sentiment", tags=["采集-情绪面"])
 
 
 async def _run(svc, body: CollectRequest) -> CollectResponse:
+    """统一执行：占位 service 暂保留 CollectResult"""
     result = await svc.collect(body.params)
     return CollectResponse(
         total=result.total, success=result.success, fail=result.fail,
@@ -23,7 +24,7 @@ async def _run(svc, body: CollectRequest) -> CollectResponse:
     )
 
 
-@router.post("/sentiment", response_model=CollectResponse, summary="情绪面（占位）")
+@router.post("/sentiment", response_model=ApiResponse[CollectResponse], summary="情绪面（占位）")
 async def sentiment_trigger(body: CollectRequest, svc=Depends(get_sentiment_service)):
     return R.ok((await _run(svc, body)).model_dump())
 

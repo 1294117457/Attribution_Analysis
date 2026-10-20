@@ -2,7 +2,8 @@
 
 仅负责：组装 market 相关的 service（StockInfoService / ConceptService / ConceptBoardService）。
 
-**不包含** 纯资源 DI（get_db / get_redis 等）—— 那些在 `shared.infrastructure.di`。
+**不包含** 纯资源 DI（get_db / get_raw_db 等）—— 那些在 `shared.infrastructure.di`。
+**Redis** 改为全局单例：直接 `from shared.infrastructure.connection.redis_client import redis`。
 **不包含** ConceptService / ConceptBoardService 工厂 —— ConceptService 工厂在本 context
 单独 `concept.py`，因为它涉及跨 context（依赖 collect 的 ServiceRegistry）。
 """

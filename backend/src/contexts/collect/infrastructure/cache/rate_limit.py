@@ -22,7 +22,7 @@ import asyncio
 import logging
 from typing import Optional, Tuple
 
-from shared.infrastructure.di.redis_session import get_redis
+from shared.infrastructure.connection.redis_client import redis as redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +53,8 @@ async def check_rate_limit(
         - allowed   当前计数 <= max_count 时 True
         - remaining 剩余可用次数（0 表示已用尽）
     """
-    redis = await get_redis()
-    async with redis.pipeline(transaction=True) as pipe:
+    # ★ 全局单例直连，无需 await get_redis()
+    async with redis_client.pipeline(transaction=True) as pipe:
         await pipe.incr(key)
         await pipe.expire(key, window_seconds)
         count, _ = await pipe.execute()

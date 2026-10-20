@@ -24,10 +24,39 @@
       </CollectCardRow>
 
       <CollectCardRow label="查询参数">
-        <template v-if="paramKeys.length > 0">
-          <div v-for="key in paramKeys" :key="key" class="param">
-            <span class="param__label">{{ key }}</span>
-            <el-input v-model="form[key]" size="small" style="width: 200px" @keyup.enter="runQuery" />
+        <template v-if="paramDefs.length > 0">
+          <div v-for="def in paramDefs" :key="def.key" class="param">
+            <span class="param__label">{{ def.label }}</span>
+            <el-input
+              v-if="def.ui === 'str'"
+              v-model="form[def.key]"
+              size="small"
+              style="width: 200px"
+              :placeholder="def.placeholder"
+              @keyup.enter="runQuery"
+            />
+            <el-input-number
+              v-else-if="def.ui === 'int'"
+              v-model="form[def.key]"
+              size="small"
+              style="width: 200px"
+              :placeholder="def.placeholder"
+              @keyup.enter="runQuery"
+            />
+            <el-select
+              v-else-if="def.ui === 'select'"
+              v-model="form[def.key]"
+              size="small"
+              style="width: 200px"
+              @change="runQuery"
+            >
+              <el-option
+                v-for="opt in def.options"
+                :key="opt"
+                :label="opt"
+                :value="opt"
+              />
+            </el-select>
           </div>
         </template>
         <span v-else class="muted">无需参数（直接点试查）</span>
@@ -71,8 +100,33 @@ const props = defineProps<{
 /** 是否「纯实时」（不写入数据库）：kind=realtime 时显示「实时」红标 */
 const isRealtimeOnly = computed(() => props.item.kind === 'realtime')
 
-const form = reactive<Record<string, string>>({})
-const paramKeys = computed(() => Object.keys(props.item.default_params || {}))
+// ── 实时 service 的参数定义（按 service_name 硬编码） ──────
+interface ParamDef {
+  key: string
+  label: string
+  ui: 'str' | 'int' | 'select'
+  placeholder?: string
+  default?: any
+  options?: string[]
+}
+
+const REALTIME_PARAM_DEFS: Record<string, ParamDef[]> = {
+  minute_kline: [
+    { key: 'symbol', label: '股票代码', ui: 'str', placeholder: '000001' },
+    { key: 'interval', label: '分钟周期', ui: 'select', default: '5min', options: ['1min', '5min', '15min', '30min', '60min'] },
+    { key: 'days', label: '回溯天数', ui: 'int', default: 1 },
+  ],
+  concept_minute: [
+    { key: 'index_code', label: '概念指数代码', ui: 'str', placeholder: 'BK0001' },
+  ],
+  concept_snapshot: [
+    { key: 'index_code', label: '概念指数代码', ui: 'str', placeholder: 'BK0001' },
+  ],
+}
+
+const paramDefs = computed<ParamDef[]>(() => REALTIME_PARAM_DEFS[props.serviceName] || [])
+
+const form = reactive<Record<string, any>>({})
 const querying = ref(false)
 const queryError = ref('')
 const queryResult = ref<any>(null)
@@ -94,16 +148,19 @@ async function runQuery() {
   querying.value = true
   queryError.value = ''
   try {
-    // 把 form 表单转成 kwargs（只保留非空值；按 param ui 类型做轻量转换）
+    // 把 form 表单转成 kwargs（只保留非空值；按 paramDef.ui 做轻量转换）
     const kwargs: Record<string, any> = {}
-    for (const [k, v] of Object.entries(form)) {
+    for (const def of paramDefs.value) {
+      const v = form[def.key]
       if (v == null || v === '') continue
-      // 简单按 key 名推断：interval/days/limit/minutes 等转 int
-      if (/^(interval|days|limit|minutes|years)$/i.test(k)) {
+      if (def.ui === 'int') {
         const n = Number(v)
-        if (!Number.isNaN(n)) { kwargs[k] = n; continue }
+        if (!Number.isNaN(n)) {
+          kwargs[def.key] = n
+          continue
+        }
       }
-      kwargs[k] = v
+      kwargs[def.key] = v
     }
     queryResult.value = await queryService(props.serviceName, kwargs)
   } catch (e: any) {
@@ -118,8 +175,13 @@ watch(
   () => props.serviceName,
   () => {
     for (const k of Object.keys(form)) delete form[k]
-    for (const [k, v] of Object.entries(props.item.default_params || {})) {
-      form[k] = String(v ?? '')
+    // 用 paramDefs 的 default 初始化
+    for (const def of paramDefs.value) {
+      if (def.default !== undefined) {
+        form[def.key] = def.default
+      } else {
+        form[def.key] = ''
+      }
     }
     queryResult.value = null
     queryError.value = ''
