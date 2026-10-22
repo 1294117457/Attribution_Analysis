@@ -1,4 +1,8 @@
-﻿"""股东户数 ORM 模型"""
+"""股东户数 ORM 模型
+
+表名：capital_stk_holdernumber（对齐 Tushare 接口名 pro.stk_holdernumber）
+UK: (symbol, end_date)
+"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Integer, Index, UniqueConstraint
@@ -9,13 +13,12 @@ from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
 class CapHolderNumDB(RawBase, TimestampMixin):
-    """股东户数
+    """股东户数（Tushare pro.stk_holdernumber）
 
-    物理表名: cap_holder_nums
     UK: (symbol, end_date)
     """
 
-    __tablename__ = "capital_holder_num"
+    __tablename__ = "capital_stk_holdernumber"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
@@ -29,8 +32,8 @@ class CapHolderNumDB(RawBase, TimestampMixin):
     data_source: Mapped[str] = mapped_column(String(16), nullable=False, default="tushare")
 
     __table_args__ = (
-        UniqueConstraint("symbol", "end_date", name="uq_cap_holder_nums_uk"),
-        Index("ix_cap_holder_nums_date", "end_date"),
+        UniqueConstraint("symbol", "end_date", name="uq_capital_stk_holdernumber_uk"),
+        Index("ix_capital_stk_holdernumber_date", "end_date"),
     )
 
     def __repr__(self) -> str:

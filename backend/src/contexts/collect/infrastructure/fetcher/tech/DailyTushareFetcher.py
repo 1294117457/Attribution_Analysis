@@ -1,6 +1,10 @@
-﻿"""DailyKlineTushareFetcher：日 K 线（Tushare pro.daily）—— step7 重构版
+﻿"""DailyTushareFetcher：日 K 线（Tushare pro.daily）—— step7 重构版
 
 替代旧 DailyKlineTushareAdapter(DailyKlinePort, AdapterBase, TushareAdapterBase)
+
+命名规则：<业务概念><数据源><Fetcher>
+- 业务概念 Daily = 日 K 线（tech/ 下唯一，剥 Kline 不歧义）
+- 数据源 Tushare
 """
 from __future__ import annotations
 
@@ -24,10 +28,10 @@ logger = logging.getLogger(__name__)
 START_BUFFER_DAYS = 2
 
 
-class DailyKlineTushareFetcher(BaseFetcher):
+class DailyTushareFetcher(BaseFetcher):
     """日 K 线 fetcher（Tushare pro.daily）"""
 
-    fetcher_type = "daily_kline_tushare"
+    fetcher_type = "daily_kline_tushare"  # 保持稳定：URL/service_name 用
     source = "tushare"
     label = "日 K 线（Tushare）"
     description = "Tushare pro.daily 接口"
@@ -82,4 +86,4 @@ class DailyKlineTushareFetcher(BaseFetcher):
         return ""
 
 
-__all__ = ["DailyKlineTushareFetcher"]
+__all__ = ["DailyTushareFetcher"]

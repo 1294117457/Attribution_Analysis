@@ -1,4 +1,4 @@
-﻿"""股票信息仓储实现
+"""股票信息仓储实现
 
 实现 domain/stock_info/repository.py 中的 StockInfoRepository 接口。
 面板组合查询（4 表 JOIN）已迁移至 infrastructure/repositories/panel_compose_repository.py。
@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from contexts.market.domain.entities.stock_info.entity import StockInfo
 from contexts.market.domain.entities.stock_info.repository import StockInfoRepository
-from contexts.market.infrastructure.persistence.models.stock_info import StockInfoDB
+from contexts.market.infrastructure.persistence.models.stock_basic import StockBasicDB
 from contexts.market.infrastructure.persistence.models.tech_kline import TechKlineDailyDB
 
 
@@ -22,7 +22,7 @@ class StockRepoImpl:
     """股票信息仓储实现（双 session：raw 主表 + attr 业务关联）
 
     实现 domain/stock_info/repository.py 中的 StockInfoRepository 接口。
-    - raw_session:  StockInfoDB / TechKlineDailyDB
+    - raw_session:  StockBasicDB / TechKlineDailyDB
     - attr_session: 未来扩展（如果 stock 业务关联用户自选股/角色）
     """
 
@@ -33,7 +33,7 @@ class StockRepoImpl:
 
     # ── ORM ↔ Entity 转换 ───────────────────────────────────
 
-    def _to_entity(self, row: StockInfoDB) -> StockInfo:
+    def _to_entity(self, row: StockBasicDB) -> StockInfo:
         """ORM → Entity"""
         return StockInfo.create(
             id=row.id,
@@ -47,7 +47,6 @@ class StockRepoImpl:
             delist_date=row.delist_date,
             list_status=row.list_status,
             is_hs=row.is_hs,
-            total_shares=row.total_shares,
             act_name=row.act_name,
             act_ent_type=row.act_ent_type,
             ts_code=row.ts_code,
@@ -68,7 +67,6 @@ class StockRepoImpl:
             "delist_date": stock.delist_date,
             "list_status": stock.list_status or "L",
             "is_hs": stock.is_hs or "N",
-            "total_shares": stock.total_shares,
             "act_name": stock.act_name,
             "act_ent_type": stock.act_ent_type,
         }
@@ -76,7 +74,7 @@ class StockRepoImpl:
     # ── CRUD ──────────────────────────────────────────────
 
     async def save(self, stock: StockInfo) -> StockInfo:
-        row = StockInfoDB(**self._to_row(stock))
+        row = StockBasicDB(**self._to_row(stock))
         self._session.add(row)
         await self._session.flush()
         await self._session.refresh(row)
@@ -84,7 +82,7 @@ class StockRepoImpl:
         return stock
 
     async def find_by_symbol(self, symbol: str) -> Optional[StockInfo]:
-        stmt = select(StockInfoDB).where(StockInfoDB.symbol == symbol)
+        stmt = select(StockBasicDB).where(StockBasicDB.symbol == symbol)
         result = await self._session.execute(stmt)
         row = result.scalar_one_or_none()
         return self._to_entity(row) if row else None
@@ -94,12 +92,12 @@ class StockRepoImpl:
         industry: Optional[str] = None,
         market: Optional[str] = None,
     ) -> list[StockInfo]:
-        stmt = select(StockInfoDB)
+        stmt = select(StockBasicDB)
         if industry:
-            stmt = stmt.where(StockInfoDB.industry == industry)
+            stmt = stmt.where(StockBasicDB.industry == industry)
         if market:
-            stmt = stmt.where(StockInfoDB.market == market)
-        stmt = stmt.order_by(StockInfoDB.symbol)
+            stmt = stmt.where(StockBasicDB.market == market)
+        stmt = stmt.order_by(StockBasicDB.symbol)
         result = await self._session.execute(stmt)
         rows = result.scalars().all()
         return [self._to_entity(row) for row in rows]
@@ -107,7 +105,7 @@ class StockRepoImpl:
     async def upsert(self, stock: StockInfo) -> StockInfo:
         row_dict = self._to_row(stock)
         stmt = (
-            pg_insert(StockInfoDB)
+            pg_insert(StockBasicDB)
             .values(**row_dict)
             .on_conflict_do_update(
                 index_elements=["symbol"],
@@ -127,7 +125,7 @@ class StockRepoImpl:
             return 0
 
         BATCH_SIZE = 1000  # 12 列 × 1000 行 = 12000 参数，安全余量
-        excluded = pg_insert(StockInfoDB).excluded
+        excluded = pg_insert(StockBasicDB).excluded
         upsert_set = {
             "ts_code":      excluded.ts_code,
             "name":         excluded.name,
@@ -139,7 +137,6 @@ class StockRepoImpl:
             "delist_date":  excluded.delist_date,
             "list_status":  excluded.list_status,
             "is_hs":        excluded.is_hs,
-            "total_shares": excluded.total_shares,
             "act_name":     excluded.act_name,
             "act_ent_type": excluded.act_ent_type,
         }
@@ -149,7 +146,7 @@ class StockRepoImpl:
             batch = stocks[i : i + BATCH_SIZE]
             rows = [self._to_row(s) for s in batch]
             stmt = (
-                pg_insert(StockInfoDB)
+                pg_insert(StockBasicDB)
                 .values(rows)
                 .on_conflict_do_update(
                     index_elements=["symbol"],
@@ -163,7 +160,7 @@ class StockRepoImpl:
         return total_inserted
 
     async def delete(self, symbol: str) -> bool:
-        stmt = select(StockInfoDB).where(StockInfoDB.symbol == symbol)
+        stmt = select(StockBasicDB).where(StockBasicDB.symbol == symbol)
         result = await self._session.execute(stmt)
         row = result.scalar_one_or_none()
         if row:
@@ -181,22 +178,22 @@ class StockRepoImpl:
     ) -> list[dict]:
         stmt = (
             select(
-                StockInfoDB.symbol,
-                StockInfoDB.name,
-                StockInfoDB.industry,
-                StockInfoDB.market,
+                StockBasicDB.symbol,
+                StockBasicDB.name,
+                StockBasicDB.industry,
+                StockBasicDB.market,
                 func.count(TechKlineDailyDB.id).label("record_count"),
                 func.min(TechKlineDailyDB.date).label("kline_start"),
                 func.max(TechKlineDailyDB.date).label("kline_end"),
             )
-            .outerjoin(TechKlineDailyDB, StockInfoDB.symbol == TechKlineDailyDB.symbol)
-            .group_by(StockInfoDB.id)
-            .order_by(StockInfoDB.symbol)
+            .outerjoin(TechKlineDailyDB, StockBasicDB.symbol == TechKlineDailyDB.symbol)
+            .group_by(StockBasicDB.id)
+            .order_by(StockBasicDB.symbol)
         )
         if industry:
-            stmt = stmt.where(StockInfoDB.industry == industry)
+            stmt = stmt.where(StockBasicDB.industry == industry)
         if market:
-            stmt = stmt.where(StockInfoDB.market == market)
+            stmt = stmt.where(StockBasicDB.market == market)
 
         result = await self._session.execute(stmt)
         rows = result.all()
@@ -225,35 +222,35 @@ class StockRepoImpl:
         page_size: int = 20,
     ) -> tuple[list[StockInfo], int]:
         """分页查询（不含 K线统计）"""
-        stmt = select(StockInfoDB)
-        count_stmt = select(func.count()).select_from(StockInfoDB)
+        stmt = select(StockBasicDB)
+        count_stmt = select(func.count()).select_from(StockBasicDB)
 
         conditions = []
         if q:
             like = f"%{q}%"
             conditions.append(
                 or_(
-                    StockInfoDB.symbol.ilike(like),
-                    StockInfoDB.name.ilike(like),
-                    StockInfoDB.ts_code.ilike(like),
+                    StockBasicDB.symbol.ilike(like),
+                    StockBasicDB.name.ilike(like),
+                    StockBasicDB.ts_code.ilike(like),
                 )
             )
         if industry:
-            conditions.append(StockInfoDB.industry == industry)
+            conditions.append(StockBasicDB.industry == industry)
         if market:
-            conditions.append(StockInfoDB.market == market)
+            conditions.append(StockBasicDB.market == market)
         if exchange:
-            conditions.append(StockInfoDB.exchange == exchange)
+            conditions.append(StockBasicDB.exchange == exchange)
         if is_hs:
-            conditions.append(StockInfoDB.is_hs == is_hs)
+            conditions.append(StockBasicDB.is_hs == is_hs)
         if list_status:  # 空字符串表示"全部"
-            conditions.append(StockInfoDB.list_status == list_status)
+            conditions.append(StockBasicDB.list_status == list_status)
 
         if conditions:
             stmt = stmt.where(and_(*conditions))
             count_stmt = count_stmt.where(and_(*conditions))
 
-        stmt = stmt.order_by(StockInfoDB.symbol).limit(page_size).offset((page - 1) * page_size)
+        stmt = stmt.order_by(StockBasicDB.symbol).limit(page_size).offset((page - 1) * page_size)
 
         rows = (await self._session.execute(stmt)).scalars().all()
         total = (await self._session.execute(count_stmt)).scalar_one()
@@ -268,9 +265,9 @@ class StockRepoImpl:
             return [v for v in rows if v]
 
         return {
-            "industries": await _distinct_values(StockInfoDB.industry),
-            "markets":    await _distinct_values(StockInfoDB.market),
-            "exchanges":  await _distinct_values(StockInfoDB.exchange),
+            "industries": await _distinct_values(StockBasicDB.industry),
+            "markets":    await _distinct_values(StockBasicDB.market),
+            "exchanges":  await _distinct_values(StockBasicDB.exchange),
         }
 
 

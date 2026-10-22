@@ -1,4 +1,4 @@
-﻿"""财报仓储实现（fin_reports）"""
+﻿"""财报仓储实现（fundamental_income）"""
 
 from __future__ import annotations
 

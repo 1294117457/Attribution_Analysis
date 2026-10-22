@@ -1,4 +1,4 @@
-﻿"""Concept 仓储实现
+"""Concept 仓储实现
 
 写侧方法只被概念采集任务使用；读侧方法实现 domain 的 ConceptRepository 协议。
 
@@ -27,7 +27,7 @@ from contexts.concept.infrastructure.persistence.models.concept import (
     ConceptsDB,
 )
 from contexts.user.infrastructure.persistence.models.pool import StockPoolDB, StockPoolMemberDB
-from contexts.market.infrastructure.persistence.models.stock_info import StockInfoDB
+from contexts.market.infrastructure.persistence.models.stock_basic import StockBasicDB
 from contexts.market.infrastructure.persistence.models.fin_daily_basic import FinDailyBasicDB
 from contexts.concept.domain.concept.bo import ConceptIndexTHBO, ConceptListBO
 
@@ -243,19 +243,28 @@ class ConceptRepoImpl:
     # ═════════════════════════════════════════════════════════════════════
 
     async def get_latest_closes(self, index_codes: list[str]) -> dict[str, dict]:
-        """每个概念最近一条日 K（实时行情失败时的降级数据）"""
+        """每个概念最近一条日 K（实时行情失败时的降级数据）
+
+        用 PG 的 DISTINCT ON 取每个 index_code 的最新交易日一行。
+        """
         if not index_codes:
             return {}
-        sql = text("""
-            SELECT DISTINCT ON (t.index_code)
-                t.index_code, COALESCE(c.name, t.concept_name) AS concept_name,
-                t.trade_date, t.close, t.change, t.change_pct
-            FROM concept_index_ths t
-            LEFT JOIN concepts c ON c.index_code = t.index_code
-            WHERE t.index_code = ANY(:codes)
-            ORDER BY t.index_code, t.trade_date DESC
-        """)
-        rows = (await self._session.execute(sql, {"codes": index_codes})).mappings().all()
+        stmt = (
+            select(
+                ConceptIndexTHDB.index_code,
+                func.coalesce(ConceptsDB.name, ConceptIndexTHDB.concept_name).label("concept_name"),
+                ConceptIndexTHDB.trade_date,
+                ConceptIndexTHDB.close,
+                ConceptIndexTHDB.change,
+                ConceptIndexTHDB.change_pct,
+            )
+            .distinct(ConceptIndexTHDB.index_code)
+            .select_from(ConceptIndexTHDB)
+            .outerjoin(ConceptsDB, ConceptsDB.index_code == ConceptIndexTHDB.index_code)
+            .where(ConceptIndexTHDB.index_code.in_(index_codes))
+            .order_by(ConceptIndexTHDB.index_code, ConceptIndexTHDB.trade_date.desc())
+        )
+        rows = (await self._raw.execute(stmt)).mappings().all()
         return {r["index_code"]: dict(r) for r in rows}
 
     async def get_names(self, index_codes: list[str]) -> dict[str, str]:
@@ -280,14 +289,22 @@ class ConceptRepoImpl:
         return self._to_entity(row) if row else None
 
     async def list_members(self, concept_id: int) -> list[dict]:
-        sql = text("""
-            SELECT m.symbol, COALESCE(s.name, '') AS name, m.reason
-            FROM stock_concept_members m
-            LEFT JOIN stock_infos s ON s.symbol = m.symbol
-            WHERE m.concept_id = :cid
-            ORDER BY m.symbol
-        """)
-        rows = (await self._session.execute(sql, {"cid": concept_id})).mappings().all()
+        """概念成分股：成员表 ⨝ 股票基本信息表
+
+        返回 [{symbol, name, reason}]，name 取不到时补空串。
+        """
+        stmt = (
+            select(
+                ConceptMemberDB.symbol,
+                func.coalesce(StockBasicDB.name, "").label("name"),
+                ConceptMemberDB.reason,
+            )
+            .select_from(ConceptMemberDB)
+            .outerjoin(StockBasicDB, StockBasicDB.symbol == ConceptMemberDB.symbol)
+            .where(ConceptMemberDB.concept_id == concept_id)
+            .order_by(ConceptMemberDB.symbol)
+        )
+        rows = (await self._raw.execute(stmt)).mappings().all()
         return [dict(r) for r in rows]
 
     async def list_concepts_by_symbol(self, symbol: str) -> list[ConceptBriefVO]:
@@ -526,11 +543,11 @@ async def _list_members_by_concept_impl(
     page: int = 1,
     page_size: int = 50,
 ) -> tuple[list[dict], int]:
-    """单概念成分股：stock_concept_members ⨝ stock_infos ⨝ fin_daily_basics 最新一行
+    """单概念成分股：fundamental_concept_member ⨝ fundamental_stock_basic ⨝ fundamental_daily_basic 最新一行
 
     返回 dict 列表（路由层组装为 ConceptMemberItemVO）。
     """
-    # 1) 子查询：每只股票 fin_daily_basics 最新一行
+    # 1) 子查询：每只股票 fundamental_daily_basic 最新一行
     latest_fdb = (
         select(
             FinDailyBasicDB.symbol,
@@ -543,17 +560,17 @@ async def _list_members_by_concept_impl(
     # 2) 主查询
     stmt = (
         select(
-            StockInfoDB.symbol,
-            StockInfoDB.name,
-            StockInfoDB.industry,
-            StockInfoDB.market,
+            StockBasicDB.symbol,
+            StockBasicDB.name,
+            StockBasicDB.industry,
+            StockBasicDB.market,
             FinDailyBasicDB.close.label("latest_close"),
             FinDailyBasicDB.total_mv,
             FinDailyBasicDB.pe_ttm,
         )
         .select_from(ConceptMemberDB)
-        .join(StockInfoDB, ConceptMemberDB.symbol == StockInfoDB.symbol)
-        .outerjoin(latest_fdb, latest_fdb.c.symbol == StockInfoDB.symbol)
+        .join(StockBasicDB, ConceptMemberDB.symbol == StockBasicDB.symbol)
+        .outerjoin(latest_fdb, latest_fdb.c.symbol == StockBasicDB.symbol)
         .outerjoin(
             FinDailyBasicDB,
             and_(
@@ -569,7 +586,7 @@ async def _list_members_by_concept_impl(
         "pct_change": FinDailyBasicDB.close,
         "latest_close": FinDailyBasicDB.close,
         "total_mv": FinDailyBasicDB.total_mv,
-        "name": StockInfoDB.name,
+        "name": StockBasicDB.name,
     }
     sort_col = sort_col_map.get(sort_by, FinDailyBasicDB.close)
     stmt = stmt.order_by(

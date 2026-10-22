@@ -59,7 +59,7 @@ async def get_concept_board_members(
     page_size: int = Query(50, ge=1, le=200),
     app: ConceptBoardService = Depends(get_concept_board_service),
 ):
-    """概念成分股：join stock_infos + fin_daily_basics 最新一行。"""
+    """概念成分股：join fundamental_stock_basic + fundamental_daily_basic 最新一行。"""
     req = ConceptMembersQueryRequest(
         concept_id=concept_id, sort_by=sort_by, order=order,
         with_pools=with_pools, page=page, page_size=page_size,

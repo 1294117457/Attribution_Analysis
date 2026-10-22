@@ -1,4 +1,4 @@
-﻿"""全市场快讯 ORM 模型（Tushare news 接口）
+"""全市场快讯 ORM 模型（Tushare news 接口）
 
 接口: Tushare pro.news(start_date, end_date, src)
 物理表名: news_article
@@ -25,7 +25,7 @@ class NewsArticleDB(RawBase, TimestampMixin):
     # id 用 bigint（新闻数据增长快）
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
 
-    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, comment="文档字段 datetime")
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, comment="文档字段 datetime")
     source: Mapped[str | None] = mapped_column(String(32), nullable=True, comment="文档字段 src")
     channels: Mapped[str | None] = mapped_column(Text, nullable=True, comment="文档字段 channels(逗号分隔或 JSON)")
 

@@ -1,4 +1,7 @@
-﻿"""停复牌 ORM 模型"""
+"""停复牌 ORM 模型
+
+表名：tech_suspend_d（对齐 Tushare 接口名 pro.suspend_d）
+"""
 
 from datetime import date
 from sqlalchemy import String, Date, Integer, Index
@@ -9,12 +12,9 @@ from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
 class BaseSuspendDB(RawBase, TimestampMixin):
-    """停复牌
+    """停复牌（Tushare pro.suspend_d）"""
 
-    物理表名: base_suspends
-    """
-
-    __tablename__ = "tech_suspend"
+    __tablename__ = "tech_suspend_d"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
@@ -27,8 +27,8 @@ class BaseSuspendDB(RawBase, TimestampMixin):
     data_source: Mapped[str] = mapped_column(String(16), nullable=False, default="tushare")
 
     __table_args__ = (
-        Index("ix_base_suspends_symbol_date", "symbol", "trade_date"),
-        Index("ix_base_suspends_date", "trade_date"),
+        Index("ix_tech_suspend_d_symbol_date", "symbol", "trade_date"),
+        Index("ix_tech_suspend_d_date", "trade_date"),
     )
 
     def __repr__(self) -> str:

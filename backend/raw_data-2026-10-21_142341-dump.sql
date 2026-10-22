@@ -2,14 +2,15 @@
 -- PostgreSQL database dump
 --
 
-\restrict U3hTjmE5cqwPzJFxUzxI7HILadgwdb9LNOgtThQPSLmuU5i71s5z1dS04Djf4fD
+\restrict aNBCpU2ZWm0DOTAvFgy1KQdWGJo6CWcIJu2YxUjPQsRMGwKFanzPH2HCSPSYSmK
 
 -- Dumped from database version 16.15
--- Dumped by pg_dump version 16.15
+-- Dumped by pg_dump version 17.10 (Ubuntu 17.10-1.pgdg24.04+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -159,6 +160,93 @@ COMMENT ON COLUMN public.capital_holder_num.holder_nums IS '股东户数(详细)
 
 
 --
+-- Name: capital_hsgt_top10_id_seq; Type: SEQUENCE; Schema: public; Owner: zhouch
+--
+
+CREATE SEQUENCE public.capital_hsgt_top10_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.capital_hsgt_top10_id_seq OWNER TO zhouch;
+
+--
+-- Name: capital_hsgt_top10; Type: TABLE; Schema: public; Owner: zhouch
+--
+
+CREATE TABLE public.capital_hsgt_top10 (
+    id integer DEFAULT nextval('public.capital_hsgt_top10_id_seq'::regclass) NOT NULL,
+    trade_date date NOT NULL,
+    symbol character varying(10) NOT NULL,
+    name character varying(50),
+    market_type character varying(8) NOT NULL,
+    rank integer NOT NULL,
+    close double precision,
+    p_change double precision,
+    amount double precision,
+    net_amount double precision,
+    buy double precision,
+    sell double precision,
+    data_source character varying(16) NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.capital_hsgt_top10 OWNER TO zhouch;
+
+--
+-- Name: capital_limit_list_d_id_seq; Type: SEQUENCE; Schema: public; Owner: zhouch
+--
+
+CREATE SEQUENCE public.capital_limit_list_d_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.capital_limit_list_d_id_seq OWNER TO zhouch;
+
+--
+-- Name: capital_limit_list_d; Type: TABLE; Schema: public; Owner: zhouch
+--
+
+CREATE TABLE public.capital_limit_list_d (
+    id integer DEFAULT nextval('public.capital_limit_list_d_id_seq'::regclass) NOT NULL,
+    trade_date date NOT NULL,
+    symbol character varying(10) NOT NULL,
+    industry character varying(64),
+    name character varying(50),
+    close double precision,
+    pct_chg double precision,
+    amount double precision,
+    limit_amount double precision,
+    float_mv double precision,
+    total_mv double precision,
+    turnover_ratio double precision,
+    fd_amount double precision,
+    first_time character varying(8),
+    last_time character varying(8),
+    open_times integer,
+    up_stat character varying(16),
+    limit_times integer,
+    limit_type character varying(8) NOT NULL,
+    data_source character varying(16) NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.capital_limit_list_d OWNER TO zhouch;
+
+--
 -- Name: capital_margin_id_seq; Type: SEQUENCE; Schema: public; Owner: pg_database_owner
 --
 
@@ -285,7 +373,8 @@ CREATE TABLE public.capital_margin_detail (
     rzrqye double precision,
     data_source character varying(16) NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    name character varying(50)
 );
 
 
@@ -395,6 +484,47 @@ CREATE TABLE public.capital_moneyflow (
 
 
 ALTER TABLE public.capital_moneyflow OWNER TO zhouch;
+
+--
+-- Name: capital_moneyflow_hsgt_id_seq; Type: SEQUENCE; Schema: public; Owner: zhouch
+--
+
+CREATE SEQUENCE public.capital_moneyflow_hsgt_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.capital_moneyflow_hsgt_id_seq OWNER TO zhouch;
+
+--
+-- Name: capital_moneyflow_hsgt; Type: TABLE; Schema: public; Owner: zhouch
+--
+
+CREATE TABLE public.capital_moneyflow_hsgt (
+    id integer DEFAULT nextval('public.capital_moneyflow_hsgt_id_seq'::regclass) NOT NULL,
+    trade_date date NOT NULL,
+    symbol character varying(10) NOT NULL,
+    name character varying(50),
+    market_type character varying(8) NOT NULL,
+    close double precision,
+    p_change double precision,
+    pct_change double precision,
+    rank integer,
+    amount double precision,
+    net_amount double precision,
+    buy double precision,
+    sell double precision,
+    data_source character varying(16) NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.capital_moneyflow_hsgt OWNER TO zhouch;
 
 --
 -- Name: capital_top_inst_id_seq; Type: SEQUENCE; Schema: public; Owner: pg_database_owner
@@ -675,7 +805,8 @@ CREATE TABLE public.fundamental_concept_member (
     reason text,
     joined_at timestamp with time zone DEFAULT now() NOT NULL,
     synced_at timestamp with time zone DEFAULT now() NOT NULL,
-    source character varying(10) DEFAULT 'ths'::character varying NOT NULL
+    source character varying(10) DEFAULT 'ths'::character varying NOT NULL,
+    short_name character varying(50)
 );
 
 
@@ -710,7 +841,7 @@ CREATE TABLE public.fundamental_concept_snapshot (
     low double precision,
     price double precision,
     prev_close double precision,
-    pct_change double precision,
+    p_change double precision,
     rank_current integer,
     rank_total integer,
     up_count integer,
@@ -719,7 +850,9 @@ CREATE TABLE public.fundamental_concept_snapshot (
     turnover_yi double precision,
     net_inflow_yi double precision,
     source character varying(10) DEFAULT 'ths'::character varying NOT NULL,
-    captured_at timestamp with time zone DEFAULT now() NOT NULL
+    captured_at timestamp with time zone DEFAULT now() NOT NULL,
+    trade_date date,
+    pct_change double precision
 );
 
 
@@ -766,7 +899,8 @@ CREATE TABLE public.fundamental_daily_basic (
     circ_mv double precision,
     data_source character varying(16) NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    limit_status integer
 );
 
 
@@ -912,7 +1046,9 @@ CREATE TABLE public.fundamental_dividend (
     cash_div_tax double precision,
     data_source character varying(16) NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    div_listdate date,
+    imp_ann_date date
 );
 
 
@@ -1121,7 +1257,8 @@ CREATE TABLE public.fundamental_report (
     n_cashflow_inv_act double precision,
     data_source character varying(16) NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    end_type character varying(8)
 );
 
 
@@ -1319,10 +1456,10 @@ CREATE SEQUENCE public.fundamental_stock_info_id_seq
 ALTER SEQUENCE public.fundamental_stock_info_id_seq OWNER TO pg_database_owner;
 
 --
--- Name: fundamental_stock_info; Type: TABLE; Schema: public; Owner: zhouch
+-- Name: fundamental_stock_basic; Type: TABLE; Schema: public; Owner: zhouch
 --
 
-CREATE TABLE public.fundamental_stock_info (
+CREATE TABLE public.fundamental_stock_basic (
     id integer DEFAULT nextval('public.fundamental_stock_info_id_seq'::regclass) NOT NULL,
     symbol character varying(10) NOT NULL,
     ts_code character varying(20),
@@ -1335,85 +1472,122 @@ CREATE TABLE public.fundamental_stock_info (
     delist_date date,
     list_status character varying(5) DEFAULT 'L'::character varying,
     is_hs character varying(5) DEFAULT 'N'::character varying,
-    total_shares bigint,
     act_name character varying(200),
     act_ent_type character varying(50),
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    fullname character varying(200),
+    enname character varying(200),
+    cnspell character varying(20),
+    curr_type character varying(8)
+);
+
+
+ALTER TABLE public.fundamental_stock_basic OWNER TO zhouch;
+
+--
+-- Name: COLUMN fundamental_stock_basic.symbol; Type: COMMENT; Schema: public; Owner: zhouch
+--
+
+COMMENT ON COLUMN public.fundamental_stock_basic.symbol IS '股票代码（6位）';
+
+
+--
+-- Name: COLUMN fundamental_stock_basic.ts_code; Type: COMMENT; Schema: public; Owner: zhouch
+--
+
+COMMENT ON COLUMN public.fundamental_stock_basic.ts_code IS 'Tushare 统一代码（含交易所后缀）';
+
+
+--
+-- Name: COLUMN fundamental_stock_basic.area; Type: COMMENT; Schema: public; Owner: zhouch
+--
+
+COMMENT ON COLUMN public.fundamental_stock_basic.area IS '地域';
+
+
+--
+-- Name: COLUMN fundamental_stock_basic.industry; Type: COMMENT; Schema: public; Owner: zhouch
+--
+
+COMMENT ON COLUMN public.fundamental_stock_basic.industry IS '行业';
+
+
+--
+-- Name: COLUMN fundamental_stock_basic.market; Type: COMMENT; Schema: public; Owner: zhouch
+--
+
+COMMENT ON COLUMN public.fundamental_stock_basic.market IS '市场类型（主板/科创板/创业板/北交所）';
+
+
+--
+-- Name: COLUMN fundamental_stock_basic.exchange; Type: COMMENT; Schema: public; Owner: zhouch
+--
+
+COMMENT ON COLUMN public.fundamental_stock_basic.exchange IS '交易所代码 SSE/SZSE/BSE';
+
+
+--
+-- Name: COLUMN fundamental_stock_basic.list_status; Type: COMMENT; Schema: public; Owner: zhouch
+--
+
+COMMENT ON COLUMN public.fundamental_stock_basic.list_status IS '上市状态 L/D/P';
+
+
+--
+-- Name: COLUMN fundamental_stock_basic.is_hs; Type: COMMENT; Schema: public; Owner: zhouch
+--
+
+COMMENT ON COLUMN public.fundamental_stock_basic.is_hs IS '沪深港通 N/H/S';
+
+
+--
+-- Name: COLUMN fundamental_stock_basic.act_name; Type: COMMENT; Schema: public; Owner: zhouch
+--
+
+COMMENT ON COLUMN public.fundamental_stock_basic.act_name IS '实控人名称';
+
+
+--
+-- Name: COLUMN fundamental_stock_basic.act_ent_type; Type: COMMENT; Schema: public; Owner: zhouch
+--
+
+COMMENT ON COLUMN public.fundamental_stock_basic.act_ent_type IS '实控人企业性质';
+
+
+--
+-- Name: fundamental_stock_concept_id_seq; Type: SEQUENCE; Schema: public; Owner: zhouch
+--
+
+CREATE SEQUENCE public.fundamental_stock_concept_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.fundamental_stock_concept_id_seq OWNER TO zhouch;
+
+--
+-- Name: fundamental_stock_concept; Type: TABLE; Schema: public; Owner: zhouch
+--
+
+CREATE TABLE public.fundamental_stock_concept (
+    id integer DEFAULT nextval('public.fundamental_stock_concept_id_seq'::regclass) NOT NULL,
+    symbol character varying(10) NOT NULL,
+    concept_id integer NOT NULL,
+    name character varying(100),
+    source character varying(10) DEFAULT 'ths'::character varying NOT NULL,
+    reason text,
+    synced_at timestamp without time zone DEFAULT now() NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 
-ALTER TABLE public.fundamental_stock_info OWNER TO zhouch;
-
---
--- Name: COLUMN fundamental_stock_info.symbol; Type: COMMENT; Schema: public; Owner: zhouch
---
-
-COMMENT ON COLUMN public.fundamental_stock_info.symbol IS '股票代码（6位）';
-
-
---
--- Name: COLUMN fundamental_stock_info.ts_code; Type: COMMENT; Schema: public; Owner: zhouch
---
-
-COMMENT ON COLUMN public.fundamental_stock_info.ts_code IS 'Tushare 统一代码（含交易所后缀）';
-
-
---
--- Name: COLUMN fundamental_stock_info.area; Type: COMMENT; Schema: public; Owner: zhouch
---
-
-COMMENT ON COLUMN public.fundamental_stock_info.area IS '地域';
-
-
---
--- Name: COLUMN fundamental_stock_info.industry; Type: COMMENT; Schema: public; Owner: zhouch
---
-
-COMMENT ON COLUMN public.fundamental_stock_info.industry IS '行业';
-
-
---
--- Name: COLUMN fundamental_stock_info.market; Type: COMMENT; Schema: public; Owner: zhouch
---
-
-COMMENT ON COLUMN public.fundamental_stock_info.market IS '市场类型（主板/科创板/创业板/北交所）';
-
-
---
--- Name: COLUMN fundamental_stock_info.exchange; Type: COMMENT; Schema: public; Owner: zhouch
---
-
-COMMENT ON COLUMN public.fundamental_stock_info.exchange IS '交易所代码 SSE/SZSE/BSE';
-
-
---
--- Name: COLUMN fundamental_stock_info.list_status; Type: COMMENT; Schema: public; Owner: zhouch
---
-
-COMMENT ON COLUMN public.fundamental_stock_info.list_status IS '上市状态 L/D/P';
-
-
---
--- Name: COLUMN fundamental_stock_info.is_hs; Type: COMMENT; Schema: public; Owner: zhouch
---
-
-COMMENT ON COLUMN public.fundamental_stock_info.is_hs IS '沪深港通 N/H/S';
-
-
---
--- Name: COLUMN fundamental_stock_info.act_name; Type: COMMENT; Schema: public; Owner: zhouch
---
-
-COMMENT ON COLUMN public.fundamental_stock_info.act_name IS '实控人名称';
-
-
---
--- Name: COLUMN fundamental_stock_info.act_ent_type; Type: COMMENT; Schema: public; Owner: zhouch
---
-
-COMMENT ON COLUMN public.fundamental_stock_info.act_ent_type IS '实控人企业性质';
-
+ALTER TABLE public.fundamental_stock_concept OWNER TO zhouch;
 
 --
 -- Name: fundamental_top10_id_seq; Type: SEQUENCE; Schema: public; Owner: pg_database_owner
@@ -1519,7 +1693,8 @@ CREATE TABLE public.fundamental_top10_float (
     holder_type character varying(32),
     data_source character varying(16) NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
+    updated_at timestamp without time zone DEFAULT now() NOT NULL,
+    hold_float_ratio double precision
 );
 
 
@@ -1531,6 +1706,43 @@ ALTER TABLE public.fundamental_top10_float OWNER TO zhouch;
 
 COMMENT ON COLUMN public.fundamental_top10_float.hold_ratio IS '占流通股本比例%';
 
+
+--
+-- Name: news_article_id_seq; Type: SEQUENCE; Schema: public; Owner: zhouch
+--
+
+CREATE SEQUENCE public.news_article_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.news_article_id_seq OWNER TO zhouch;
+
+--
+-- Name: news_article; Type: TABLE; Schema: public; Owner: zhouch
+--
+
+CREATE TABLE public.news_article (
+    id bigint DEFAULT nextval('public.news_article_id_seq'::regclass) NOT NULL,
+    published_at timestamp without time zone NOT NULL,
+    source character varying(32),
+    channels text,
+    title character varying(512) NOT NULL,
+    content text,
+    url character varying(1024),
+    symbols character varying(10)[],
+    sentiment character varying(16),
+    category character varying(32),
+    data_source character varying(16) NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL,
+    updated_at timestamp without time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.news_article OWNER TO zhouch;
 
 --
 -- Name: tech_adj_factor_id_seq; Type: SEQUENCE; Schema: public; Owner: pg_database_owner
@@ -1700,7 +1912,7 @@ CREATE TABLE public.tech_suspend (
     id integer DEFAULT nextval('public.tech_suspend_id_seq'::regclass) NOT NULL,
     symbol character varying(10) NOT NULL,
     trade_date date NOT NULL,
-    suspend_timing date,
+    suspend_timing character varying(32),
     suspend_type character varying(8),
     data_source character varying(16) NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
@@ -1734,6 +1946,22 @@ ALTER TABLE ONLY public.capital_holder_num
 
 
 --
+-- Name: capital_hsgt_top10 capital_hsgt_top10_pkey; Type: CONSTRAINT; Schema: public; Owner: zhouch
+--
+
+ALTER TABLE ONLY public.capital_hsgt_top10
+    ADD CONSTRAINT capital_hsgt_top10_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: capital_limit_list_d capital_limit_list_d_pkey; Type: CONSTRAINT; Schema: public; Owner: zhouch
+--
+
+ALTER TABLE ONLY public.capital_limit_list_d
+    ADD CONSTRAINT capital_limit_list_d_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: capital_margin_detail capital_margin_detail_pkey; Type: CONSTRAINT; Schema: public; Owner: zhouch
 --
 
@@ -1747,6 +1975,14 @@ ALTER TABLE ONLY public.capital_margin_detail
 
 ALTER TABLE ONLY public.capital_margin
     ADD CONSTRAINT capital_margin_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: capital_moneyflow_hsgt capital_moneyflow_hsgt_pkey; Type: CONSTRAINT; Schema: public; Owner: zhouch
+--
+
+ALTER TABLE ONLY public.capital_moneyflow_hsgt
+    ADD CONSTRAINT capital_moneyflow_hsgt_pkey PRIMARY KEY (id);
 
 
 --
@@ -1854,11 +2090,27 @@ ALTER TABLE ONLY public.fundamental_sector_daily
 
 
 --
--- Name: fundamental_stock_info fundamental_stock_info_pkey; Type: CONSTRAINT; Schema: public; Owner: zhouch
+-- Name: fundamental_stock_basic fundamental_stock_basic_pkey; Type: CONSTRAINT; Schema: public; Owner: zhouch
 --
 
-ALTER TABLE ONLY public.fundamental_stock_info
-    ADD CONSTRAINT fundamental_stock_info_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.fundamental_stock_basic
+    ADD CONSTRAINT fundamental_stock_basic_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: fundamental_stock_basic fundamental_stock_basic_symbol_key; Type: CONSTRAINT; Schema: public; Owner: zhouch
+--
+
+ALTER TABLE ONLY public.fundamental_stock_basic
+    ADD CONSTRAINT fundamental_stock_basic_symbol_key UNIQUE (symbol);
+
+
+--
+-- Name: fundamental_stock_concept fundamental_stock_concept_pkey; Type: CONSTRAINT; Schema: public; Owner: zhouch
+--
+
+ALTER TABLE ONLY public.fundamental_stock_concept
+    ADD CONSTRAINT fundamental_stock_concept_pkey PRIMARY KEY (id);
 
 
 --
@@ -1875,6 +2127,14 @@ ALTER TABLE ONLY public.fundamental_top10_float
 
 ALTER TABLE ONLY public.fundamental_top10
     ADD CONSTRAINT fundamental_top10_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: news_article news_article_pkey; Type: CONSTRAINT; Schema: public; Owner: zhouch
+--
+
+ALTER TABLE ONLY public.news_article
+    ADD CONSTRAINT news_article_pkey PRIMARY KEY (id);
 
 
 --
@@ -1926,6 +2186,22 @@ ALTER TABLE ONLY public.capital_holder_num
 
 
 --
+-- Name: capital_hsgt_top10 uq_capital_hsgt_top10_uk; Type: CONSTRAINT; Schema: public; Owner: zhouch
+--
+
+ALTER TABLE ONLY public.capital_hsgt_top10
+    ADD CONSTRAINT uq_capital_hsgt_top10_uk UNIQUE (trade_date, market_type, symbol, rank);
+
+
+--
+-- Name: capital_limit_list_d uq_capital_limit_list_d_uk; Type: CONSTRAINT; Schema: public; Owner: zhouch
+--
+
+ALTER TABLE ONLY public.capital_limit_list_d
+    ADD CONSTRAINT uq_capital_limit_list_d_uk UNIQUE (trade_date, symbol, limit_type);
+
+
+--
 -- Name: capital_margin_detail uq_capital_margin_detail_uk; Type: CONSTRAINT; Schema: public; Owner: zhouch
 --
 
@@ -1939,6 +2215,14 @@ ALTER TABLE ONLY public.capital_margin_detail
 
 ALTER TABLE ONLY public.capital_margin
     ADD CONSTRAINT uq_capital_margin_uk UNIQUE (exchange_id, trade_date);
+
+
+--
+-- Name: capital_moneyflow_hsgt uq_capital_moneyflow_hsgt_uk; Type: CONSTRAINT; Schema: public; Owner: zhouch
+--
+
+ALTER TABLE ONLY public.capital_moneyflow_hsgt
+    ADD CONSTRAINT uq_capital_moneyflow_hsgt_uk UNIQUE (trade_date, symbol, market_type);
 
 
 --
@@ -2022,11 +2306,11 @@ ALTER TABLE ONLY public.fundamental_sector_daily
 
 
 --
--- Name: fundamental_stock_info uq_fundamental_stock_info_symbol; Type: CONSTRAINT; Schema: public; Owner: zhouch
+-- Name: fundamental_stock_concept uq_fundamental_stock_concept_uk; Type: CONSTRAINT; Schema: public; Owner: zhouch
 --
 
-ALTER TABLE ONLY public.fundamental_stock_info
-    ADD CONSTRAINT uq_fundamental_stock_info_symbol UNIQUE (symbol);
+ALTER TABLE ONLY public.fundamental_stock_concept
+    ADD CONSTRAINT uq_fundamental_stock_concept_uk UNIQUE (symbol, concept_id);
 
 
 --
@@ -2043,6 +2327,14 @@ ALTER TABLE ONLY public.fundamental_top10_float
 
 ALTER TABLE ONLY public.fundamental_top10
     ADD CONSTRAINT uq_fundamental_top10_uk UNIQUE (symbol, end_date, ann_date, holder_name);
+
+
+--
+-- Name: news_article uq_news_article_source_url; Type: CONSTRAINT; Schema: public; Owner: zhouch
+--
+
+ALTER TABLE ONLY public.news_article
+    ADD CONSTRAINT uq_news_article_source_url UNIQUE (source, url);
 
 
 --
@@ -2113,6 +2405,55 @@ CREATE INDEX ix_capital_holder_num_symbol ON public.capital_holder_num USING btr
 
 
 --
+-- Name: ix_capital_hsgt_top10_market_date; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_capital_hsgt_top10_market_date ON public.capital_hsgt_top10 USING btree (market_type, trade_date);
+
+
+--
+-- Name: ix_capital_hsgt_top10_symbol; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_capital_hsgt_top10_symbol ON public.capital_hsgt_top10 USING btree (symbol);
+
+
+--
+-- Name: ix_capital_hsgt_top10_trade_date; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_capital_hsgt_top10_trade_date ON public.capital_hsgt_top10 USING btree (trade_date);
+
+
+--
+-- Name: ix_capital_limit_list_d_symbol; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_capital_limit_list_d_symbol ON public.capital_limit_list_d USING btree (symbol);
+
+
+--
+-- Name: ix_capital_limit_list_d_symbol_date; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_capital_limit_list_d_symbol_date ON public.capital_limit_list_d USING btree (symbol, trade_date);
+
+
+--
+-- Name: ix_capital_limit_list_d_trade_date; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_capital_limit_list_d_trade_date ON public.capital_limit_list_d USING btree (trade_date);
+
+
+--
+-- Name: ix_capital_limit_list_d_type_date; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_capital_limit_list_d_type_date ON public.capital_limit_list_d USING btree (limit_type, trade_date);
+
+
+--
 -- Name: ix_capital_margin_date; Type: INDEX; Schema: public; Owner: zhouch
 --
 
@@ -2145,6 +2486,27 @@ CREATE INDEX ix_capital_margin_detail_symbol_date ON public.capital_margin_detai
 --
 
 CREATE INDEX ix_capital_moneyflow_date ON public.capital_moneyflow USING btree (trade_date);
+
+
+--
+-- Name: ix_capital_moneyflow_hsgt_symbol; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_capital_moneyflow_hsgt_symbol ON public.capital_moneyflow_hsgt USING btree (symbol);
+
+
+--
+-- Name: ix_capital_moneyflow_hsgt_symbol_date; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_capital_moneyflow_hsgt_symbol_date ON public.capital_moneyflow_hsgt USING btree (symbol, trade_date);
+
+
+--
+-- Name: ix_capital_moneyflow_hsgt_trade_date; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_capital_moneyflow_hsgt_trade_date ON public.capital_moneyflow_hsgt USING btree (trade_date);
 
 
 --
@@ -2351,73 +2713,73 @@ CREATE INDEX ix_fundamental_sector_daily_type_date ON public.fundamental_sector_
 
 
 --
--- Name: ix_fundamental_stock_info_area; Type: INDEX; Schema: public; Owner: zhouch
+-- Name: ix_fundamental_stock_basic_area; Type: INDEX; Schema: public; Owner: zhouch
 --
 
-CREATE INDEX ix_fundamental_stock_info_area ON public.fundamental_stock_info USING btree (area);
-
-
---
--- Name: ix_fundamental_stock_info_exchange; Type: INDEX; Schema: public; Owner: zhouch
---
-
-CREATE INDEX ix_fundamental_stock_info_exchange ON public.fundamental_stock_info USING btree (exchange);
+CREATE INDEX ix_fundamental_stock_basic_area ON public.fundamental_stock_basic USING btree (area);
 
 
 --
--- Name: ix_fundamental_stock_info_exchange_status; Type: INDEX; Schema: public; Owner: zhouch
+-- Name: ix_fundamental_stock_basic_exchange; Type: INDEX; Schema: public; Owner: zhouch
 --
 
-CREATE INDEX ix_fundamental_stock_info_exchange_status ON public.fundamental_stock_info USING btree (exchange, list_status);
-
-
---
--- Name: ix_fundamental_stock_info_industry; Type: INDEX; Schema: public; Owner: zhouch
---
-
-CREATE INDEX ix_fundamental_stock_info_industry ON public.fundamental_stock_info USING btree (industry);
+CREATE INDEX ix_fundamental_stock_basic_exchange ON public.fundamental_stock_basic USING btree (exchange);
 
 
 --
--- Name: ix_fundamental_stock_info_industry_market; Type: INDEX; Schema: public; Owner: zhouch
+-- Name: ix_fundamental_stock_basic_industry; Type: INDEX; Schema: public; Owner: zhouch
 --
 
-CREATE INDEX ix_fundamental_stock_info_industry_market ON public.fundamental_stock_info USING btree (industry, market);
-
-
---
--- Name: ix_fundamental_stock_info_list_status; Type: INDEX; Schema: public; Owner: zhouch
---
-
-CREATE INDEX ix_fundamental_stock_info_list_status ON public.fundamental_stock_info USING btree (list_status);
+CREATE INDEX ix_fundamental_stock_basic_industry ON public.fundamental_stock_basic USING btree (industry);
 
 
 --
--- Name: ix_fundamental_stock_info_market; Type: INDEX; Schema: public; Owner: zhouch
+-- Name: ix_fundamental_stock_basic_list_status; Type: INDEX; Schema: public; Owner: zhouch
 --
 
-CREATE INDEX ix_fundamental_stock_info_market ON public.fundamental_stock_info USING btree (market);
-
-
---
--- Name: ix_fundamental_stock_info_name; Type: INDEX; Schema: public; Owner: zhouch
---
-
-CREATE INDEX ix_fundamental_stock_info_name ON public.fundamental_stock_info USING btree (name);
+CREATE INDEX ix_fundamental_stock_basic_list_status ON public.fundamental_stock_basic USING btree (list_status);
 
 
 --
--- Name: ix_fundamental_stock_info_symbol; Type: INDEX; Schema: public; Owner: zhouch
+-- Name: ix_fundamental_stock_basic_market; Type: INDEX; Schema: public; Owner: zhouch
 --
 
-CREATE INDEX ix_fundamental_stock_info_symbol ON public.fundamental_stock_info USING btree (symbol);
+CREATE INDEX ix_fundamental_stock_basic_market ON public.fundamental_stock_basic USING btree (market);
 
 
 --
--- Name: ix_fundamental_stock_info_ts_code; Type: INDEX; Schema: public; Owner: zhouch
+-- Name: ix_fundamental_stock_basic_name; Type: INDEX; Schema: public; Owner: zhouch
 --
 
-CREATE INDEX ix_fundamental_stock_info_ts_code ON public.fundamental_stock_info USING btree (ts_code);
+CREATE INDEX ix_fundamental_stock_basic_name ON public.fundamental_stock_basic USING btree (name);
+
+
+--
+-- Name: ix_fundamental_stock_basic_symbol; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_fundamental_stock_basic_symbol ON public.fundamental_stock_basic USING btree (symbol);
+
+
+--
+-- Name: ix_fundamental_stock_basic_ts_code; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_fundamental_stock_basic_ts_code ON public.fundamental_stock_basic USING btree (ts_code);
+
+
+--
+-- Name: ix_fundamental_stock_concept_concept_id; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_fundamental_stock_concept_concept_id ON public.fundamental_stock_concept USING btree (concept_id);
+
+
+--
+-- Name: ix_fundamental_stock_concept_symbol; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_fundamental_stock_concept_symbol ON public.fundamental_stock_concept USING btree (symbol);
 
 
 --
@@ -2446,6 +2808,41 @@ CREATE INDEX ix_fundamental_top10_float_symbol ON public.fundamental_top10_float
 --
 
 CREATE INDEX ix_fundamental_top10_symbol ON public.fundamental_top10 USING btree (symbol);
+
+
+--
+-- Name: ix_news_article_published_at; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_news_article_published_at ON public.news_article USING btree (published_at);
+
+
+--
+-- Name: ix_news_article_source; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_news_article_source ON public.news_article USING btree (source);
+
+
+--
+-- Name: ix_news_article_symbols; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_news_article_symbols ON public.news_article USING gin (symbols);
+
+
+--
+-- Name: ix_stock_basic_exchange_status; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_stock_basic_exchange_status ON public.fundamental_stock_basic USING btree (exchange, list_status);
+
+
+--
+-- Name: ix_stock_basic_industry_market; Type: INDEX; Schema: public; Owner: zhouch
+--
+
+CREATE INDEX ix_stock_basic_industry_market ON public.fundamental_stock_basic USING btree (industry, market);
 
 
 --
@@ -2529,5 +2926,5 @@ CREATE INDEX ix_tech_suspend_symbol_date ON public.tech_suspend USING btree (sym
 -- PostgreSQL database dump complete
 --
 
-\unrestrict U3hTjmE5cqwPzJFxUzxI7HILadgwdb9LNOgtThQPSLmuU5i71s5z1dS04Djf4fD
+\unrestrict aNBCpU2ZWm0DOTAvFgy1KQdWGJo6CWcIJu2YxUjPQsRMGwKFanzPH2HCSPSYSmK
 

@@ -1,4 +1,8 @@
-﻿"""财务报表 ORM 模型"""
+"""财务报表（利润表）ORM 模型
+
+表名：fundamental_income（对齐 Tushare 接口名 pro.income）
+UK: (symbol, end_date, report_type)
+"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Index, UniqueConstraint, Integer
@@ -9,13 +13,12 @@ from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
 class FinReportDB(RawBase, TimestampMixin):
-    """财务报表（利润表/资产负债表/现金流量表）
+    """利润表（Tushare pro.income）
 
-    物理表名: fin_reports
-    UK: (symbol, end_date)
+    UK: (symbol, end_date, report_type)
     """
 
-    __tablename__ = "fundamental_report"
+    __tablename__ = "fundamental_income"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
@@ -51,8 +54,8 @@ class FinReportDB(RawBase, TimestampMixin):
     data_source: Mapped[str] = mapped_column(String(16), nullable=False, default="tushare")
 
     __table_args__ = (
-        UniqueConstraint("symbol", "end_date", "report_type", name="uq_fin_reports_uk"),
-        Index("ix_fin_reports_symbol_end", "symbol", "end_date"),
+        UniqueConstraint("symbol", "end_date", "report_type", name="uq_fundamental_income_uk"),
+        Index("ix_fundamental_income_symbol_end", "symbol", "end_date"),
     )
 
     def __repr__(self) -> str:

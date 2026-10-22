@@ -11,7 +11,7 @@ from shared.infrastructure.persistence.mixins import TimestampMixin
 class FinDailyBasicDB(RawBase, TimestampMixin):
     """日频估值指标（PE/PB/PS/换手率等）
 
-    物理表名: fin_daily_basics
+    物理表名: fundamental_daily_basic
     UK: (symbol, trade_date)
     """
 

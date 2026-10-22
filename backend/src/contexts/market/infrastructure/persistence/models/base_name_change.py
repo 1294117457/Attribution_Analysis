@@ -1,4 +1,8 @@
-﻿"""股票曾用名 ORM 模型"""
+"""股票曾用名 ORM 模型
+
+表名：tech_namechange（对齐 Tushare 接口名 pro.namechange）
+UK: (symbol, start_date)
+"""
 
 from datetime import date
 from sqlalchemy import String, Integer, Date, Index, UniqueConstraint
@@ -11,11 +15,10 @@ from shared.infrastructure.persistence.mixins import TimestampMixin
 class BaseNameChangeDB(RawBase, TimestampMixin):
     """股票曾用名
 
-    物理表名: base_name_changes
     UK: (symbol, start_date)
     """
 
-    __tablename__ = "tech_name_change"
+    __tablename__ = "tech_namechange"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
@@ -29,7 +32,7 @@ class BaseNameChangeDB(RawBase, TimestampMixin):
     data_source: Mapped[str] = mapped_column(String(16), nullable=False, default="tushare")
 
     __table_args__ = (
-        UniqueConstraint("symbol", "start_date", name="uq_base_name_change_uk"),
+        UniqueConstraint("symbol", "start_date", name="uq_tech_namechange_uk"),
     )
 
     def __repr__(self) -> str:

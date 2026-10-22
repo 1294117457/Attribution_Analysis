@@ -10,7 +10,7 @@ step8 修正（2026-10-20）—— session 注入修正：
 修正前的两个系统性缺陷：
     1. 24 个 factory 把 raw_data 库 session 传给 CollectLogService，
        而 collect_logs 表在 attribution 库 → create_pending 第一步就 500
-    2. get_daily_kline_service 用业务库 session（get_db）写 RawBase 表
+    2. get_daily_service 用业务库 session（get_db）写 RawBase 表
        → tech_kline_daily 找不到
 
 修正后的统一约定（28 个 factory 无一例外）：
@@ -51,7 +51,7 @@ from contexts.collect.infrastructure.adapter.background import get_collect_task_
 # ═══════════════════════════════════════════════════════════════════════
 # tech 5
 # ═══════════════════════════════════════════════════════════════════════
-def get_daily_kline_service(
+def get_daily_service(
     session: AsyncSession = Depends(get_raw_db),
 ):
     """日 K 线 service（写采集库 tech_kline_daily，用 get_raw_db）
@@ -60,21 +60,21 @@ def get_daily_kline_service(
         - session 仅 get() 实时查询用；run_collect 自己开 raw_data session
         - 构造函数：(log_service, session=None, fetcher=None)
     """
-    from contexts.collect.application.service.tech.daily_kline_service import (
-        DailyKlineService,
+    from contexts.collect.application.service.tech.daily_service import (
+        DailyService,
     )
-    return DailyKlineService(
+    return DailyService(
         log_service=CollectLogService(),
         session=session,
     )
 
 
-def get_minute_kline_service():
+def get_minute_service():
     """实时查询 service，无 repo（不走采集队列，无 log 集成）"""
-    from contexts.collect.application.service.tech.minute_kline_service import (
-        MinuteKlineService,
+    from contexts.collect.application.service.tech.minute_service import (
+        MinuteService,
     )
-    return MinuteKlineService()
+    return MinuteService()
 
 
 def get_adj_factor_service(
@@ -426,7 +426,7 @@ def get_dividend_service(
 def get_stock_basic_service(
     session: AsyncSession = Depends(get_raw_db),
 ):
-    """股票基本信息 service（写采集库 fundamental_stock_info，用 get_raw_db）
+    """股票基本信息 service（写采集库 fundamental_stock_basic，用 get_raw_db）
 
     v4 自管协议（2026-10-20）：
         - session 仅 get() 实时查询用；run_collect 自己开 raw_data session
@@ -598,8 +598,8 @@ def get_sentiment_service():
 
 __all__ = [
     # tech 5
-    "get_daily_kline_service",
-    "get_minute_kline_service",
+    "get_daily_service",
+    "get_minute_service",
     "get_adj_factor_service",
     "get_suspend_service",
     "get_name_change_service",

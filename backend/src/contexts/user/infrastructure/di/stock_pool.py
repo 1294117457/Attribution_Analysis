@@ -24,15 +24,16 @@ def _build_collect_service(task_type: str):
     from contexts.collect.application.service.fundamental.daily_basic_service import (
         DailyBasicService,
     )
-    from contexts.collect.application.service.tech.daily_kline_service import (
-        DailyKlineService,
+    from contexts.collect.application.service.tech.daily_service import (
+        DailyService,
     )
     from contexts.collect.application.service.tech.adj_factor_service import (
         AdjFactorService,
     )
 
+    # task_type 键保持稳定：URL/service_name，不能改
     factory = {
-        "daily_kline": DailyKlineService,
+        "daily_kline": DailyService,
         "daily_basic": DailyBasicService,
         "adj_factor": AdjFactorService,
     }.get(task_type)

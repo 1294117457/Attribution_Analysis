@@ -726,44 +726,40 @@
 | base_date    | str   | N        | 基准日             |
 | base_share   | float | N        | 基准股本（万）     |
 
-## 股票基础信息
+## A股日线行情
 
 ------
 
-接口：stock_basic，可以通过[**数据工具**](https://tushare.pro/webclient/)调试和查看数据
-描述：获取基础信息数据，包括股票代码、名称、上市日期、退市日期等
-限量：每次最多返回6000行数据（覆盖全市场A股，会随股票总数增长而增加）
-权限：2000积分起，每分钟请求50次。此接口是基础信息，调取一次就可以拉取完，建议保存倒本地存储后使用
+接口：daily，可以通过[**数据工具**](https://tushare.pro/webclient/)调试和查看数据
+ 数据说明：交易日每天15点～16点之间入库。本接口是未复权行情，停牌期间不提供数据
+ 调取说明：基础积分每分钟内可调取500次，每次6000条数据，一次请求相当于提取一个股票23年历史
+ 描述：获取股票行情数据，或通过[**通用行情接口**](https://tushare.pro/document/2?doc_id=109)获取数据，包含了前后复权数据
 
 **输入参数**
 
-| 名称        | 类型 | 必选 | 描述                                                         |
-| :---------- | :--- | :--- | :----------------------------------------------------------- |
-| ts_code     | str  | N    | TS股票代码([格式说明](https://tushare.pro/document/2?doc_id=14)) |
-| name        | str  | N    | 名称                                                         |
-| market      | str  | N    | 市场类别 （主板/创业板/科创板/CDR/北交所）                   |
-| list_status | str  | N    | 上市状态 L上市 D退市 P暂停上市 G 未交易 UN未上市，默认是L    |
-| exchange    | str  | N    | 交易所 SSE上交所 SZSE深交所 BSE北交所                        |
-| is_hs       | str  | N    | 是否沪深港通标的，N否 H沪股通 S深股通                        |
+| 名称       | 类型 | 必选 | 描述                                       |
+| ---------- | ---- | ---- | ------------------------------------------ |
+| ts_code    | str  | N    | 股票代码（支持多个股票同时提取，逗号分隔） |
+| trade_date | str  | N    | 交易日期（YYYYMMDD）                       |
+| start_date | str  | N    | 开始日期(YYYYMMDD)                         |
+| end_date   | str  | N    | 结束日期(YYYYMMDD)                         |
+
+**注：日期都填YYYYMMDD格式，比如20181010**
 
 **输出参数**
 
-| 名称         | 类型 | 默认显示 | 描述                                                |
-| :----------- | :--- | :------- | :-------------------------------------------------- |
-| ts_code      | str  | Y        | TS代码                                              |
-| symbol       | str  | Y        | 股票代码                                            |
-| name         | str  | Y        | 股票名称                                            |
-| area         | str  | Y        | 地域                                                |
-| industry     | str  | Y        | 所属行业                                            |
-| fullname     | str  | N        | 股票全称                                            |
-| enname       | str  | N        | 英文全称                                            |
-| cnspell      | str  | Y        | 拼音缩写                                            |
-| market       | str  | Y        | 市场类型（主板/创业板/科创板/CDR）                  |
-| exchange     | str  | N        | 交易所代码                                          |
-| curr_type    | str  | N        | 交易货币                                            |
-| list_status  | str  | N        | 上市状态 L上市 D退市 G过会未交易 P暂停上市 UN未上市 |
-| list_date    | str  | Y        | 上市日期                                            |
-| delist_date  | str  | N        | 退市日期                                            |
-| is_hs        | str  | N        | 是否沪深港通标的，N否 H沪股通 S深股通               |
-| act_name     | str  | Y        | 实控人名称                                          |
-| act_ent_type | str  | Y        | 实控人企业性质                                      |
+| 名称       | 类型  | 默认显示 | 描述                                                         |
+| ---------- | ----- | -------- | ------------------------------------------------------------ |
+| ts_code    | str   | Y        | 股票代码                                                     |
+| trade_date | str   | Y        | 交易日期                                                     |
+| open       | float | Y        | 开盘价                                                       |
+| high       | float | Y        | 最高价                                                       |
+| low        | float | Y        | 最低价                                                       |
+| close      | float | Y        | 收盘价                                                       |
+| pre_close  | float | Y        | 昨收价【除权价】                                             |
+| change     | float | Y        | 涨跌额                                                       |
+| pct_chg    | float | Y        | 涨跌幅（%） 【基于除权后的昨收计算的涨跌幅：（今收-除权昨收）/除权昨收 】 |
+| vol        | float | Y        | 成交量 （手）                                                |
+| amount     | float | Y        | 成交额 （千元）                                              |
+| ah_vol     | float | N        | 盘后成交量 （手）                                            |
+| ah_amount  | float | N        | 盘后成交额 （千元）                                          |

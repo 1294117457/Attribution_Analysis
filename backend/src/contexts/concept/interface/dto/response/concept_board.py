@@ -72,7 +72,7 @@ class ConceptMemberItemVO(BaseModel):
     industry: Optional[str] = None
     market: Optional[str] = None
 
-    # ── 来自 fin_daily_basics（最新一天）──
+    # ── 来自 fundamental_daily_basic（最新一天）──
     latest_close: Optional[float] = None
     total_mv: Optional[float] = None
     pe_ttm: Optional[float] = None

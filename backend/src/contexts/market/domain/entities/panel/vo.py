@@ -18,16 +18,16 @@ class StockPanelRow:
     """股票列表面板行快照（4 表 JOIN / 子查询结果）
 
     来源：
-    - stock_infos           基本字段 13 个
-    - tech_kline_dailys     K 线统计 3 个（COUNT / MIN / MAX）
-    - fin_daily_basics      最新一行估值 3 个（close / total_mv / pe_ttm）
-    - fin_reports           最新一期净利润率 1 个（n_income / revenue × 100）
+    - fundamental_stock_basic           基本字段 13 个
+    - tech_daily     K 线统计 3 个（COUNT / MIN / MAX）
+    - fundamental_daily_basic      最新一行估值 3 个（close / total_mv / pe_ttm）
+    - fundamental_income           最新一期净利润率 1 个（n_income / revenue × 100）
 
     用途：仅用于"列表面板"视图投影，不可写回任何源表。
     属于 domain/panel 上下文，不归属任何单一聚合根。
     """
 
-    # ── 来自 stock_infos ─────────────────────────────
+    # ── 来自 fundamental_stock_basic ─────────────────────────────
     symbol: str
     ts_code: Optional[str]
     name: Optional[str]
@@ -40,17 +40,16 @@ class StockPanelRow:
     is_hs: Optional[str]
     act_name: Optional[str]
     act_ent_type: Optional[str]
-    total_shares: Optional[int]
 
-    # ── 来自 tech_kline_dailys（聚合） ──────────────
+    # ── 来自 tech_daily（聚合） ──────────────
     record_count: int
     kline_start: Optional[date]
     kline_end: Optional[date]
 
-    # ── 来自 fin_daily_basics（最新一行） ─────────────
+    # ── 来自 fundamental_daily_basic（最新一行） ─────────────
     latest_close: Optional[float]
     total_mv: Optional[float]
     pe_ttm: Optional[float]
 
-    # ── 来自 fin_reports（最新一期） ─────────────
+    # ── 来自 fundamental_income（最新一期） ─────────────
     profit_margin: Optional[float]

@@ -54,8 +54,8 @@ from contexts.market.domain.entities.panel.repository import StockPanelComposeRe
 from contexts.market.domain.entities.panel.vo import StockPanelRow
 from contexts.concept.domain.services.concept_brief_service import ConceptBriefService
 from contexts.collect.application.service.fundamental.stock_basic_service import StockBasicService
-from contexts.collect.application.service.tech.daily_kline_service import DailyKlineService
-from contexts.collect.application.service.tech.minute_kline_service import MinuteKlineService
+from contexts.collect.application.service.tech.daily_service import DailyService
+from contexts.collect.application.service.tech.minute_service import MinuteService
 
 logger = logging.getLogger(__name__)
 
@@ -94,8 +94,8 @@ class StockInfoService:
         signal: Optional[SignalDetector] = None,
         indicator_calc: Optional[IndicatorCalculator] = None,
         stock_basic_svc: Optional[StockBasicService] = None,
-        daily_kline_svc: Optional[DailyKlineService] = None,
-        minute_kline_svc: Optional[MinuteKlineService] = None,
+        daily_svc: Optional[DailyService] = None,
+        minute_svc: Optional[MinuteService] = None,
         top_k: int = DEFAULT_MAIN_CONCEPT_TOP_K,
     ):
         self._stock_repo = stock_repo
@@ -107,8 +107,8 @@ class StockInfoService:
         self._signal = signal or SignalDetector()
         self._calc = indicator_calc or IndicatorCalculator()
         self._stock_basic_svc = stock_basic_svc
-        self._daily_kline_svc = daily_kline_svc
-        self._minute_kline_svc = minute_kline_svc
+        self._daily_svc = daily_svc
+        self._minute_svc = minute_svc
         self._top_k = top_k
 
     # ══════════════════════════════════════════════════════════════
@@ -139,7 +139,6 @@ class StockInfoService:
             industry=stock.industry.name if stock.industry else None,
             market=stock.market.name if stock.market else None,
             list_date=stock.list_date,
-            total_shares=stock.total_shares,
         )
 
     async def get_meta(self) -> StockMetaResponse:
@@ -180,7 +179,7 @@ class StockInfoService:
             symbol=stock.symbol, name=stock.name,
             industry=stock.industry.name if stock.industry else None,
             market=stock.market.name if stock.market else None,
-            list_date=stock.list_date, total_shares=stock.total_shares,
+            list_date=stock.list_date,
         )
 
     async def sync_stocks(self, list_status: str = "L") -> SyncStockResponse:
@@ -208,9 +207,9 @@ class StockInfoService:
     # ══════════════════════════════════════════════════════════════
 
     async def collect(self, request: KlineCollectRequest) -> KlineCollectResponse:
-        """采集 K 线（直接调 DailyKlineService.collect）"""
-        if self._daily_kline_svc is None:
-            raise RuntimeError("StockInfoService 未注入 DailyKlineService")
+        """采集 K 线（直接调 DailyService.collect）"""
+        if self._daily_svc is None:
+            raise RuntimeError("StockInfoService 未注入 DailyService")
         try:
             params = {
                 "symbol": request.symbol,
@@ -219,7 +218,7 @@ class StockInfoService:
                 "days": request.days,
             }
             params = {k: v for k, v in params.items() if v is not None}
-            result = await self._daily_kline_svc.collect(params)
+            result = await self._daily_svc.collect(params)
             return KlineCollectResponse(
                 symbol=request.symbol,
                 name="",
@@ -233,10 +232,10 @@ class StockInfoService:
     async def get_minute_klines(
         self, symbol: str, interval: str = "5min", days: int = 1,
     ) -> dict:
-        """实时分 K（直接调 MinuteKlineService）"""
-        if self._minute_kline_svc is None:
-            raise RuntimeError("StockInfoService 未注入 MinuteKlineService")
-        items = await self._minute_kline_svc.get(symbol, interval=interval, days=days)
+        """实时分 K（直接调 MinuteService）"""
+        if self._minute_svc is None:
+            raise RuntimeError("StockInfoService 未注入 MinuteService")
+        items = await self._minute_svc.get(symbol, interval=interval, days=days)
         return {
             "total": len(items),
             "items": [_format_minute_bar(it) for it in items],
@@ -263,7 +262,6 @@ class StockInfoService:
             delist_date=existing.delist_date if existing else None,
             list_status=existing.list_status if existing else None,
             is_hs=existing.is_hs if existing else None,
-            total_shares=existing.total_shares if existing else None,
             ts_code=existing.ts_code if existing else None,
         )
         await self._stock_repo.upsert(stock)
@@ -476,7 +474,7 @@ def _panel_row_to_vo(
         area=r.area, industry=r.industry, market=r.market, exchange=r.exchange,
         list_date=r.list_date, list_status=r.list_status, is_hs=r.is_hs,
         act_name=r.act_name, act_ent_type=r.act_ent_type,
-        total_shares=r.total_shares, record_count=r.record_count,
+        record_count=r.record_count,
         kline_start=r.kline_start, kline_end=r.kline_end,
         latest_close=r.latest_close, total_mv=r.total_mv, pe_ttm=r.pe_ttm,
         profit_margin=(round(r.profit_margin, 2) if r.profit_margin is not None else None),

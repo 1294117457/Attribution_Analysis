@@ -1,4 +1,8 @@
-﻿"""市场整体行情 ORM 模型（指数级）"""
+"""指数日行情 ORM 模型
+
+表名：fundamental_index_daily（对齐 Tushare 接口名 pro.index_daily）
+UK: (market, trade_date)
+"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Index, UniqueConstraint, Integer
@@ -9,13 +13,12 @@ from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
 class MktMarketDailyDB(RawBase, TimestampMixin):
-    """市场整体行情（沪深主要指数）
+    """指数日行情（Tushare pro.index_daily）
 
-    物理表名: mkt_market_dailys
     UK: (market, trade_date)
     """
 
-    __tablename__ = "fundamental_market_daily"
+    __tablename__ = "fundamental_index_daily"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
@@ -35,8 +38,8 @@ class MktMarketDailyDB(RawBase, TimestampMixin):
     data_source: Mapped[str] = mapped_column(String(16), nullable=False, default="tushare")
 
     __table_args__ = (
-        UniqueConstraint("market", "trade_date", name="uq_mkt_market_dailys_uk"),
-        Index("ix_mkt_market_dailys_date", "trade_date"),
+        UniqueConstraint("market", "trade_date", name="uq_fundamental_index_daily_uk"),
+        Index("ix_fundamental_index_daily_date", "trade_date"),
     )
 
     def __repr__(self) -> str:

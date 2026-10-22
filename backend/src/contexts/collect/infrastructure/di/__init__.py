@@ -5,8 +5,8 @@ collect 下 28 个 service 的 Depends 工厂都集中在 collect_service.py。
 from contexts.collect.infrastructure.di.collect_service import (
     # tech 5
     get_adj_factor_service,
-    get_daily_kline_service,
-    get_minute_kline_service,
+    get_daily_service,
+    get_minute_service,
     get_name_change_service,
     get_suspend_service,
     # capital 9
@@ -41,8 +41,8 @@ from contexts.collect.infrastructure.di.collect_service import (
 __all__ = [
     # tech 5
     "get_adj_factor_service",
-    "get_daily_kline_service",
-    "get_minute_kline_service",
+    "get_daily_service",
+    "get_minute_service",
     "get_name_change_service",
     "get_suspend_service",
     # capital 9

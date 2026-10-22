@@ -12,7 +12,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from contexts.market.infrastructure.persistence.models.stock_info import StockInfoDB
+from contexts.market.infrastructure.persistence.models.stock_basic import StockBasicDB
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class StockInfoRepository:
             return 0
         # 表的所有可写列（id 由序列生成，created_at/updated_at 由 server_default）
         all_cols = [
-            c.name for c in StockInfoDB.__table__.columns
+            c.name for c in StockBasicDB.__table__.columns
             if c.name not in ("id", "created_at", "updated_at")
         ]
         clean = []
@@ -51,9 +51,9 @@ class StockInfoRepository:
             clean.append(row)
         if not clean:
             return 0
-        stmt = pg_insert(StockInfoDB).values(clean)
+        stmt = pg_insert(StockBasicDB).values(clean)
         # symbol 冲突时全列更新（None 仍会覆盖旧值，符合 upsert 语义）
-        update_cols = {c.name: stmt.excluded[c.name] for c in StockInfoDB.__table__.columns
+        update_cols = {c.name: stmt.excluded[c.name] for c in StockBasicDB.__table__.columns
                        if c.name not in ("id", "symbol", "created_at", "updated_at")}
         stmt = stmt.on_conflict_do_update(
             index_elements=["symbol"],
@@ -85,7 +85,7 @@ class StockInfoRepository:
         """
         # 1. DELETE 旧子集
         await session.execute(
-            delete(StockInfoDB).where(StockInfoDB.list_status == list_status)
+            delete(StockBasicDB).where(StockBasicDB.list_status == list_status)
         )
 
         if not rows:
@@ -97,7 +97,7 @@ class StockInfoRepository:
 
         # 2. 补齐列（缺则 None）
         all_cols = [
-            c.name for c in StockInfoDB.__table__.columns
+            c.name for c in StockBasicDB.__table__.columns
             if c.name not in ("id", "created_at", "updated_at")
         ]
         clean: list[dict] = []
@@ -114,7 +114,7 @@ class StockInfoRepository:
             return 0
 
         # 3. INSERT 新子集（bulk_insert_mappings 走 executemany，高效）
-        await session.execute(StockInfoDB.__table__.insert(), clean)
+        await session.execute(StockBasicDB.__table__.insert(), clean)
 
         logger.info(
             "[replace_all] list_status=%s, 写入 %d 行",
@@ -123,7 +123,7 @@ class StockInfoRepository:
         return len(clean)
 
     async def find(self, symbol: str, session: AsyncSession) -> dict | None:
-        row = await session.get(StockInfoDB, symbol)
+        row = await session.get(StockBasicDB, symbol)
         if row is None:
             return None
         return self._to_dict(row)
@@ -132,9 +132,9 @@ class StockInfoRepository:
         self, session: AsyncSession, list_status: str = "L",
     ) -> list[str]:
         rows = (await session.execute(
-            select(StockInfoDB.symbol)
-            .where(StockInfoDB.list_status == list_status)
-            .order_by(StockInfoDB.symbol)
+            select(StockBasicDB.symbol)
+            .where(StockBasicDB.list_status == list_status)
+            .order_by(StockBasicDB.symbol)
         )).all()
         return [r[0] for r in rows]
 
@@ -145,8 +145,8 @@ class StockInfoRepository:
         if not symbols:
             return {}
         rows = (await session.execute(
-            select(StockInfoDB.symbol, StockInfoDB.list_date)
-            .where(StockInfoDB.symbol.in_(symbols))
+            select(StockBasicDB.symbol, StockBasicDB.list_date)
+            .where(StockBasicDB.symbol.in_(symbols))
         )).all()
         return {r[0]: r[1] for r in rows}
 
@@ -167,7 +167,6 @@ class StockInfoRepository:
             "delist_date": r.delist_date.isoformat() if r.delist_date else None,
             "list_status": r.list_status,
             "is_hs": r.is_hs,
-            "total_shares": r.total_shares,
             "act_name": r.act_name,
             "act_ent_type": r.act_ent_type,
             "curr_type": getattr(r, "curr_type", None),

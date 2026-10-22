@@ -44,7 +44,6 @@ class StockItemResponse(BaseModel):
     industry: Optional[str] = None
     market: Optional[str] = None
     list_date: Optional[date] = None
-    total_shares: Optional[int] = None
 
 
 class StockListItemResponse(BaseModel):

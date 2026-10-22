@@ -1,7 +1,7 @@
 """KlineRepository：日 K 线持久化（step7 service 直接调用）
 
 替代原 stock_info_service.collect() 内部走的 _kline_repo.save_batch。
-DailyKlineService 直接调本类的 save_klines() / find() / get_coverage()。
+DailyService 直接调本类的 save_klines() / find() / get_coverage()。
 """
 from __future__ import annotations
 
@@ -120,24 +120,24 @@ class KlineRepository:
         self, symbols: Iterable[str], session: AsyncSession,
     ) -> dict[str, date | None]:
         """每只股票的上市日（从 stock_info 拿）"""
-        from contexts.market.infrastructure.persistence.models.stock_info import StockInfoDB
+        from contexts.market.infrastructure.persistence.models.stock_basic import StockBasicDB
         symbols = list(symbols)
         if not symbols:
             return {}
         rows = (await session.execute(
-            select(StockInfoDB.symbol, StockInfoDB.list_date)
-            .where(StockInfoDB.symbol.in_(symbols))
+            select(StockBasicDB.symbol, StockBasicDB.list_date)
+            .where(StockBasicDB.symbol.in_(symbols))
         )).all()
         return {r[0]: r[1] for r in rows}
 
     async def list_symbols(
         self, session: AsyncSession, list_status: str = "L",
     ) -> list[str]:
-        from contexts.market.infrastructure.persistence.models.stock_info import StockInfoDB
+        from contexts.market.infrastructure.persistence.models.stock_basic import StockBasicDB
         rows = (await session.execute(
-            select(StockInfoDB.symbol)
-            .where(StockInfoDB.list_status == list_status)
-            .order_by(StockInfoDB.symbol)
+            select(StockBasicDB.symbol)
+            .where(StockBasicDB.list_status == list_status)
+            .order_by(StockBasicDB.symbol)
         )).all()
         return [r[0] for r in rows]
 

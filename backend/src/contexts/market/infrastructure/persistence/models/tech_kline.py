@@ -1,7 +1,7 @@
-﻿"""日 K 线 ORM 模型（仅 OHLCV，技术指标请求时实时计算）
+"""日 K 线 ORM 模型（仅 OHLCV，技术指标请求时实时计算）
 
-表名重命名：daily_klines → tech_kline_dailys
-类名重命名：DailyKlineDB → TechKlineDailyDB
+表名重命名：tech_kline_daily → tech_daily
+类名：TechKlineDailyDB（保持不变，避免业务/仓储层大改）
 """
 
 from datetime import date
@@ -18,7 +18,7 @@ class TechKlineDailyDB(RawBase, TimestampMixin):
     一行 = (symbol, date) → 当日 OHLCV。
     """
 
-    __tablename__ = "tech_kline_daily"
+    __tablename__ = "tech_daily"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     symbol: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
@@ -33,8 +33,8 @@ class TechKlineDailyDB(RawBase, TimestampMixin):
     change_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("symbol", "date", name="uq_tech_kline_symbol_date"),
-        Index("ix_tech_kline_symbol_date", "symbol", "date"),
+        UniqueConstraint("symbol", "date", name="uq_tech_daily_symbol_date"),
+        Index("ix_tech_daily_symbol_date", "symbol", "date"),
     )
 
     def __repr__(self) -> str:

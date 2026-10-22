@@ -25,7 +25,7 @@ from shared.infrastructure.config.settings import get_settings
 # 导入 28 个 service class（按 facet 分组，与 application/service/{facet}/__init__.py 镜像）
 # ═══════════════════════════════════════════════════════════════════════
 from contexts.collect.application.service.tech import (
-    DailyKlineService, MinuteKlineService, AdjFactorService,
+    DailyService, MinuteService, AdjFactorService,
     SuspendService, NameChangeService,
 )
 from contexts.collect.application.service.capital import (
@@ -81,7 +81,7 @@ class CatalogService:
         """默认 28 个 service class 列表"""
         return (
             # tech 5
-            DailyKlineService, MinuteKlineService, AdjFactorService,
+            DailyService, MinuteService, AdjFactorService,
             SuspendService, NameChangeService,
             # capital 9
             MoneyflowService, MoneyflowHsgtService, TopListService, TopInstService,

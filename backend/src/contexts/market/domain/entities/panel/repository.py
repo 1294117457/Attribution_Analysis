@@ -40,7 +40,7 @@ class StockPanelComposeRepository(Protocol):
     ) -> tuple[list[StockPanelRow], int]:
         """分页 + 多维筛选 + 4 表快照，返回 (rows, total)
 
-        concept_id：按概念成分股过滤（EXISTS 子查询 stock_concept_members，
+        concept_id：按概念成分股过滤（EXISTS 子查询 fundamental_concept_member，
         走 (symbol, concept_id) 唯一索引，不产生行放大）。
 
         with_pools 当前在此方法签名上保留以保持向后兼容的接口形状；

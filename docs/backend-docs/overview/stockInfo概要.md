@@ -12,18 +12,18 @@
 
 | 列 | 字段 | 来源表 | 取值方式 |
 |---|---|---|---|
-| 代码 / 名称 | `symbol` / `name` | `stock_infos` | 直接取 |
-| 行业 / 市场 / 交易所 / 地域 | `industry` / `market` / `exchange` / `area` | `stock_infos` | 直接取 |
-| 上市日期 | `list_date` | `stock_infos` | 直接取 |
-| 沪深港通 | `is_hs` | `stock_infos` | 直接取（H 沪 / S 深） |
-| 实控人 | `act_name` | `stock_infos` | 直接取 |
+| 代码 / 名称 | `symbol` / `name` | `fundamental_stock_basic` | 直接取 |
+| 行业 / 市场 / 交易所 / 地域 | `industry` / `market` / `exchange` / `area` | `fundamental_stock_basic` | 直接取 |
+| 上市日期 | `list_date` | `fundamental_stock_basic` | 直接取 |
+| 沪深港通 | `is_hs` | `fundamental_stock_basic` | 直接取（H 沪 / S 深） |
+| 实控人 | `act_name` | `fundamental_stock_basic` | 直接取 |
 | 最新价 | `latest_close` | `fin_daily_basics.close` | 每只股票最新 `trade_date` 那一行 |
 | 总市值 | `total_mv` | `fin_daily_basics.total_mv` | 同上 |
 | PE(TTM) | `pe_ttm` | `fin_daily_basics.pe_ttm` | 同上（Tushare 原值，亏损为空） |
-| 净利润率% | `profit_margin` | `fin_reports` | 最新一期合并报表 `n_income / revenue × 100` |
+| 净利润率% | `profit_margin` | `fundamental_income` | 最新一期合并报表 `n_income / revenue × 100` |
 | 已加入池 | `pools` | `stock_pool_members` + `stock_pools` | 按 symbol 反查，排除已归档池 |
 
-另有 `tech_kline_dailys` 参与查询（K 线条数 / 起止日期），列表里不显示，供展开行和详情使用。
+另有 `tech_daily` 参与查询（K 线条数 / 起止日期），列表里不显示，供展开行和详情使用。
 
 列表**不再显示主概念列**：行业里没有「主概念」定义（同花顺只给平级列表），原按类型优先级取前几个没有业务意义。`with_concepts=true` 参数仍兼容，但不再附带行情。
 
@@ -31,9 +31,9 @@
 
 | 位置 | 数据 | 接口 | 刷新 |
 |---|---|---|---|
-| 展开行 · 日 K | `tech_kline_dailys` | `GET /klines/{symbol}` | 不轮询 |
+| 展开行 · 日 K | `tech_daily` | `GET /klines/{symbol}` | 不轮询 |
 | 展开行 · 分 K（`StockExpandRow.vue`） | 通达信分钟 K（实时接口 `stock_minute_kline`） | `GET /minute-klines/{symbol}?interval&days` | 交易时段 15 秒 |
-| 详情抽屉 · 概念 Tab（`ConceptTab.vue`） | 所属概念（`stock_concept_members` + `concepts`）+ 当日涨跌幅（实时接口 `concept_minute`） | `GET /concepts/tab-by-symbol/{symbol}`；行情刷新 `GET /concepts/quotes?codes=` | 交易时段 15 秒（只刷行情） |
+| 详情抽屉 · 概念 Tab（`ConceptTab.vue`） | 所属概念（`fundamental_concept_member` + `fundamental_concept`）+ 当日涨跌幅（实时接口 `concept_minute`） | `GET /concepts/tab-by-symbol/{symbol}`；行情刷新 `GET /concepts/quotes?codes=` | 交易时段 15 秒（只刷行情） |
 
 - 分 K 天数：1 分钟只有「当天」，其他周期「当天 / 3 日 / 5 日」；「当天」指最近一个交易日。接口参数 `interval=1min|5min|15min|30min|60min`、`days=1..5`（`count` 已移除）：非法 `interval` → 422，`1min` 且 `days>1` / 北交所代码 → 400，数据源失败 → 502。
 - 概念 Tab 各分组内按当日涨跌幅降序；行情源失败时显示最近一条日 K 收盘（`stale=true`，灰色，悬浮提示「行情源暂不可用」）。
@@ -44,12 +44,12 @@
 
 | 表 | 采集任务 | 数据源 |
 |---|---|---|
-| `stock_infos` | `stock_basic` | Tushare `stock_basic` |
-| `fin_daily_basics` | `daily_basic` | Tushare `daily_basic` |
-| `fin_reports` | `fin_report` | Tushare `income`（按单只股票） |
-| `concepts` / `stock_concept_members` | `concept` / `concept_membership` | adata · 同花顺 |
-| `concept_index_ths`（概念日 K，行情降级用） | `concept_index_th` | adata · 同花顺 |
-| `tech_kline_dailys` | `daily_kline` | Tushare `daily` |
+| `fundamental_stock_basic` | `stock_basic` | Tushare `stock_basic` |
+| `fundamental_daily_basic` | `daily_basic` | Tushare `daily_basic` |
+| `fundamental_income` | `fin_report` | Tushare `income`（按单只股票） |
+| `fundamental_concept` / `fundamental_concept_member` | `concept` / `concept_membership` | adata · 同花顺 |
+| `fundamental_concept_index`（概念日 K，行情降级用） | `concept_index_th` | adata · 同花顺 |
+| `tech_daily` | `daily_kline` | Tushare `daily` |
 | —（不入库，Redis 15 秒） | 实时接口 `concept_minute` / `stock_minute_kline` | 同花顺 / 通达信 |
 | `stock_pools` / `stock_pool_members` | 用户在操作池页维护 | — |
 
@@ -93,7 +93,7 @@ flowchart LR
     FR --> C4
     PL --> C5
 
-    subgraph T5["stock_concept_members + concepts"]
+    subgraph T5["fundamental_concept_member + fundamental_concept"]
         CP["index_code · name"]
     end
     RT["实时接口（Redis 15 秒）<br/>concept_minute · stock_minute_kline"]

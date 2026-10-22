@@ -1,6 +1,7 @@
 """分钟 K 线 API 路由（实时接口 stock_minute_kline，不落库）
 
-step7：直接调 MinuteKlineService.get，不再走旧 DataGateway
+step7：直接调 StockInfoService.get_minute_klines()，
+                内部转发到 collect 的 MinuteService.get()（Pytdx 实时）。
 """
 
 from fastapi import APIRouter, Depends, Query

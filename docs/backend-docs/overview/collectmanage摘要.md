@@ -79,22 +79,22 @@ flowchart LR
 | 技术面 | `daily_kline` · `base_adj_factor` · `base_suspend` · `base_name_change` |
 | 资金面 | `cap_moneyflow` · `cap_margin_detail` · `cap_top_list` · `cap_top_inst` · `cap_block_trade` · `cap_holder_num` |
 | 基本面·估值财报 | `stock_basic` · `daily_basic` · `fin_report` · `base_dividend` |
-| 基本面·股东 | `fin_top10_holders` · `fin_top10_floatholders` |
+| 基本面·股东 | `fundamental_top10_holders` · `fundamental_top10_floatholders` |
 | 基本面·概念 | `concept` · `concept_membership` · `concept_index_th` · `concept_reason` · `concept_snapshot` |
 
 ### 3.2 常用接口速查
 
 | task_type | 分类 | 单元 | `collect_one` | 默认参数 | 写入表 |
 |---|---|---|---|---|---|
-| `daily_kline` | tech / kline | 股票 | ✓（业务复用） | `days=7` | `tech_kline_dailys`（仅 OHLCV） |
-| `stock_basic` | fundamental / core | `all` | ✓ | `list_status=L` | `stock_infos` |
-| `daily_basic` | fundamental / valuation | 交易日 | ✓ | `days=1` | `fin_daily_basics` |
-| `fin_report` | fundamental / report | 股票 | ✓ | `years=1` | `fin_reports` |
-| `concept` | fundamental / concept | 一次全量 | — | | `concepts` |
-| `concept_membership` | fundamental / concept | 概念 index_code | ✓ | | `stock_concept_members` |
-| `concept_index_th` | fundamental / concept | 概念 | — | | `concept_index_ths` |
-| `concept_reason` | fundamental / concept | 股票 | ✓ | `only_missing=true` | `stock_concept_members.reason` |
-| `concept_snapshot` | fundamental / concept | 概念 | — | | `concept_snapshots` |
+| `daily_kline` | tech / kline | 股票 | ✓（业务复用） | `days=7` | `tech_daily`（仅 OHLCV） |
+| `stock_basic` | fundamental / core | `all` | ✓ | `list_status=L` | `fundamental_stock_basic` |
+| `daily_basic` | fundamental / valuation | 交易日 | ✓ | `days=1` | `fundamental_daily_basic` |
+| `fin_report` | fundamental / report | 股票 | ✓ | `years=1` | `fundamental_income` |
+| `concept` | fundamental / concept | 一次全量 | — | | `fundamental_concept` |
+| `concept_membership` | fundamental / concept | 概念 index_code | ✓ | | `fundamental_concept_member` |
+| `concept_index_th` | fundamental / concept | 概念 | — | | `fundamental_concept_index` |
+| `concept_reason` | fundamental / concept | 股票 | ✓ | `only_missing=true` | `fundamental_concept_member.reason` |
+| `concept_snapshot` | fundamental / concept | 概念 | — | | `fundamental_concept_snapshot` |
 
 - 14 个 tushare 任务（`daily_basic` / `fin_report` / `cap_*` / `fin_top10_*` / `base_*`）为 `DeclarativeCollectTask`，集中声明在 `tushare_tasks.py`（Port + 规划器 `TradeDatePlanner` / `SymbolPlanner` + 仓储），限频 / 重试由 Gateway 装饰器统一处理。
 - `daily_kline` / `stock_basic` 经 `StockInfoService` → Gateway 取数；`daily_kline` 批量时保留自定义 `run()`（`run_units` 并发，限频交给 Gateway 的 `tushare` 限流组），支持 `symbols` / `exchange` / `start_date`+`end_date` / `concurrency`。
@@ -111,7 +111,7 @@ flowchart LR
 
 | name | 分类 | 数据源 | 参数 | 数据 | 降级 |
 |---|---|---|---|---|---|
-| `concept_minute`（`ConceptMinutePort`） | fundamental / concept | 同花顺 `get_market_concept_min_ths`（`AdataConceptMinuteAdapter`） | `index_code` | 当日分时 `points` + 头部 `pre_close / price / change / change_pct / trade_time`（`pre_close = price - change`） | 业务侧由 `ConceptRealtimeReader` 回落 `concept_index_ths` 最近一条收盘（无分时，`stale=true`）；采集管理试查不降级 |
+| `concept_minute`（`ConceptMinutePort`） | fundamental / concept | 同花顺 `get_market_concept_min_ths`（`AdataConceptMinuteAdapter`） | `index_code` | 当日分时 `points` + 头部 `pre_close / price / change / change_pct / trade_time`（`pre_close = price - change`） | 业务侧由 `ConceptRealtimeReader` 回落 `fundamental_concept_index` 最近一条收盘（无分时，`stale=true`）；采集管理试查不降级 |
 | `stock_minute_kline`（`MinuteKlinePort`） | tech / kline | 通达信 pytdx（`PytdxMinuteKlineAdapter`） | `symbol, interval, days`（1min 仅 1 天，其他 1–5 天；`count` 已移除） | 分钟 K 线 | 无 |
 
 ```mermaid

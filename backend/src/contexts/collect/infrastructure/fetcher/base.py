@@ -22,7 +22,8 @@ class BaseFetcher(ABC):
     """Fetcher 抽象基类
 
     命名：业务名 + 数据源 + Fetcher
-    例：DailyKlineTushareFetcher / ConceptListAdataFetcher / MinuteKlinePytdxFetcher
+    例：DailyTushareFetcher / ConceptListAdataFetcher / MinutePytdxFetcher
+        （业务概念在目录下唯一时可剥，如 Daily / Minute 已隐含 K 线）
 
     唯一职责：调 SDK 拿数据，返回 list[BO]
     不限流、不并发、不缓存、不入库——这些在 service 里做

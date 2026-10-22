@@ -16,7 +16,7 @@ params 约定：
   - list_status  默认 "L"，可选 "D"/"P"
   - concurrency  没用（fetcher 是顺序循环 3 个交易所）；保留字段以兼容 UI
 
-session 由 DI 工厂注入（get_db，业务库 stock_info），透传给 StockInfoRepository.replace_all()。
+session 由 DI 工厂注入（get_raw_db，采集库 fundamental_stock_basic），透传给 StockInfoRepository.replace_all()。
 但 run_collect 自己再开 raw_data session（覆盖写入走采集库）。
 """
 from __future__ import annotations
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 
 def _stock_basic_to_dict(bo) -> dict:
-    """StockInfoBO → dict（与 StockInfoDB.__table__.columns 对齐）"""
+    """StockInfoBO → dict（与 StockBasicDB.__table__.columns 对齐）"""
     return {
         "symbol": bo.symbol,
         "ts_code": bo.ts_code,

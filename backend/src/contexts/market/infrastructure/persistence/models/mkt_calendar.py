@@ -1,4 +1,8 @@
-﻿"""交易日历 ORM 模型"""
+"""交易日历 ORM 模型
+
+表名：tech_trade_cal（对齐 Tushare 接口名 pro.trade_cal）
+UK: (cal_date, exchange)
+"""
 
 from datetime import date
 from sqlalchemy import String, Integer, Date, Index, UniqueConstraint
@@ -9,13 +13,12 @@ from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
 class MktCalendarDB(RawBase, TimestampMixin):
-    """交易日历
+    """交易日历（Tushare pro.trade_cal）
 
-    物理表名: mkt_calendars
     UK: (cal_date, exchange)
     """
 
-    __tablename__ = "tech_calendar"
+    __tablename__ = "tech_trade_cal"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
@@ -27,8 +30,8 @@ class MktCalendarDB(RawBase, TimestampMixin):
     data_source: Mapped[str] = mapped_column(String(16), nullable=False, default="tushare")
 
     __table_args__ = (
-        UniqueConstraint("cal_date", "exchange", name="uq_mkt_calendars_uk"),
-        Index("ix_mkt_calendars_exchange_date", "exchange", "cal_date"),
+        UniqueConstraint("cal_date", "exchange", name="uq_tech_trade_cal_uk"),
+        Index("ix_tech_trade_cal_exchange_date", "exchange", "cal_date"),
     )
 
     def __repr__(self) -> str:

@@ -2,13 +2,17 @@
   CollectActionCard — 批量采集 service 的采集卡片（v3：kind 驱动 UI）
 
   三种 kind 对应三种 UI：
-    incremental  → 时间选择器（日期范围）
+    incremental  → 时间选择器（日期范围，后端要求必传）
     full_refresh → 无需参数，全量采集
     realtime     → 不走此卡片（CollectTaskPane 直接走 RealtimePanel）
+
+  v5（2026-10-21）：incremental 的时间范围改为必选。
+  后端 DailyService.collect() 会校验 start_date / end_date，
+  缺失直接返回 400，所以前端不再允许「留空按默认」。
 -->
 <template>
   <CollectCard :title="item.label" :description="item.description">
-    <!-- 增量采集：时间选择器 -->
+    <!-- 增量采集：时间选择器（必填） -->
     <CollectCardRow v-if="isIncremental" label="时间范围">
       <el-date-picker
         v-model="dateRange"
@@ -18,9 +22,10 @@
         end-placeholder="结束日期"
         value-format="YYYY-MM-DD"
         :shortcuts="dateShortcuts"
+        :clearable="false"
         class="!w-96"
       />
-      <span class="hint">留空按 service 默认（增量）</span>
+      <span class="hint">必选 · symbol 固定取自 stock_basic（全市场）</span>
     </CollectCardRow>
 
     <!-- 全量覆盖：无参数，显示采集说明 -->
@@ -34,7 +39,7 @@
         type="primary"
         size="small"
         :loading="starting"
-        :disabled="starting"
+        :disabled="disabled"
         @click="start"
       >开始采集</el-button>
     </template>
@@ -43,6 +48,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { ElMessage } from 'element-plus'
 import CollectCard from './CollectCard.vue'
 import CollectCardRow from './CollectCardRow.vue'
 import type { CatalogItem, CollectStartPayload } from '../api'
@@ -63,6 +69,11 @@ const isFullRefresh = computed(() => props.item.kind === 'full_refresh')
 
 // ── 时间选择器（仅增量采集） ──────────────────────────────
 const dateRange = ref<[string, string] | null>(null)
+
+/** 增量采集必须先选时间范围（后端 collect() 强制校验） */
+const disabled = computed(
+  () => props.starting || (isIncremental.value && !dateRange.value),
+)
 
 const dateShortcuts = [
   {
@@ -108,13 +119,19 @@ watch(
 
 // ── 提交 ────────────────────────────────────────────────
 function start() {
+  if (disabled.value) return
+
   const params: Record<string, any> = {}
 
-  // 增量采集：传时间范围
-  if (isIncremental.value && dateRange.value) {
+  // 增量采集：时间范围必传
+  if (isIncremental.value) {
+    if (!dateRange.value) {
+      ElMessage.warning('请先选择时间范围')
+      return
+    }
     const [start, end] = dateRange.value
-    if (start) params.start_date = start
-    if (end) params.end_date = end
+    params.start_date = start
+    params.end_date = end
   }
 
   emit('start', { params })

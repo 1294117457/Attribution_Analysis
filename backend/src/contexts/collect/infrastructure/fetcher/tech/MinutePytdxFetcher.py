@@ -1,4 +1,9 @@
-"""MinuteKlinePytdxFetcher：分 K 线（Pytdx）—— step7 重构版"""
+"""MinutePytdxFetcher：分 K 线（Pytdx）—— step7 重构版
+
+命名规则：<业务概念><数据源><Fetcher>
+- 业务概念 Minute = 分钟 K 线（tech/ 下唯一，剥 Kline 不歧义）
+- 数据源 Pytdx
+"""
 from __future__ import annotations
 
 import logging
@@ -30,10 +35,10 @@ def symbol_to_market(symbol: str) -> int:
     return 1 if symbol[:2] in ("60", "68", "11", "51") else 0
 
 
-class MinuteKlinePytdxFetcher(BaseFetcher):
+class MinutePytdxFetcher(BaseFetcher):
     """分 K 线 fetcher（Pytdx 实时）"""
 
-    fetcher_type = "minute_kline_pytdx"
+    fetcher_type = "minute_kline_pytdx"  # 保持稳定：URL/service_name 用
     source = "pytdx"
     label = "分 K 线（Pytdx）"
     description = "通达信 1/5/15/30/60 分钟 K 线"
@@ -106,4 +111,4 @@ def _parse(df: Optional[pd.DataFrame], symbol: str, interval: str) -> list[Minut
     return items
 
 
-__all__ = ["MinuteKlinePytdxFetcher", "symbol_to_market"]
+__all__ = ["MinutePytdxFetcher", "symbol_to_market"]

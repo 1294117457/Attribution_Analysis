@@ -67,7 +67,7 @@
 | 21 | `fundamental_index_member` | Tushare | `pro.index_member` | 12 | 板块成分股（行业/概念/地域） |
 | 22 | `fundamental_sector_daily` | Tushare | `pro.sector_daily` | 18 | 板块行情（行业/概念） |
 | 23 | `fundamental_market_daily` | Tushare | `pro.index_daily` | 15 | 市场整体行情（沪深主要指数） |
-| 24 | `fundamental_stock_info` | Tushare | `pro.stock_basic` | 21 | 股票基本信息（**已补 4 字段：fullname / enname / cnspell / curr_type**） |
+| 24 | `fundamental_stock_basic` | Tushare | `pro.stock_basic` | 17 | 股票基本信息（**已删 `total_shares`**：应从 `fundamental_daily_basic` 取最新日总股本） |
 | 25 | `fundamental_concept` | Adata | `stock.info.all_concept_code_ths` | 11 | 概念聚合根（同花顺） |
 | 26 | `fundamental_concept_member` | Adata | `stock.info.concept_constituent_ths` | 7 | 概念成员（**已补 `short_name`**） |
 | 27 | `fundamental_concept_index` | Adata | `stock.market.get_market_concept_ths` | 13 | 概念指数日 K |

@@ -35,9 +35,6 @@ class StockInfo(AggregateRoot):
     # 沪深港通
     is_hs: Optional[str] = None  # N / H / S
 
-    # 股本
-    total_shares: Optional[int] = None
-
     # 实控人
     act_name: Optional[str] = None
     act_ent_type: Optional[str] = None
@@ -64,7 +61,6 @@ class StockInfo(AggregateRoot):
         delist_date: Optional[date] = None,
         list_status: Optional[str] = None,
         is_hs: Optional[str] = None,
-        total_shares: Optional[int] = None,
         act_name: Optional[str] = None,
         act_ent_type: Optional[str] = None,
         ts_code: Optional[str] = None,
@@ -82,7 +78,6 @@ class StockInfo(AggregateRoot):
             delist_date=delist_date,
             list_status=list_status or "L",
             is_hs=is_hs or "N",
-            total_shares=total_shares,
             act_name=act_name,
             act_ent_type=act_ent_type,
             ts_code=ts_code,
@@ -110,7 +105,7 @@ class StockInfo(AggregateRoot):
         """
         data = bo.model_dump()
         kwargs = {}
-        for fname in ['id', 'symbol', 'name', 'industry', 'market', 'area', 'exchange', 'list_date', 'delist_date', 'list_status', 'is_hs', 'total_shares', 'act_name', 'act_ent_type', 'ts_code', 'created_at', 'updated_at']:
+        for fname in ['id', 'symbol', 'name', 'industry', 'market', 'area', 'exchange', 'list_date', 'delist_date', 'list_status', 'is_hs', 'act_name', 'act_ent_type', 'ts_code', 'created_at', 'updated_at']:
             if fname in data:
                 kwargs[fname] = data[fname]
             elif fname == "id":

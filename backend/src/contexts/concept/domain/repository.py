@@ -33,7 +33,7 @@ class ConceptRepository(Protocol):
         ...
 
     async def list_members(self, concept_id: int) -> list[dict]:
-        """概念成分股：[{symbol, name, reason}]，name 来自 stock_infos"""
+        """概念成分股：[{symbol, name, reason}]，name 来自 fundamental_stock_basic"""
         ...
 
     # ── 反向查询（核心：被 panel 复用）─────────────
@@ -103,7 +103,7 @@ class ConceptRepository(Protocol):
         page: int = 1,
         page_size: int = 50,
     ) -> tuple[list[dict], int]:
-        """单概念成分股（join stock_infos + fin_daily_basics 最新一行）
+        """单概念成分股（join fundamental_stock_basic + fundamental_daily_basic 最新一行）
 
         v2 矫正：返回 list[dict]（与现有 list_members 风格一致），
         路由层组装为 ConceptMemberItemVO。

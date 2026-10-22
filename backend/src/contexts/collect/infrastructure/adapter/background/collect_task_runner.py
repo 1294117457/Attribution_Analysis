@@ -25,7 +25,7 @@ v4 重构（2026-10-20）—— 双协议派发（v2 generator + v3 自管）：
         · True  → v3 自管：service 自己开 session + 写 mark_*/update_*
                   TaskRunner 仅做「实例化 + 调 _run_collect + 兜底 mark_failed」
         · False → v2 旧协议：保持原有 generator + TaskRunner bookkeeping 行为
-    - 首批 v3 服务：StockBasicService / DailyKlineService
+    - 首批 v3 服务：StockBasicService / DailyService
     - 其他 26 个 service 暂保持 v2 协议不破坏（自我兼容）
 """
 from __future__ import annotations

@@ -1,4 +1,4 @@
-﻿"""StockPanel 组合查询 — SQLAlchemy 实现
+"""StockPanel 组合查询 — SQLAlchemy 实现
 
 迁移自原 StockRepoImpl.list_with_kline_stats_paginated：
 - 主表 stock_infos 先筛选 + 分页，再只对当前页关联：
@@ -28,7 +28,7 @@ from contexts.concept.infrastructure.persistence.models.concept import ConceptMe
 from contexts.market.infrastructure.persistence.models.fin_daily_basic import FinDailyBasicDB
 from contexts.market.infrastructure.persistence.models.fin_report import FinReportDB
 from contexts.user.infrastructure.persistence.models.pool import StockPoolDB, StockPoolMemberDB
-from contexts.market.infrastructure.persistence.models.stock_info import StockInfoDB
+from contexts.market.infrastructure.persistence.models.stock_basic import StockBasicDB
 from contexts.market.infrastructure.persistence.models.tech_kline import TechKlineDailyDB
 
 if TYPE_CHECKING:
@@ -55,7 +55,7 @@ class StockPanelComposeRepoImpl:
     ):
         """双 session 注入
 
-        - raw_session:  5 个面数据（fundamental_stock_info / fundamental_daily_basic /
+        - raw_session:  5 个面数据（fundamental_stock_basic / fundamental_daily_basic /
                        fundamental_report / tech_kline_daily / fundamental_concept_member）
         - attr_session: 业务库（stock_pools / stock_pool_members）
         """
@@ -150,25 +150,25 @@ class StockPanelComposeRepoImpl:
             like = f"%{q}%"
             conditions.append(
                 or_(
-                    StockInfoDB.symbol.ilike(like),
-                    StockInfoDB.name.ilike(like),
-                    StockInfoDB.ts_code.ilike(like),
+                    StockBasicDB.symbol.ilike(like),
+                    StockBasicDB.name.ilike(like),
+                    StockBasicDB.ts_code.ilike(like),
                 )
             )
         if industry:
-            conditions.append(StockInfoDB.industry == industry)
+            conditions.append(StockBasicDB.industry == industry)
         if market:
-            conditions.append(StockInfoDB.market == market)
+            conditions.append(StockBasicDB.market == market)
         if exchange:
-            conditions.append(StockInfoDB.exchange == exchange)
+            conditions.append(StockBasicDB.exchange == exchange)
         if is_hs:
-            conditions.append(StockInfoDB.is_hs == is_hs)
+            conditions.append(StockBasicDB.is_hs == is_hs)
         if list_status:
-            conditions.append(StockInfoDB.list_status == list_status)
+            conditions.append(StockBasicDB.list_status == list_status)
         if exclude_st is True:
-            conditions.append(~StockInfoDB.name.ilike("%ST%"))
+            conditions.append(~StockBasicDB.name.ilike("%ST%"))
         elif exclude_st is False:
-            conditions.append(StockInfoDB.name.ilike("%ST%"))
+            conditions.append(StockBasicDB.name.ilike("%ST%"))
         if concept_id is not None:
             # 用 EXISTS 而非 JOIN：一只股票可能属于多个概念，
             # JOIN 会产生行放大导致 count 与分页重复。EXISTS 走
@@ -177,7 +177,7 @@ class StockPanelComposeRepoImpl:
                 select(1)
                 .select_from(ConceptMemberDB)
                 .where(
-                    ConceptMemberDB.symbol == StockInfoDB.symbol,
+                    ConceptMemberDB.symbol == StockBasicDB.symbol,
                     ConceptMemberDB.concept_id == concept_id,
                 )
                 .exists()
@@ -186,21 +186,21 @@ class StockPanelComposeRepoImpl:
         # ── 先分页：只取当前页的 symbol ─────────────────────
         # K 线聚合 / 估值 / 财报只关联这一页；若先 JOIN 全量日 K 再 GROUP BY + OFFSET，
         # 越往后翻页要聚合的行越多（末页需扫完全部日 K）
-        page_stmt = select(StockInfoDB.symbol)
-        count_stmt = select(func.count()).select_from(StockInfoDB)
+        page_stmt = select(StockBasicDB.symbol)
+        count_stmt = select(func.count()).select_from(StockBasicDB)
         if conditions:
             page_stmt = page_stmt.where(and_(*conditions))
             count_stmt = count_stmt.where(and_(*conditions))
         if min_total_mv is not None:
             mv_cond = latest_basic_sq.c.total_mv >= min_total_mv
             page_stmt = page_stmt.join(
-                latest_basic_sq, StockInfoDB.symbol == latest_basic_sq.c.symbol,
+                latest_basic_sq, StockBasicDB.symbol == latest_basic_sq.c.symbol,
             ).where(mv_cond)
             count_stmt = count_stmt.join(
-                latest_basic_sq, StockInfoDB.symbol == latest_basic_sq.c.symbol,
+                latest_basic_sq, StockBasicDB.symbol == latest_basic_sq.c.symbol,
             ).where(mv_cond)
         page_sq = (
-            page_stmt.order_by(StockInfoDB.symbol)
+            page_stmt.order_by(StockBasicDB.symbol)
             .limit(page_size)
             .offset((page - 1) * page_size)
             .subquery("page")
@@ -221,19 +221,18 @@ class StockPanelComposeRepoImpl:
 
         stmt = (
             select(
-                StockInfoDB.symbol,
-                StockInfoDB.ts_code,
-                StockInfoDB.name,
-                StockInfoDB.area,
-                StockInfoDB.industry,
-                StockInfoDB.market,
-                StockInfoDB.exchange,
-                StockInfoDB.list_date,
-                StockInfoDB.list_status,
-                StockInfoDB.is_hs,
-                StockInfoDB.act_name,
-                StockInfoDB.act_ent_type,
-                StockInfoDB.total_shares,
+                StockBasicDB.symbol,
+                StockBasicDB.ts_code,
+                StockBasicDB.name,
+                StockBasicDB.area,
+                StockBasicDB.industry,
+                StockBasicDB.market,
+                StockBasicDB.exchange,
+                StockBasicDB.list_date,
+                StockBasicDB.list_status,
+                StockBasicDB.is_hs,
+                StockBasicDB.act_name,
+                StockBasicDB.act_ent_type,
                 kline_sq.c.record_count,
                 kline_sq.c.kline_start,
                 kline_sq.c.kline_end,
@@ -242,11 +241,11 @@ class StockPanelComposeRepoImpl:
                 latest_basic_sq.c.pe_ttm,
                 latest_report_sq.c.profit_margin,
             )
-            .join(page_sq, StockInfoDB.symbol == page_sq.c.symbol)
-            .outerjoin(kline_sq, StockInfoDB.symbol == kline_sq.c.symbol)
-            .outerjoin(latest_basic_sq, StockInfoDB.symbol == latest_basic_sq.c.symbol)
-            .outerjoin(latest_report_sq, StockInfoDB.symbol == latest_report_sq.c.symbol)
-            .order_by(StockInfoDB.symbol)
+            .join(page_sq, StockBasicDB.symbol == page_sq.c.symbol)
+            .outerjoin(kline_sq, StockBasicDB.symbol == kline_sq.c.symbol)
+            .outerjoin(latest_basic_sq, StockBasicDB.symbol == latest_basic_sq.c.symbol)
+            .outerjoin(latest_report_sq, StockBasicDB.symbol == latest_report_sq.c.symbol)
+            .order_by(StockBasicDB.symbol)
         )
 
         rows = (await self._raw.execute(stmt)).all()
@@ -266,7 +265,6 @@ class StockPanelComposeRepoImpl:
                 is_hs=r.is_hs,
                 act_name=r.act_name,
                 act_ent_type=r.act_ent_type,
-                total_shares=r.total_shares,
                 record_count=r.record_count or 0,
                 kline_start=r.kline_start,
                 kline_end=r.kline_end,

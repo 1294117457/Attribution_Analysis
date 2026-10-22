@@ -1,4 +1,8 @@
-﻿"""前十大流通股东 ORM 模型"""
+"""前十大流通股东 ORM 模型
+
+表名：fundamental_top10_floatholders（对齐 Tushare 接口名 pro.top10_floatholders）
+UK: (symbol, end_date, ann_date, holder_name)
+"""
 
 from datetime import date
 from sqlalchemy import String, Float, Date, Integer, Index, UniqueConstraint
@@ -9,13 +13,12 @@ from shared.infrastructure.persistence.mixins import TimestampMixin
 
 
 class FinTop10FloatHolderDB(RawBase, TimestampMixin):
-    """前十大流通股东
+    """前十大流通股东（Tushare pro.top10_floatholders）
 
-    物理表名: fin_top10_floatholders
     UK: (symbol, end_date, ann_date, holder_name)
     """
 
-    __tablename__ = "fundamental_top10_float"
+    __tablename__ = "fundamental_top10_floatholders"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
@@ -38,9 +41,9 @@ class FinTop10FloatHolderDB(RawBase, TimestampMixin):
     __table_args__ = (
         UniqueConstraint(
             "symbol", "end_date", "ann_date", "holder_name",
-            name="uq_fin_top10_floatholders_uk",
+            name="uq_fundamental_top10_floatholders_uk",
         ),
-        Index("ix_fin_top10_floatholders_date", "end_date"),
+        Index("ix_fundamental_top10_floatholders_date", "end_date"),
     )
 
     def __repr__(self) -> str:

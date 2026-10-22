@@ -1,7 +1,7 @@
 ﻿"""StockPanel 列表 DTO
 
 StockPanel 是"列表 + 4 表快照"组合视图的对外 DTO，
-所有字段均来自 stock_infos / tech_kline_dailys / fin_daily_basics / fin_reports
+所有字段均来自 fundamental_stock_basic / tech_daily / fundamental_daily_basic / fundamental_income
 四张表的 JOIN / 子查询结果。
 
 字段命名 / 类型与后端 ORM 保持 snake_case，
@@ -50,7 +50,7 @@ class StockPanelQueryRequest(BaseModel):
 class StockPanelItemVO(BaseModel):
     """列表面板单行 VO（与 StockPanelRow 字段 1:1 + pools 字段）"""
 
-    # ── 来自 stock_infos ────────────────────────────────────
+    # ── 来自 fundamental_stock_basic ────────────────────────────────────
     symbol: str
     ts_code: Optional[str] = None
     name: Optional[str] = None
@@ -63,25 +63,24 @@ class StockPanelItemVO(BaseModel):
     is_hs: Optional[str] = None
     act_name: Optional[str] = None
     act_ent_type: Optional[str] = None
-    total_shares: Optional[int] = None
 
-    # ── 来自 tech_kline_dailys（聚合）────────────────────────
+    # ── 来自 tech_daily（聚合）────────────────────────
     record_count: int = 0
     kline_start: Optional[date] = None
     kline_end: Optional[date] = None
 
-    # ── 来自 fin_daily_basics（最新一行）─────────────────────
+    # ── 来自 fundamental_daily_basic（最新一行）─────────────────────
     latest_close: Optional[float] = None
     total_mv: Optional[float] = None
     pe_ttm: Optional[float] = None
 
-    # ── 来自 fin_reports（最新一期）──────────────────────────
+    # ── 来自 fundamental_income（最新一期）──────────────────────────
     profit_margin: Optional[float] = None
 
     # ── 来自 stock_pool_members ⨝ stock_pools ────────────────
     pools: list[PoolMembershipVO] = Field(default_factory=list)
 
-    # ── 来自 stock_concept_members ⨝ concepts（with_concepts=true 时附带）──
+    # ── 来自 fundamental_concept_member ⨝ concepts（with_concepts=true 时附带）──
     # 08concept 升级：从 list[ConceptBriefVO] 改为 list[ConceptMainVO]
     # 兼容：ConceptMainVO 包含 ConceptBriefVO 所有字段 + display_order
     concepts: list[ConceptMainVO] = Field(default_factory=list)

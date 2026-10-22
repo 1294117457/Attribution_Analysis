@@ -32,7 +32,7 @@ class FundamentalStockConceptDB(RawBase, TimestampMixin):
     reason: Mapped[str | None] = mapped_column(Text, nullable=True, comment="纳入该概念的原因")
 
     synced_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.now,
+        DateTime(timezone=False), nullable=False, default=datetime.now,
     )
 
     __table_args__ = (
