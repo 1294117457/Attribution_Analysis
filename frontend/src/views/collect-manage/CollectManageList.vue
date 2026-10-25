@@ -70,7 +70,7 @@ const { catalog, loading: catalogLoading, load: loadCatalog, getItem } = useCata
 const pageTab = ref<'tasks' | 'jobs' | 'history'>('tasks')
 
 // ── 当前选中 service_name ──────────────────────────────────
-const activeServiceName = ref<string>('daily_kline')
+const activeServiceName = ref<string>('daily')
 const currentItem = computed(() => getItem(activeServiceName.value))
 
 onMounted(async () => {

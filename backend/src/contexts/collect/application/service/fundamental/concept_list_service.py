@@ -19,7 +19,6 @@ from contexts.collect.application.service.base import (
     ServiceKind,
     ServiceMeta,
 )
-from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.fundamental.ConceptListAdataFetcher import (
     ConceptListAdataFetcher,
 )
@@ -41,7 +40,6 @@ class ConceptListService:
         label="概念清单",
         description="全概念清单（Adata concept_list；全量覆盖）",
         kind=ServiceKind.FULL_REFRESH,
-        rate_limit=("adata", 100, 60),
         concurrency=1,
     )
 
@@ -108,7 +106,6 @@ class ConceptListService:
         Yields:
             { saved, fail, total, message }
         """
-        await check(self.META.rate_limit)
         for attempt in range(3):
             try:
                 bos = await self._fetcher.fetch()

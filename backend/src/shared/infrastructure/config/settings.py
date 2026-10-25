@@ -47,6 +47,18 @@ class Settings(BaseSettings):
     # 禁用的采集工具（逗号分隔，如 "akshare,pytdx"）
     DATA_SOURCE_DISABLED: str = ""
 
+    # ── 采集限流（Redis 固定窗口；同一数据源的所有 service 共享配额）──
+    # 限流下沉到 client 层，阈值统一在这里配置
+    # Tushare 官方 500 次/分，保守取 200
+    TUSHARE_RATE_LIMIT_COUNT: int = 200
+    TUSHARE_RATE_LIMIT_WINDOW: int = 60
+    # adata 公开接口，可用配额未知，保守取 100
+    ADATA_RATE_LIMIT_COUNT: int = 100
+    ADATA_RATE_LIMIT_WINDOW: int = 60
+    # pytdx 公网行情，单连接串行 + 无服务端配额文档 → 默认关闭（0 = 不限流）
+    PYTDX_RATE_LIMIT_COUNT: int = 0
+    PYTDX_RATE_LIMIT_WINDOW: int = 60
+
     # 采集并发
     COLLECT_CONCURRENCY: int = 3
     COLLECT_MAX_CONCURRENCY: int = 8

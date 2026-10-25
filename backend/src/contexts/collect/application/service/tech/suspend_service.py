@@ -23,7 +23,6 @@ from contexts.collect.application.service.base import (
     ServiceKind,
     ServiceMeta,
 )
-from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.tech.SuspendTushareFetcher import (
     SuspendTushareFetcher,
 )
@@ -44,7 +43,6 @@ class SuspendService:
         label='停复牌',
         description='每日停复牌数据（Tushare suspend）',
         kind=ServiceKind.INCREMENTAL,
-        rate_limit=("tushare", 200, 60),
         concurrency=1,
     )
 
@@ -129,7 +127,6 @@ class SuspendService:
         if not isinstance(td, date):
             td = date.fromisoformat(str(td))
 
-        await check(self.META.rate_limit)
         for attempt in range(3):
             try:
                 bos = await self._fetcher.fetch(trade_date=td)

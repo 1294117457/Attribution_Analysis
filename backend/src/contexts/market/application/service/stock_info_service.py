@@ -207,7 +207,12 @@ class StockInfoService:
     # ══════════════════════════════════════════════════════════════
 
     async def collect(self, request: KlineCollectRequest) -> KlineCollectResponse:
-        """采集 K 线（直接调 DailyService.collect）"""
+        """采集 K 线（直接调 DailyService.collect）
+
+        注意：DailyService.collect() 只派发后台任务、不返回结果
+        （v7 起返回 None），所以这里拿不到入库行数 ——
+        计数恒为 0，进度请查 collect_logs（service_name=daily）。
+        """
         if self._daily_svc is None:
             raise RuntimeError("StockInfoService 未注入 DailyService")
         try:
@@ -218,13 +223,13 @@ class StockInfoService:
                 "days": request.days,
             }
             params = {k: v for k, v in params.items() if v is not None}
-            result = await self._daily_svc.collect(params)
+            await self._daily_svc.collect(params)
             return KlineCollectResponse(
                 symbol=request.symbol,
                 name="",
-                saved_count=result.saved,
-                total_count=result.total,
-                message=result.message,
+                saved_count=0,
+                total_count=0,
+                message="采集任务已派发，进度请查采集日志",
             )
         except Exception as e:
             raise CollectionError(request.symbol, str(e))

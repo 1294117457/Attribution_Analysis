@@ -21,7 +21,6 @@ from contexts.collect.infrastructure.fetcher.capital.MoneyflowHsgtTushareFetcher
     MoneyflowHsgtTushareFetcher,
 )
 from contexts.collect.infrastructure.persistence.repositories import MoneyflowHsgtRepository
-from contexts.collect.infrastructure.cache.rate_limit import check
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -39,7 +38,6 @@ class MoneyflowHsgtService:
         label='沪深港通资金流向',
         description='每日沪深港通资金流向（Tushare moneyflow_hsgt）',
         kind=ServiceKind.INCREMENTAL,
-        rate_limit=("tushare", 200, 60),
         concurrency=1,
     )
 
@@ -99,7 +97,6 @@ class MoneyflowHsgtService:
             td = date.today()
         if not isinstance(td, date):
             td = date.fromisoformat(str(td))
-        await check(self.META.rate_limit)
         try:
             bos = await self._fetcher.fetch(trade_date=td)
             saved = await self._repo.save(bos, self._session)

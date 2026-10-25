@@ -22,7 +22,6 @@ from contexts.collect.application.service.base import (
     ServiceMeta,
     list_all_concept_codes,
 )
-from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.fundamental.ConceptMembersAdataFetcher import (
     ConceptMembersAdataFetcher,
 )
@@ -47,7 +46,6 @@ class ConceptMembersService:
         label="概念成分股",
         description="概念成分股（Adata concept_members）",
         kind=ServiceKind.INCREMENTAL,
-        rate_limit=("adata", 100, 60),
         concurrency=1,  # ★ step8: AsyncSession 非并发安全，收敛为 1（见 08 方案 §5.7）
     )
 
@@ -133,7 +131,6 @@ class ConceptMembersService:
 
         async def one(c: str) -> dict:
             async with sem:
-                await check(self.META.rate_limit)
                 for attempt in range(3):
                     try:
                         bos = await self._fetcher.fetch(index_code=c)

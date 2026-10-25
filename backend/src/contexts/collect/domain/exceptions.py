@@ -10,25 +10,33 @@
 """
 from __future__ import annotations
 
+from shared.domain.base import DomainError
 
-class InvalidParams(ValueError):
+
+class InvalidParams(DomainError):
     """入参非法（业务规则约束违反）
 
     与 pydantic ValidationError 的区别：pydantic 校验字段类型/格式；
     本异常校验业务级约束（如"上市公司不能被删除"）。
+
+    ★ 继承 DomainError 而非 ValueError：全局异常处理器按 DomainError
+      统一转 HTTP 400，所以 service 层的业务校验可以「直接往上抛」，
+      route 层不需要写 try/except 手工转状态码（v7 起 daily 路由即如此）。
     """
 
-    pass
+    def __init__(self, message: str, code: str = "INVALID_PARAMS"):
+        super().__init__(message, code=code, http_status=self.HTTP_BAD_REQUEST)
 
 
-class NotSupported(NotImplementedError):
+class NotSupported(DomainError):
     """service / fetcher 不支持某种参数组合或操作
 
     区别于 NotImplementedError：明确表示「接口设计上有这个能力，
     但当前数据源/实现不支持」，调用方可以尝试换源。
     """
 
-    pass
+    def __init__(self, message: str, code: str = "NOT_SUPPORTED"):
+        super().__init__(message, code=code, http_status=self.HTTP_BAD_REQUEST)
 
 
 __all__ = [

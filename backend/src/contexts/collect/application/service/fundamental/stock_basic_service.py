@@ -31,7 +31,6 @@ from contexts.collect.application.service.base import (
     ServiceKind,
     ServiceMeta,
 )
-from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.fundamental.StockBasicTushareFetcher import (
     StockBasicTushareFetcher,
 )
@@ -77,7 +76,6 @@ class StockBasicService:
         label="股票基本信息",
         description="全 A 股基本信息（Tushare stock_basic；每次整组覆盖同 list_status 子集）",
         kind=ServiceKind.FULL_REFRESH,
-        rate_limit=("tushare", 200, 60),
         concurrency=1,
     )
 
@@ -160,7 +158,6 @@ class StockBasicService:
                 await self._log_service.mark_running(self.META.name, log_id)
 
                 # 3. 限流 + fetch（可能耗时 5-30s）
-                await check(self.META.rate_limit)
                 bos = await self._fetcher.fetch(list_status=list_status)
                 total = len(bos)
 

@@ -7,7 +7,6 @@ from contexts.collect.application.service.base import CollectResult, RateLimited
 from contexts.collect.infrastructure.fetcher.fundamental.ConceptMinuteAdataFetcher import (
     ConceptMinuteAdataFetcher,
 )
-from contexts.collect.infrastructure.cache.rate_limit import check
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,6 @@ class ConceptMinuteService:
         label='概念实时分时',
         description='概念实时分时（Adata concept_minute）',
         kind=ServiceKind.REALTIME,
-        rate_limit=("adata", 100, 60),
         concurrency=1,
     )
 
@@ -31,7 +29,6 @@ class ConceptMinuteService:
         ic = params.get("index_code")
         if not ic:
             return CollectResult(fail=1, message="index_code 必填")
-        await check(self.META.rate_limit)
         for attempt in range(3):
             try:
                 items = await self._fetcher.fetch(index_code=ic)

@@ -1,4 +1,4 @@
-"""tech / base 类 BO（K 线、复权因子、停牌、名称变更、分红）"""
+"""tech / base 类 BO（复权因子、停牌、名称变更、分红）"""
 
 from __future__ import annotations
 

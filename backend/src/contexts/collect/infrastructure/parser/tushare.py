@@ -119,6 +119,7 @@ class TushareKlineParser:
     """
 
     def parse(self, df: pd.DataFrame, symbol: str) -> list[KlineBO]:
+        """按给定 symbol 解析（单只股票场景）"""
         if df is None or df.empty:
             return []
         results = []
@@ -131,10 +132,34 @@ class TushareKlineParser:
                 continue
         return results
 
-    def _parse_row(self, row: Any, symbol: str) -> Optional[KlineBO]:
+    def parse_frame(self, df: pd.DataFrame) -> list[KlineBO]:
+        """整批解析：symbol 取自每行的 ts_code（按交易日拉全市场场景）
+
+        Tushare `pro.daily(trade_date=...)` 一次返回全市场当日数据，
+        每行自带 ts_code，无需预先知道 symbol 列表。
+        """
+        if df is None or df.empty:
+            return []
+        results = []
+        for _, row in df.iterrows():
+            try:
+                kline = self._parse_row(row, None)
+                if kline is not None:
+                    results.append(kline)
+            except (KeyError, ValueError, TypeError):
+                continue
+        return results
+
+    def _parse_row(self, row: Any, symbol: Optional[str]) -> Optional[KlineBO]:
         trade_date = self._parse_date(row["trade_date"])
         if trade_date is None:
             return None
+
+        if not symbol:
+            # 整市场场景：symbol 来自 ts_code（如 000001.SZ → 000001）
+            symbol = symbol_of(row)
+            if not symbol:
+                return None
 
         amount_kilo = row.get("amount")
         amount_yuan = float(amount_kilo) * 1000.0 if pd.notna(amount_kilo) else 0.0

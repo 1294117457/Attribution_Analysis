@@ -17,7 +17,6 @@ from contexts.collect.application.service.base import (
     ServiceKind,
     ServiceMeta,
 )
-from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.news.NewsTushareFetcher import (
     NewsTushareFetcher,
 )
@@ -38,7 +37,6 @@ class NewsService:
         label='新闻快讯',
         description='Tushare 新闻快讯',
         kind=ServiceKind.INCREMENTAL,
-        rate_limit=("tushare", 200, 60),
         concurrency=1,
     )
 
@@ -102,7 +100,6 @@ class NewsService:
         facet/kind 不再由 Runner 传入 —— service 自身从 self.META 派生。
         """
         minutes = int(params.get("minutes", 30))
-        await check(self.META.rate_limit)
         try:
             for attempt in range(3):
                 try:

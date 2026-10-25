@@ -20,7 +20,6 @@ from contexts.collect.application.service.base import (
     ServiceKind,
     ServiceMeta,
 )
-from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.fundamental.DailyBasicTushareFetcher import (
     DailyBasicTushareFetcher,
 )
@@ -42,7 +41,6 @@ class DailyBasicService:
         label="每日估值",
         description="每日估值（Tushare daily_basic）",
         kind=ServiceKind.INCREMENTAL,
-        rate_limit=("tushare", 200, 60),
         concurrency=1,
     )
 
@@ -115,7 +113,6 @@ class DailyBasicService:
         if not isinstance(td, date):
             td = date.fromisoformat(str(td))
 
-        await check(self.META.rate_limit)
         for attempt in range(3):
             try:
                 bos = await self._fetcher.fetch(trade_date=td)

@@ -18,6 +18,9 @@ from shared.infrastructure.config.settings import get_settings
 
 RATE_LIMIT_WAIT = 60.0
 
+# 限流键：所有 Tushare 请求共享同一配额（官方配额是账号级的）
+RATE_LIMIT_KEY = "collect:rl:tushare"
+
 
 def _is_rate_limit(e: Exception) -> bool:
     msg = str(e)
@@ -25,7 +28,11 @@ def _is_rate_limit(e: Exception) -> bool:
 
 
 class TushareClient:
-    """pro_api 每次调用都是独立 HTTP 请求，单实例可并发使用；并发度由 service CONCURRENCY 控制"""
+    """pro_api 每次调用都是独立 HTTP 请求，单实例可并发使用。
+
+    限流由本层统一控制（阈值见 .env TUSHARE_RATE_LIMIT_*），
+    service 无需再声明 rate_limit。
+    """
 
     def __init__(self, token: str) -> None:
         if not token:
@@ -33,12 +40,23 @@ class TushareClient:
         import tushare as ts
         self._pro = ts.pro_api(token)
 
+    async def _acquire(self) -> None:
+        """按 .env 配置申请一次 Tushare 配额"""
+        from contexts.collect.infrastructure.cache.rate_limit import acquire
+        s = get_settings()
+        await acquire(
+            key=RATE_LIMIT_KEY,
+            max_count=s.TUSHARE_RATE_LIMIT_COUNT,
+            window_seconds=s.TUSHARE_RATE_LIMIT_WINDOW,
+        )
+
     async def query(self, api: str, **kwargs: Any) -> pd.DataFrame:
         """调 pro.<api>(**kwargs)；空返回空 DataFrame；限频抛 RateLimited，其它抛 SourceUnavailable"""
         from contexts.collect.application.service.base import (
             RateLimited,
             SourceUnavailable,
         )
+        await self._acquire()
         try:
             df = await asyncio.to_thread(getattr(self._pro, api), **kwargs)
         except Exception as e:
@@ -67,4 +85,4 @@ def get_tushare_client() -> TushareClient:
     return _tushare_client
 
 
-__all__ = ["TushareClient", "get_tushare_client"]
+__all__ = ["RATE_LIMIT_KEY", "TushareClient", "get_tushare_client"]

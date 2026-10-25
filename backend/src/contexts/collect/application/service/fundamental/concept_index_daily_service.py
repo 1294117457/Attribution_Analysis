@@ -21,7 +21,6 @@ from contexts.collect.application.service.base import (
     ServiceMeta,
     list_all_concept_codes,
 )
-from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.fundamental.ConceptIndexDailyAdataFetcher import (
     ConceptIndexDailyAdataFetcher,
 )
@@ -43,7 +42,6 @@ class ConceptIndexDailyService:
         label="概念指数日 K",
         description="概念指数日 K 线（Adata concept_index_daily）",
         kind=ServiceKind.INCREMENTAL,
-        rate_limit=("adata", 100, 60),
         concurrency=1,
     )
 
@@ -127,7 +125,6 @@ class ConceptIndexDailyService:
 
         async def one(c: str) -> dict:
             async with sem:
-                await check(self.META.rate_limit)
                 for attempt in range(3):
                     try:
                         bos = await self._fetcher.fetch(index_code=c)

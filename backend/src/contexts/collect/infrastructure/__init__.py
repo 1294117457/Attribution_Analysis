@@ -5,7 +5,8 @@
 - parser/     数据解析
 - persistence/  ORM + 仓储实现
 - sdk/         第三方 SDK 封装
-- rate_limit.py  限流装饰器（限流原语 + 业务策略（合并 throttler））
+- connect/      外部 SDK 连接（tushare / adata / pytdx）
+    限流下沉在这一层：每个 client 的唯一出口调用 cache/rate_limit.acquire()
+- cache/rate_limit.py  限流（通用 Redis 固定窗口原语，阈值由调用方传入）
 - retry.py       重试装饰器
-- cache/rate_limit.py  限流（原子原语 + collect 业务策略）
 """

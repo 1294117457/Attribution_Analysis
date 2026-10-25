@@ -1,97 +1,76 @@
-"""限流（基于 Redis 滑动窗口 + collect 业务策略）
+"""限流工具（Redis 固定窗口计数器）
 
-三层 API（按需使用）：
+纯通用原语，不认识任何数据源。阈值和 key 全部由调用方传入 —— 限流策略
+下沉到 client 层，client 自己读 settings 决定用哪组配置：
 
-1. 原子原语 check_rate_limit(key, max, window)
-    用 INCR+EXPIRE pipeline —— 任意业务都可调
-2. 业务策略 check(rate_limit_tuple)
-    命中限流就 sleep 一个完整 window（最简单防拒策略）
-    给 collect 22 个 service 用：
-        class SomeService:
-            RATE_LIMIT = ("tushare", 200, 60)
-            await check(self.RATE_LIMIT)
+    from contexts.collect.infrastructure.cache.rate_limit import acquire
+    await acquire(
+        key="collect:rl:tushare",
+        max_count=settings.TUSHARE_RATE_LIMIT_COUNT,
+        window_seconds=settings.TUSHARE_RATE_LIMIT_WINDOW,
+    )
 
-3. 数据源→key 映射 fetch_key_for_source(source)
-    全局共享配额：
-        TUSHARE_LIMIT_KEY = "collect:rl:tushare"   (200 / 60s)
-        ADATA_LIMIT_KEY   = "collect:rl:adata"      (100 / 60s)
+行为：
+  - Lua 脚本原子执行：INCR，仅在窗口首次创建时设 EXPIRE
+  - 超限时按 key 的剩余 TTL 等待，再重新检查，直到真的拿到配额才返回
+    （既不丢请求，也不会像"睡满整个 window"那样把请求全推成同一时刻发出）
+
+同一数据源的所有 service 共用一个 key → 共享配额（官方配额是账号级的）。
+
+★ 为什么 TTL 只在首次创建时设置
+    每次 INCR 都重置 EXPIRE 会让窗口变成「滑动」的：持续超压时 TTL 永不到期，
+    计数无限增长，所有请求永久卡死。固定窗口必须让 TTL 自然到期。
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional, Tuple
 
 from shared.infrastructure.connection.redis_client import redis as redis_client
 
 logger = logging.getLogger(__name__)
 
-# 全局限流键（tushare / adata 各一份，所有 service 共享配额）
-TUSHARE_LIMIT_KEY = "collect:rl:tushare"
-ADATA_LIMIT_KEY = "collect:rl:adata"
+# 原子计数 + 仅首次设 TTL，返回当前窗口的计数
+# KEYS[1]=限流键  ARGV[1]=窗口秒数
+_LUA_TICK = """
+local n = redis.call('INCR', KEYS[1])
+if n == 1 then
+    redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1]))
+end
+return n
+"""
 
 
-def fetch_key_for_source(source: str) -> str:
-    """数据源名 → 限流键"""
-    return TUSHARE_LIMIT_KEY if source == "tushare" else ADATA_LIMIT_KEY
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 1. 原子原语：纯 Redis pipeline（与 collect 业务无关）
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-async def check_rate_limit(
+async def acquire(
     key: str,
     max_count: int,
     window_seconds: int,
-) -> Tuple[bool, int]:
-    """原子限流：INCR + EXPIRE 一次性提交。
-
-    Returns:
-        (allowed, remaining)
-        - allowed   当前计数 <= max_count 时 True
-        - remaining 剩余可用次数（0 表示已用尽）
-    """
-    # ★ 全局单例直连，无需 await get_redis()
-    async with redis_client.pipeline(transaction=True) as pipe:
-        await pipe.incr(key)
-        await pipe.expire(key, window_seconds)
-        count, _ = await pipe.execute()
-    remaining = max(0, max_count - count)
-    return count <= max_count, remaining
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# 2. collect 业务策略：命中限流则 await 一个完整 window
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-async def check(
-    rate_limit: Optional[tuple],
 ) -> None:
-    """命中限流就 await 一个完整 window（同步等待）
+    """获取一次配额；超限则等到窗口腾出位置为止。
 
     Args:
-        rate_limit: (source, max_count, window)；None 表示不限流
-            - source: 数据源名（"tushare" / "adata"）
-            - max_count: 窗口内允许的最大请求数
-            - window: 窗口秒数
+        key: 限流键（同一数据源共用一个 key → 共享配额）
+        max_count: 窗口内允许的最大请求数；<= 0 表示不限流
+        window_seconds: 窗口秒数
     """
-    if rate_limit is None:
+    if max_count <= 0:
         return
-    declared_source, max_count, window = rate_limit
-    key = fetch_key_for_source(declared_source)
-    allowed, _ = await check_rate_limit(key, max_count, window)
-    if not allowed:
-        logger.debug("限流命中: %s, 等待 %ds", declared_source, window)
-        await asyncio.sleep(window)
+
+    while True:
+        # ★ 全局单例直连，无需 await get_redis()
+        count = await redis_client.eval(_LUA_TICK, 1, key, window_seconds)
+
+        if count <= max_count:
+            return
+
+        # 超限：等当前窗口自然结束（TTL 只在窗口创建时设过一次）
+        ttl = await redis_client.ttl(key)
+        wait = max(1, ttl if ttl and ttl > 0 else window_seconds)
+        logger.debug(
+            "限流命中: %s (%d/%d), 等待 %ds",
+            key, count, max_count, wait,
+        )
+        await asyncio.sleep(wait)
 
 
-__all__ = [
-    "ADATA_LIMIT_KEY",
-    "TUSHARE_LIMIT_KEY",
-    "check",
-    "check_rate_limit",
-    "fetch_key_for_source",
-]
+__all__ = ["acquire"]

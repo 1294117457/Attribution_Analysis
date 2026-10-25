@@ -24,7 +24,6 @@ from contexts.collect.infrastructure.fetcher.capital.HolderNumberTushareFetcher 
     HolderNumberTushareFetcher,
 )
 from contexts.collect.infrastructure.persistence.repositories import HolderNumberRepository
-from contexts.collect.infrastructure.cache.rate_limit import check
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -42,7 +41,6 @@ class HolderNumberService:
         label='股东户数',
         description='全 A 股股东户数（Tushare holder_number）',
         kind=ServiceKind.INCREMENTAL,
-        rate_limit=("tushare", 200, 60),
         concurrency=1,  # ★ step8: AsyncSession 非并发安全，收敛为 1（见 08 方案 §5.7）
     )
 
@@ -112,7 +110,6 @@ class HolderNumberService:
 
         async def _one(s: str) -> int:
             async with sem:
-                await check(self.META.rate_limit)
                 for attempt in range(3):
                     try:
                         bos = await self._fetcher.fetch(symbol=s)

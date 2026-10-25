@@ -23,7 +23,6 @@ from contexts.collect.application.service.base import (
     ServiceMeta,
     list_all_a_symbols,
 )
-from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.fundamental.StockConceptsAdataFetcher import (
     StockConceptsAdataFetcher,
 )
@@ -48,7 +47,6 @@ class StockConceptsService:
         label="股票所属概念",
         description="股票所属概念（Adata stock_concepts）",
         kind=ServiceKind.INCREMENTAL,
-        rate_limit=("adata", 100, 60),
         concurrency=1,  # ★ step8: AsyncSession 非并发安全，收敛为 1（见 08 方案 §5.7）
     )
 
@@ -139,7 +137,6 @@ class StockConceptsService:
 
         async def one(s: str) -> dict:
             async with sem:
-                await check(self.META.rate_limit)
                 for attempt in range(3):
                     try:
                         items = await self._fetcher.fetch(symbol=s)

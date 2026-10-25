@@ -21,7 +21,6 @@ from contexts.collect.infrastructure.fetcher.capital.TopInstTushareFetcher impor
     TopInstTushareFetcher,
 )
 from contexts.collect.infrastructure.persistence.repositories import TopInstRepository
-from contexts.collect.infrastructure.cache.rate_limit import check
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -39,7 +38,6 @@ class TopInstService:
         label='龙虎榜机构明细',
         description='每日龙虎榜机构明细（Tushare top_inst）',
         kind=ServiceKind.INCREMENTAL,
-        rate_limit=("tushare", 200, 60),
         concurrency=1,
     )
 
@@ -99,7 +97,6 @@ class TopInstService:
             td = date.today()
         if not isinstance(td, date):
             td = date.fromisoformat(str(td))
-        await check(self.META.rate_limit)
         try:
             bos = await self._fetcher.fetch(trade_date=td)
             saved = await self._repo.save(bos, self._session)

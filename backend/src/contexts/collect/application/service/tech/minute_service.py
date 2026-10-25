@@ -14,7 +14,6 @@ from contexts.collect.application.service.base import CollectResult, ServiceKind
 from contexts.collect.infrastructure.fetcher.tech.MinutePytdxFetcher import (
     MinutePytdxFetcher,
 )
-from contexts.collect.infrastructure.cache.rate_limit import check
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +27,6 @@ class MinuteService:
         label='分钟 K 线',
         description='通达信 1/5/15/30/60 分钟 K 线（实时）',
         kind=ServiceKind.REALTIME,
-        rate_limit=("pytdx", 60, 60),
         concurrency=1,
     )
 
@@ -63,7 +61,6 @@ class MinuteService:
             "interval": normalized,
             "days": days,
         }
-        await check(self.META.rate_limit)
         bos = await self._fetcher.fetch(**p)
         return [
             {

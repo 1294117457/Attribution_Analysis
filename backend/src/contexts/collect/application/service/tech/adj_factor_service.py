@@ -23,7 +23,6 @@ from contexts.collect.application.service.base import (
     ServiceMeta,
     list_all_a_symbols,
 )
-from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.tech.AdjFactorTushareFetcher import (
     AdjFactorTushareFetcher,
 )
@@ -44,7 +43,6 @@ class AdjFactorService:
         label='复权因子',
         description='单只股票复权因子（Tushare adj_factor）',
         kind=ServiceKind.INCREMENTAL,
-        rate_limit=("tushare", 200, 60),
         concurrency=1,  # ★ step8: AsyncSession 非并发安全，收敛为 1（见 08 方案 §5.7）
     )
 
@@ -140,7 +138,6 @@ class AdjFactorService:
 
         async def one(symbol: str) -> dict:
             async with sem:
-                await check(self.META.rate_limit)
                 for attempt in range(3):
                     try:
                         bos = await self._fetcher.fetch(symbol=symbol)

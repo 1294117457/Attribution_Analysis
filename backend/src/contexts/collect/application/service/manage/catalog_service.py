@@ -11,8 +11,10 @@ service 只需在 META 中声明：
   - kind        采集类型（incremental / full_refresh / realtime）— 决定 UI 展示
 
 可选的运行期配置：
-  - rate_limit  (source, count, window)
   - concurrency 并发上限
+
+限流不在这里声明：已下沉到 connect 层的 client，按数据源统一限流，
+阈值见 .env 的 *_RATE_LIMIT_* 配置。
 """
 from __future__ import annotations
 

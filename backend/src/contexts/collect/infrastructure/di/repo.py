@@ -19,6 +19,30 @@ def get_kline_repository():
     return KlineRepository()
 
 
+def get_daily_kline_repository():
+    """日 K 线采集仓储（tech_daily upsert + 查询；session 由调用方传）"""
+    from contexts.collect.infrastructure.persistence.repositories.tech import (
+        DailyKlineRepository,
+    )
+    return DailyKlineRepository()
+
+
+def get_trade_calendar_repository():
+    """交易日历仓储（tech_trade_cal 读取；session 由调用方传）"""
+    from contexts.collect.infrastructure.persistence.repositories.tech import (
+        TradeCalendarRepository,
+    )
+    return TradeCalendarRepository()
+
+
+def get_stock_name_repository():
+    """股票名称映射仓储（stock_basic 读取；session 由调用方传）"""
+    from contexts.collect.infrastructure.persistence.repositories.tech import (
+        StockNameRepository,
+    )
+    return StockNameRepository()
+
+
 def get_stock_info_repository():
     from contexts.collect.infrastructure.persistence.repositories.stock_info_repo import (
         StockInfoRepository,
@@ -202,6 +226,8 @@ def get_news_article_repository():
 __all__ = [
     # tech
     "get_kline_repository", "get_stock_info_repository",
+    "get_daily_kline_repository", "get_trade_calendar_repository",
+    "get_stock_name_repository",
     "get_adj_factor_repository", "get_suspend_repository",
     "get_name_change_repository", "get_dividend_repository",
     # capital

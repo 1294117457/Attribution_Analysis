@@ -20,7 +20,6 @@ from contexts.collect.application.service.base import (
     ServiceKind,
     ServiceMeta,
 )
-from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.fundamental.ConceptSnapshotAdataFetcher import (
     ConceptSnapshotAdataFetcher,
 )
@@ -42,7 +41,6 @@ class ConceptSnapshotService:
         label="概念行情快照",
         description="概念行情快照（Adata concept_snapshot）",
         kind=ServiceKind.REALTIME,
-        rate_limit=("adata", 100, 60),
         concurrency=1,
     )
 
@@ -119,7 +117,6 @@ class ConceptSnapshotService:
             }
             return
 
-        await check(self.META.rate_limit)
         for attempt in range(3):
             try:
                 bos = await self._fetcher.fetch(index_code=ic)

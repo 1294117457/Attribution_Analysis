@@ -21,7 +21,6 @@ from contexts.collect.infrastructure.fetcher.capital.BlockTradeTushareFetcher im
     BlockTradeTushareFetcher,
 )
 from contexts.collect.infrastructure.persistence.repositories import BlockTradeRepository
-from contexts.collect.infrastructure.cache.rate_limit import check
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -39,7 +38,6 @@ class BlockTradeService:
         label='大宗交易',
         description='每日大宗交易（Tushare block_trade）',
         kind=ServiceKind.INCREMENTAL,
-        rate_limit=("tushare", 200, 60),
         concurrency=1,
     )
 
@@ -99,7 +97,6 @@ class BlockTradeService:
             td = date.today()
         if not isinstance(td, date):
             td = date.fromisoformat(str(td))
-        await check(self.META.rate_limit)
         try:
             bos = await self._fetcher.fetch(trade_date=td)
             saved = await self._repo.save(bos, self._session)

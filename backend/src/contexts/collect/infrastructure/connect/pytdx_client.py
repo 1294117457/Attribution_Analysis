@@ -17,8 +17,12 @@ from threading import Lock
 from typing import Any, Callable
 
 from contexts.collect.application.service.base import SourceUnavailable
+from shared.infrastructure.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+# 限流键：所有通达信请求共享同一配额
+RATE_LIMIT_KEY = "collect:rl:pytdx"
 
 TDX_HOSTS = [
     ("jstdx.gtjas.com", 7709),
@@ -70,7 +74,24 @@ class PytdxClient:
                 logger.warning("连接 %s:%d 失败: %s", host, port, e)
         raise SourceUnavailable("无法连接任何通达信服务器")
 
+    async def _acquire(self) -> None:
+        """按 .env 配置申请一次通达信配额。
+
+        默认关闭（PYTDX_RATE_LIMIT_COUNT=0）—— 公网行情无公开配额文档，
+        真正的闸门是下面的 threading.Lock。压测被断连时把 COUNT 调大即可。
+        """
+        from contexts.collect.infrastructure.cache.rate_limit import acquire
+        s = get_settings()
+        await acquire(
+            key=RATE_LIMIT_KEY,
+            max_count=s.PYTDX_RATE_LIMIT_COUNT,
+            window_seconds=s.PYTDX_RATE_LIMIT_WINDOW,
+        )
+
     async def run(self, fn: Callable[[Any], Any]) -> Any:
+        # 限流放在 Lock 之外：不要让等待配额的时间占住串行槽
+        await self._acquire()
+
         def locked():
             with self._lock:
                 self._ensure_connected()
@@ -104,4 +125,4 @@ def get_pytdx_client() -> PytdxClient:
     return _pytdx_client
 
 
-__all__ = ["PytdxClient", "TDX_HOSTS", "get_pytdx_client"]
+__all__ = ["RATE_LIMIT_KEY", "PytdxClient", "TDX_HOSTS", "get_pytdx_client"]

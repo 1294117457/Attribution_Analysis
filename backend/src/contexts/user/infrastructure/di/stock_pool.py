@@ -17,10 +17,14 @@ from shared.infrastructure.di.db_session import get_db
 def _build_collect_service(task_type: str):
     """根据 task_type 构造对应的 collect service
 
-    注：service 自身 __init__ 已不依赖 fetcher 注入
-    （fetcher 内部 lazy init tushare/adata 单例），
-    所以这里直接 DefaultConstruct。
+    ★ 各 service 的构造签名不同（v4 自管协议）：
+        DailyService        (log_service, session=None, fetcher=None)
+        DailyBasicService   (session, log_service, task_runner, ...)
+        AdjFactorService    (session, log_service, task_runner, ...)
+      这里按 task_type 分别组装 —— 统一走 CollectLogService + TaskRunner，
+      session 传 None（后台任务自己开 raw_data session）。
     """
+    from contexts.collect.application.service.manage import CollectLogService
     from contexts.collect.application.service.fundamental.daily_basic_service import (
         DailyBasicService,
     )
@@ -32,20 +36,39 @@ def _build_collect_service(task_type: str):
     )
 
     # task_type 键保持稳定：URL/service_name，不能改
-    factory = {
-        "daily_kline": DailyService,
-        "daily_basic": DailyBasicService,
-        "adj_factor": AdjFactorService,
-    }.get(task_type)
-    if factory is None:
-        raise ValueError(f"pool 不支持的 task_type: {task_type}")
-    return factory()
+    if task_type == "daily":
+        return DailyService(log_service=CollectLogService())
+    if task_type == "daily_basic":
+        from contexts.collect.infrastructure.adapter.background import (
+            get_collect_task_runner,
+        )
+        return DailyBasicService(
+            session=None,
+            log_service=CollectLogService(),
+            task_runner=get_collect_task_runner(),
+        )
+    if task_type == "adj_factor":
+        from contexts.collect.infrastructure.adapter.background import (
+            get_collect_task_runner,
+        )
+        return AdjFactorService(
+            session=None,
+            log_service=CollectLogService(),
+            task_runner=get_collect_task_runner(),
+        )
+    raise ValueError(f"pool 不支持的 task_type: {task_type}")
 
 
-async def _run_collect_one(task_type: str, user_id: int, params: dict):
-    """stock_pool 触发采集的简单 wrapper（白名单 + DefaultConstruct）"""
+async def _run_collect_one(task_type: str, symbol: str, params: dict):
+    """stock_pool 触发采集的简单 wrapper（白名单 + DefaultConstruct）
+
+    ★ daily v6（按时间采集）：symbol 必须透传成 ts_code，
+      否则会退化成「全市场采集」——每个池成员都触发一次全市场拉取。
+    """
     svc = _build_collect_service(task_type)
-    return await svc.collect(params)
+    if task_type == "daily" and symbol:
+        params = {**params, "symbol": symbol}
+    await svc.collect(params)
 
 
 def get_stock_pool_service(

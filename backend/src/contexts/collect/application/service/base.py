@@ -49,8 +49,10 @@ class ServiceMeta:
       label       前端展示名称
       description 描述（可选）
       kind        采集行为类型（决定 UI 展示）
-      rate_limit  限速配置：(source, count, window)，None 表示不限制
       concurrency 并发上限（asyncio.Semaphore 容量）
+
+    注：限流不在这里声明 —— 已下沉到 client 层按数据源统一管理
+    （阈值见 .env TUSHARE_RATE_LIMIT_* 等）。
     """
     # ── 标识 ──────────────────────────────────────
     name: str                                       # 全局唯一标识
@@ -62,7 +64,6 @@ class ServiceMeta:
     kind: ServiceKind = ServiceKind.INCREMENTAL
 
     # ── 运行时配置 ────────────────────────────────
-    rate_limit: tuple[str, int, int] | None = None  # (source, count, window)
     concurrency: int = 1                             # 并发上限
 
     # ── 自动派生 ──────────────────────────────────

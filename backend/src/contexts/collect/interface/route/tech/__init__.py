@@ -8,10 +8,13 @@ Phase5 v5（2026-10-21）：service 入参校验失败 → InvalidParams → HTT
 Phase5 v6（2026-10-21）：daily_kline 拆成独立模块 route/tech/daily.py
   - 强类型请求 DTO（DailyCollectRequest：start_date / end_date 必填）
   - 响应不再返回 log_id（v5 协议：前端按 service_name 查日志列表）
+Phase5 v7（2026-10-22）：daily_kline 更名为 daily，路由 /daily_kline → /daily
+  - service_name 同步改为 "daily"（URL / collect_logs / user 池 task_type 一致）
+  - 该模块内 route 不做校验、不做业务逻辑，只透传给 service
 
-URL 路径保持 stable：
-    /daily_kline  /minute_kline
-    （daily_kline 见 daily.py，其余见本文件）
+URL 路径：
+    /daily          （见 daily.py）
+    /minute_kline   （见本文件）
 （注：service_name 与 fatcher_type 保持稳定；类名 DailyService/MinuteService
        + 依赖注入工厂 get_daily_service/get_minute_service 已重命名为简短语义版）
 """
@@ -45,9 +48,9 @@ async def _run(svc, body: CollectRequest) -> CollectResponse:
 
     REALTIME service（minute_kline）暂保留 CollectResult 兼容。
 
-    ★ service.collect() 的入参校验抛 InvalidParams（如 daily_kline 的
-      时间范围必传），这里统一转 HTTP 400 —— 请求不合法当场返回，
-      不派发后台任务、不写 collect_logs。
+    ★ service.collect() 的入参校验抛 InvalidParams，这里统一转 HTTP 400
+      —— 请求不合法当场返回，不派发后台任务、不写 collect_logs。
+      （daily 路由不共用本函数：它零校验，异常交全局处理器）
     """
     try:
         result = await svc.collect(body.params)

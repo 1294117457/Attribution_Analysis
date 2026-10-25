@@ -22,7 +22,6 @@ from contexts.collect.infrastructure.fetcher.capital.LimitListTushareFetcher imp
     LimitListTushareFetcher,
 )
 from contexts.collect.infrastructure.persistence.repositories import LimitListRepository
-from contexts.collect.infrastructure.cache.rate_limit import check
 from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
@@ -40,7 +39,6 @@ class LimitListService:
         label='每日涨跌停板',
         description='每日涨跌停板（Tushare limit_list_d）',
         kind=ServiceKind.INCREMENTAL,
-        rate_limit=("tushare", 100, 60),
         concurrency=1,
     )
 
@@ -100,7 +98,6 @@ class LimitListService:
             td = date.today()
         if not isinstance(td, date):
             td = date.fromisoformat(str(td))
-        await check(self.META.rate_limit)
         try:
             bos = await self._fetcher.fetch(trade_date=td)
             saved = await self._repo.save(bos, self._session)

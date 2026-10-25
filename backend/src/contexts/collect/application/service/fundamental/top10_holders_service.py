@@ -21,7 +21,6 @@ from contexts.collect.application.service.base import (
     ServiceMeta,
     list_all_a_symbols,
 )
-from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.fundamental.Top10HoldersTushareFetcher import (
     Top10HoldersTushareFetcher,
 )
@@ -43,7 +42,6 @@ class Top10HoldersService:
         label="前 10 大股东",
         description="前 10 大股东（Tushare top10_holders）",
         kind=ServiceKind.INCREMENTAL,
-        rate_limit=("tushare", 200, 60),
         concurrency=1,  # ★ step8: AsyncSession 非并发安全，收敛为 1（见 08 方案 §5.7）
     )
 
@@ -128,7 +126,6 @@ class Top10HoldersService:
 
         async def one(s: str) -> dict:
             async with sem:
-                await check(self.META.rate_limit)
                 for attempt in range(3):
                     try:
                         bos = await self._fetcher.fetch(symbol=s)

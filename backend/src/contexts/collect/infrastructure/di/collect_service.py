@@ -46,26 +46,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.infrastructure.di.db_session import get_raw_db
 from contexts.collect.application.service.manage import CollectLogService
 from contexts.collect.infrastructure.adapter.background import get_collect_task_runner
+from contexts.collect.infrastructure.di.repo import (
+    get_daily_kline_repository,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # tech 5
 # ═══════════════════════════════════════════════════════════════════════
 def get_daily_service(
-    session: AsyncSession = Depends(get_raw_db),
+    kline_repo=Depends(get_daily_kline_repository),
 ):
-    """日 K 线 service（写采集库 tech_kline_daily，用 get_raw_db）
+    """日 K 线 service（写采集库 tech_daily）
 
-    v4 自管协议（2026-10-20）：
-        - session 仅 get() 实时查询用；run_collect 自己开 raw_data session
-        - 构造函数：(log_service, session=None, fetcher=None)
+    v10（2026-10-22）：
+        - 去掉 session 入参：get() 实时查询已删除，采集事务由 run_collect
+          自行开（get_raw_db_context），无需外部注入
+        - 构造函数：(log_service, fetcher=None, kline_repo=None)
     """
     from contexts.collect.application.service.tech.daily_service import (
         DailyService,
     )
     return DailyService(
         log_service=CollectLogService(),
-        session=session,
+        kline_repo=kline_repo,
     )
 
 

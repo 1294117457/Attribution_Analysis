@@ -22,7 +22,6 @@ from contexts.collect.application.service.base import (
     ServiceKind,
     ServiceMeta,
 )
-from contexts.collect.infrastructure.cache.rate_limit import check
 from contexts.collect.infrastructure.fetcher.tech.NameChangeTushareFetcher import (
     NameChangeTushareFetcher,
 )
@@ -43,7 +42,6 @@ class NameChangeService:
         label='股票曾用名',
         description='全 A 股股票曾用名（Tushare name_change）',
         kind=ServiceKind.FULL_REFRESH,
-        rate_limit=("tushare", 200, 60),
         concurrency=1,
     )
 
@@ -114,7 +112,6 @@ class NameChangeService:
         Yields:
             单次结果 { saved, fail, total, skip, message }
         """
-        await check(self.META.rate_limit)
         for attempt in range(3):
             try:
                 bos = await self._fetcher.fetch()

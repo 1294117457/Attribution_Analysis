@@ -102,7 +102,6 @@ class OperationDispatcher:
 
                     done = 0
                     failed = 0
-                    saved_total = 0
                     details = []
 
                     for symbol in symbols:
@@ -112,19 +111,16 @@ class OperationDispatcher:
                             )
                             break
 
-                        # daily_kline.collect_one 每只股票自开 session、自 commit
+                        # service.collect() 只派发后台任务、不返回结果
+                        # （无返回值是接口约定，见 DailyService.collect）
+                        # → 成功只能记为「已派发」，入库行数查 collect_logs
                         try:
-                            result = await self._run_one("daily_kline", symbol, {"days": days})
-                            saved_total += result.saved_count
+                            await self._run_one("daily", symbol, {"days": days})
                             details.append({
                                 "symbol": symbol,
-                                "status": "success",
-                                "count": result.saved_count,
+                                "status": "dispatched",
                             })
-                            logger.debug(
-                                "采集成功: symbol=%s, count=%d",
-                                symbol, result.saved_count,
-                            )
+                            logger.debug("采集已派发: symbol=%s", symbol)
                         except Exception as e:
                             failed += 1
                             details.append({
@@ -149,8 +145,9 @@ class OperationDispatcher:
                     final_status = "success" if failed == 0 else "partial"
                     result_summary = {
                         "total": len(symbols),
-                        "saved": saved_total,
-                        "skipped": 0,
+                        # collect() 无返回值，入库行数不在这里统计
+                        # （查 collect_logs，service_name=daily）
+                        "dispatched": len(details),
                         "failed": failed,
                         "details": details,
                     }
@@ -164,8 +161,8 @@ class OperationDispatcher:
                     await op_session.commit()
 
                     logger.info(
-                        "任务完成: op_id=%d, status=%s, saved=%d, failed=%d",
-                        op_id, final_status, saved_total, failed,
+                        "任务完成: op_id=%d, status=%s, dispatched=%d, failed=%d",
+                        op_id, final_status, len(details), failed,
                     )
 
                 except asyncio.CancelledError:
