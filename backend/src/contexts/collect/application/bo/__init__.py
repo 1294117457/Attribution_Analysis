@@ -9,6 +9,7 @@ from contexts.collect.application.bo.tech import (
     BaseDividendBO,
     BaseNameChangeBO,
     BaseSuspendBO,
+    DailyFetcherResult,
 )
 from contexts.collect.application.bo.capital import (
     CapBlockTradeBO,
@@ -31,6 +32,7 @@ from contexts.collect.application.bo.fundamental import (
 __all__ = [
     # tech
     "BaseAdjFactorBO", "BaseSuspendBO", "BaseNameChangeBO", "BaseDividendBO",
+    "DailyFetcherResult",
     # capital
     "CapMoneyflowBO", "CapMoneyflowHsgtBO", "CapHsgtTop10BO", "CapLimitListDBO",
     "CapMarginDetailBO", "CapTopListBO", "CapTopInstBO",

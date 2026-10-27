@@ -1,15 +1,14 @@
 import http, { unwrap, type ApiResponse } from '@/common/utils/http'
 
 /**
- * 采集管理 API — v3 TaskRunner 统一派发（2026-10-19）
+ * 采集管理 API — v4 自管协议（2026-10-22）
 
  * 后端路由（contexts/collect/interface/）：
- *   GET  /collect/catalog                        28 service 元数据 catalog
- *   POST /collect/{facet}/{service_name}         触发采集，立即返回 {log_id, status}
- *                                                ★ 所有 INCREMENTAL/FULL_REFRESH service
- *                                                  都返回此格式（v3 统一）；REALTIME
- *                                                  service（minute_kline / concept_minute /
- *                                                  concept_snapshot）走 GET /collect/query/{name}
+ *   GET  /collect/catalog                        service 元数据 catalog
+ *   POST /collect/{facet}/{service_name}         触发采集，立即返回
+ *                                                ★ daily 是强类型 DTO 路由，请求体扁平
+ *                                                  （start_date / end_date / ts_code），
+ *                                                  响应不含 log_id
  *   GET  /collect/logs/{service_name}           查询日志列表
  *   GET  /collect/logs/{service_name}/{log_id}  查询单条日志详情
  *   GET  /collect/query/{name}                  实时查询 service.get()
@@ -19,20 +18,21 @@ import http, { unwrap, type ApiResponse } from '@/common/utils/http'
 //  Types
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** 采集日志 */
+/** 采集日志（后端 collect_logs 表，字段已通用化） */
 export interface CollectLog {
   id: string
   service_name: string
-  facet: string
-  kind: 'incremental' | 'full_refresh' | 'realtime'
+  category: string                                       // 分组维度（采集时 = facet）
+  action: 'incremental' | 'full_refresh' | 'realtime'    // 动作类型（采集时 = kind）
   trigger_source: 'manual' | 'script' | 'schedule'
   trigger_user: string | null
-  params: Record<string, any>
-  status: 'pending' | 'running' | 'success' | 'partial_fail' | 'failed' | 'skipped'
+  meta: Record<string, any>                             // 动态上下文（采集时 = 原始入参）
+  status: 'init' | 'running' | 'success' | 'partial_fail' | 'failed' | 'skipped'
   total_count: number
   saved_count: number
   fail_count: number
   progress: number           // 0-100
+  duration_ms: number | null // 耗时（毫秒）
   error_message: string | null
   started_at: string | null
   finished_at: string | null
@@ -45,13 +45,30 @@ export interface CollectLogListResponse {
   items: CollectLog[]
 }
 
-/** 触发采集响应 */
+/**
+ * 触发采集响应
+ *
+ * ⚠️ v4 自管协议：log_id 不再透出边界（后端 collect() 只派发，不返回 log_id）。
+ *    - daily（强类型 DTO 路由）→ data 为 null，只有 message
+ *    - 其他 service → data 含 log_id / status
+ * 前端统一按 service_name 轮询 GET /collect/logs/{service_name} 取进度。
+ */
 export interface CollectStartResponse {
-  log_id: string
-  status: string
-  service_name: string
-  facet: string
+  log_id?: string | null
+  status?: string | null
+  service_name?: string
+  facet?: string
   message: string
+}
+
+/**
+ * daily 强类型 DTO 请求体（POST /collect/tech/daily）
+ * 注意：扁平结构，**没有** params 外层包装
+ */
+export interface DailyCollectPayload {
+  start_date: string
+  end_date: string
+  ts_code?: string
 }
 
 /** Service 元数据（GET /collect/catalog 列表项） */
@@ -80,7 +97,7 @@ export interface ServiceListResponse {
   items: ServiceItem[]
 }
 
-/** 采集启动 payload（删除 mode 字段） */
+/** 采集启动 payload（通用 service：{ params } 包装） */
 export interface CollectStartPayload {
   params: Record<string, any>
 }
@@ -168,27 +185,85 @@ export const getCollectLog = (serviceName: string, logId: string) =>
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
+ * 强类型 DTO 路由的 service（请求体扁平，没有 { params } 包装）
+ *
+ * daily → POST /collect/tech/daily，body: { start_date, end_date, ts_code? }
+ */
+export const FLAT_BODY_SERVICES = new Set<string>(['daily'])
+
+/**
  * 手动触发一次 service（POST /collect/{facet}/{name}）
- * 返回 log_id，前端用于轮询进度
+ *
+ * ⚠️ v4 自管协议：log_id 不再透出边界，返回可能没有 log_id。
+ *    前端统一按 service_name 轮询 GET /collect/logs/{service_name} 取进度。
  */
 export const runService = async (
   name: string,
-  payload: CollectStartPayload | Record<string, any> = { params: {} },
+  payload: CollectStartPayload | DailyCollectPayload | Record<string, any> = { params: {} },
 ): Promise<CollectStartResponse> => {
   if (!_cachedServices || _cachedServices.length === 0) {
     await waitForServices()
   }
   const path = buildPath(name, `/collect/_unknown/${name}`)
 
-  // 兼容旧调用：直接传 params dict 时自动包装
-  const body: CollectStartPayload = 'params' in (payload as any)
-    ? (payload as CollectStartPayload)
-    : { params: (payload as Record<string, any>) || {} }
+  let body: any
+  if (FLAT_BODY_SERVICES.has(name)) {
+    // 强类型 DTO 路由：扁平 body（去空值，避免 ts_code: '' 触发 422）
+    const src = ('params' in (payload as any)
+      ? (payload as CollectStartPayload).params
+      : (payload as Record<string, any>)) || {}
+    body = Object.fromEntries(
+      Object.entries(src).filter(([, v]) => v !== null && v !== undefined && v !== ''),
+    )
+  } else {
+    // 兼容旧调用：直接传 params dict 时自动包装
+    body = 'params' in (payload as any)
+      ? (payload as CollectStartPayload)
+      : { params: (payload as Record<string, any>) || {} }
+  }
 
   console.log('[collect-manage/api] runService', name, '→', path, body)
-  return await http
-    .post<ApiResponse<CollectStartResponse>>(path, body)
-    .then(unwrap)
+  const res = await http.post<ApiResponse<CollectStartResponse | null>>(path, body)
+  const envelope = res.data
+  const data = unwrap<CollectStartResponse | null>(res)
+  // daily 的 response_model 是 ApiResponse[None] → data 为 null，用信封里的 message
+  return (data ?? { message: envelope?.message || '采集任务派发成功' }) as CollectStartResponse
+}
+
+/** daily 专用触发（强类型 DTO，扁平 body） */
+export const runDailyCollect = (
+  payload: DailyCollectPayload,
+): Promise<CollectStartResponse> => runService('daily', payload)
+
+/**
+ * 把采集触发失败转成可读的中文提示
+ *
+ * 后端异常处理器把 422 归一化成：
+ *   { code: 422, message: "请求参数校验失败", data: { errors: [{loc, msg, type}, ...] } }
+ * 所以优先从 data.errors 里取第一条明细；拿不到再退回 message。
+ */
+export function describeCollectError(e: any): string {
+  const body = e?.response?.data
+  const errors = body?.data?.errors
+  if (Array.isArray(errors) && errors.length > 0) {
+    const first = errors[0]
+    const loc = Array.isArray(first?.loc)
+      ? first.loc.filter((x: any) => x !== 'body').join('.')
+      : ''
+    const msg = first?.msg || '参数校验失败'
+    return loc ? `${loc}: ${msg}` : msg
+  }
+  // 兼容 FastAPI 默认的 { detail: [...] } 格式
+  const detail = body?.detail
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0]
+    const loc = Array.isArray(first?.loc)
+      ? first.loc.filter((x: any) => x !== 'body').join('.')
+      : ''
+    const msg = first?.msg || '参数校验失败'
+    return loc ? `${loc}: ${msg}` : msg
+  }
+  return body?.message || e?.message || '采集失败'
 }
 
 /** 实时查询 service.get() */

@@ -59,18 +59,14 @@ def get_daily_service(
 ):
     """日 K 线 service（写采集库 tech_daily）
 
-    v10（2026-10-22）：
-        - 去掉 session 入参：get() 实时查询已删除，采集事务由 run_collect
-          自行开（get_raw_db_context），无需外部注入
-        - 构造函数：(log_service, fetcher=None, kline_repo=None)
+    v11（2026-10-26）：
+        - 去掉 log_service 入参：日志改用 log_util（工具函数，零注入）
+        - 构造函数：(fetcher=None, kline_repo=None)
     """
     from contexts.collect.application.service.tech.daily_service import (
         DailyService,
     )
-    return DailyService(
-        log_service=CollectLogService(),
-        kline_repo=kline_repo,
-    )
+    return DailyService(kline_repo=kline_repo)
 
 
 def get_minute_service():

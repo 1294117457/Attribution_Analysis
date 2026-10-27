@@ -37,7 +37,7 @@ def _build_collect_service(task_type: str):
 
     # task_type 键保持稳定：URL/service_name，不能改
     if task_type == "daily":
-        return DailyService(log_service=CollectLogService())
+        return DailyService()
     if task_type == "daily_basic":
         from contexts.collect.infrastructure.adapter.background import (
             get_collect_task_runner,

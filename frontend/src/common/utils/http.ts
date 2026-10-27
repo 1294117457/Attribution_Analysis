@@ -170,7 +170,11 @@ http.interceptors.response.use(
       ElMessage.error('服务器错误')
     }
 
-    return Promise.reject(new Error(msg))
+    // ★ 保留原始响应体：422 校验失败时 data.errors 里有字段级明细，
+    //   丢掉后调用方只能看到「请求参数校验失败」这种笼统提示。
+    const err = new Error(msg) as Error & { response?: AxiosError<ApiResponse>['response'] }
+    err.response = error.response
+    return Promise.reject(err)
   },
 )
 

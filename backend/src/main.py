@@ -17,7 +17,7 @@ from app.middleware import register_middlewares
 from app.init_db import ensure_attrib_tables
 
 # 导入所有 ORM 模型（确保 SQLAlchemy 自动建表）
-from contexts.collect.infrastructure.persistence.models.collect_log import CollectLogDB  # noqa: F401
+from shared.infrastructure.persistence.models import CollectLogDB  # noqa: F401
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,14 +49,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 自动建表（Phase 2 修复：v2 新增 collect_logs 等表，幂等）
     await ensure_attrib_tables()
 
-    # 启动时恢复 orphan 日志（v3 新增；step8 起日志服务自管 session）
+    # 启动时恢复 orphan 日志（status=init → failed）
     try:
-        from contexts.collect.application.service.manage import CollectLogService
-        # CollectLogService 直接 import 全局 redis 单例，无需注入
-        log_service = CollectLogService()
-        recovered = await log_service.recover_orphan_logs(timeout_minutes=30)
+        from shared.infrastructure.log_util import log_util
+        recovered = await log_util.recover_orphan_logs(timeout_minutes=30)
         if recovered:
-            logger.info("进程启动：恢复 %d 个 orphan 日志（status=running → failed）", recovered)
+            logger.info("进程启动：恢复 %d 个 orphan 日志（status=init → failed）", recovered)
     except Exception as e:
         logger.warning("recover_orphan_logs 跳过（启动期容错）: %r", e)
 

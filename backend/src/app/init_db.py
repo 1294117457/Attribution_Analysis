@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # 显式 import 列表（Phase 2 修复：确保 collect_log 被注册）
 # 新增 ORM 时记得在这里加 import
 _REQUIRED_MODEL_IMPORTS = (
-    "contexts.collect.infrastructure.persistence.models.collect_log",
+    "shared.infrastructure.persistence.models.collect_log",
 )
 
 

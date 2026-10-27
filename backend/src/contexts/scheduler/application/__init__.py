@@ -4,5 +4,6 @@
 后续接入时按 collect runner 的语义补：
   - ScheduleAppService        (CRUD / 启停 / 改 / 删)
   - ScheduleRunner            (轮询 schedule 表 + 触发 service)
-  - RunLogService             (写运行日志)
+
+运行日志不写本 context 的 service —— 统一走 `shared.infrastructure.log_util`。
 """

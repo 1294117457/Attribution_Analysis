@@ -92,10 +92,7 @@ from contexts.collect.infrastructure.persistence.repositories.concept_snapshot_r
 from contexts.collect.infrastructure.persistence.repositories.news_article_repo import (
     NewsArticleRepository,
 )
-# collect logs (v2 采集日志进度优化)
-from contexts.collect.infrastructure.persistence.repositories.collect_log_repository import (
-    CollectLogRepository,
-)
+# collect logs (v2 采集日志进度优化) —— 已迁至 shared/infrastructure/persistence/
 
 __all__ = [
     # 既有
@@ -129,6 +126,4 @@ __all__ = [
     "ConceptSnapshotRepository",
     # news
     "NewsArticleRepository",
-    # collect logs
-    "CollectLogRepository",
 ]

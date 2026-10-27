@@ -13,7 +13,7 @@ router = APIRouter()
 
 @router.post(
     "/daily",
-    summary="日 K 线采集（时间范围全市场，可选指定 ts_code 只采单只）",
+    summary="日 K 线采集（按时间范围采全市场）",
     response_model=ApiResponse[None],
 )
 async def daily_trigger(body: DailyCollectRequest, svc=Depends(get_daily_service)):

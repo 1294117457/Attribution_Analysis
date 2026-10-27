@@ -23,7 +23,7 @@
         class="log-item"
         :class="{
           'log-item--active': log.id === activeLogId,
-          'log-item--running': log.status === 'running' || log.status === 'pending',
+          'log-item--running': log.status === 'running' || log.status === 'init',
         }"
         @click="$emit('select', log)"
       >
@@ -34,7 +34,7 @@
             </el-icon>
             <div class="log-item__info">
               <div class="log-item__time">{{ formatTime(log.started_at) }}</div>
-              <div class="log-item__params">{{ formatParams(log.params) }}</div>
+              <div class="log-item__params">{{ formatLogParams(log.meta) }}</div>
             </div>
           </div>
           <div class="log-item__right">
@@ -88,7 +88,7 @@ defineEmits<{
 
 function getStatusLabel(status: string): string {
   const map: Record<string, string> = {
-    pending: '等待',
+    init: '已创建',
     running: '采集中',
     success: '成功',
     partial_fail: '部分失败',
@@ -100,7 +100,7 @@ function getStatusLabel(status: string): string {
 
 function getStatusColor(status: string): string {
   const map: Record<string, string> = {
-    pending: '#94a3b8',
+    init: '#94a3b8',
     running: '#3b82f6',
     success: '#22c55e',
     partial_fail: '#f59e0b',
@@ -112,7 +112,7 @@ function getStatusColor(status: string): string {
 
 function getStatusTagType(status: string): any {
   const map: Record<string, any> = {
-    pending: 'info',
+    init: 'info',
     running: 'primary',
     success: 'success',
     partial_fail: 'warning',
@@ -147,15 +147,23 @@ function formatTime(iso: string | null): string {
   })
 }
 
-function formatParams(params: Record<string, any> | null): string {
+/** 日志参数展示：daily 的 start_date/end_date/ts_code 更可读 */
+const PARAM_LABELS: Record<string, string> = {
+  start_date: '起',
+  end_date: '止',
+  ts_code: '代码',
+}
+
+function formatLogParams(params: Record<string, any> | null): string {
   if (!params) return ''
   const entries = Object.entries(params).filter(([, v]) => v !== null && v !== undefined && v !== '')
   if (entries.length === 0) return '全量采集'
-  return entries.map(([k, v]) => {
-    if (Array.isArray(v)) return `${k}: ${v.length}个`
-    if (typeof v === 'string') return `${k}: ${v.substring(0, 10)}`
-    return `${k}: ${v}`
-  }).join(', ')
+  const parts = entries.map(([k, v]) => {
+    const label = PARAM_LABELS[k] || k
+    if (Array.isArray(v)) return `${label} ${v.length}个`
+    return `${label} ${v}`
+  })
+  return parts.join(' · ')
 }
 </script>
 

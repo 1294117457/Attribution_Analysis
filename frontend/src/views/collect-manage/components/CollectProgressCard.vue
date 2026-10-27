@@ -3,7 +3,7 @@
 
   实时显示采集进度：
     - 进度条（0-100%）
-    - 状态标签（pending/running/success/partial_fail/failed）
+    - 状态标签（init/running/success/partial_fail/failed）
     - 保存/失败数量
     - 开始时间、耗时
 -->
@@ -20,7 +20,7 @@
         </el-tag>
       </div>
       <el-button
-        v-if="log.status === 'pending' || log.status === 'running'"
+        v-if="log.status === 'init' || log.status === 'running'"
         type="danger"
         size="small"
         text
@@ -48,7 +48,7 @@
           <span class="stat__value">{{ log.progress }}%</span>
         </div>
         <div class="stat">
-          <span class="stat__label">已保存</span>
+          <span class="stat__label">{{ props.savedLabel }}</span>
           <span class="stat__value text-green-600">{{ log.saved_count.toLocaleString() }}</span>
         </div>
         <div class="stat">
@@ -56,7 +56,7 @@
           <span class="stat__value text-red-500">{{ log.fail_count.toLocaleString() }}</span>
         </div>
         <div class="stat">
-          <span class="stat__label">预估总数</span>
+          <span class="stat__label">{{ props.totalLabel }}</span>
           <span class="stat__value">{{ log.total_count.toLocaleString() }}</span>
         </div>
       </div>
@@ -85,9 +85,16 @@ import { computed } from 'vue'
 import { CircleCheck, CircleClose, Loading, Clock, Warning } from '@element-plus/icons-vue'
 import type { CollectLog } from '../api'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   log: CollectLog
-}>()
+  /** 「已保存」统计的标签（daily 是「已采集」单元数） */
+  savedLabel?: string
+  /** 「预估总数」统计的标签（daily 是「总天数」） */
+  totalLabel?: string
+}>(), {
+  savedLabel: '已保存',
+  totalLabel: '预估总数',
+})
 
 defineEmits<{
   stop: []
@@ -96,7 +103,7 @@ defineEmits<{
 /** 状态标签 */
 const statusLabel = computed(() => {
   const map: Record<string, string> = {
-    pending: '等待中',
+    init: '已创建',
     running: '采集中',
     success: '成功',
     partial_fail: '部分失败',
@@ -109,7 +116,7 @@ const statusLabel = computed(() => {
 /** 状态颜色 */
 const statusColor = computed(() => {
   const map: Record<string, string> = {
-    pending: '#94a3b8',
+    init: '#94a3b8',
     running: '#3b82f6',
     success: '#22c55e',
     partial_fail: '#f59e0b',
@@ -122,7 +129,7 @@ const statusColor = computed(() => {
 /** Element Plus tag 类型 */
 const statusTagType = computed(() => {
   const map: Record<string, any> = {
-    pending: 'info',
+    init: 'info',
     running: 'primary',
     success: 'success',
     partial_fail: 'warning',

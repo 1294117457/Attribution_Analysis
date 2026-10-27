@@ -9,6 +9,10 @@
   v5（2026-10-21）：incremental 的时间范围改为必选。
   后端 DailyService.collect() 会校验 start_date / end_date，
   缺失直接返回 400，所以前端不再允许「留空按默认」。
+
+  v6（2026-10-22）：daily 走强类型 DTO 路由（POST /collect/tech/daily），
+    请求体扁平（start_date / end_date / ts_code），并新增可选股票代码输入框
+    —— 填了只采单只股票，不填则按自然日展开采全市场。
 -->
 <template>
   <CollectCard :title="item.label" :description="item.description">
@@ -25,7 +29,19 @@
         :clearable="false"
         class="!w-96"
       />
-      <span class="hint">必选 · symbol 固定取自 stock_basic（全市场）</span>
+      <span class="hint">必选 · 不填股票代码则按自然日展开采全市场</span>
+    </CollectCardRow>
+
+    <!-- daily：可选股票代码（只采单只） -->
+    <CollectCardRow v-if="isDaily" label="股票代码">
+      <el-input
+        v-model="tsCode"
+        size="small"
+        placeholder="留空 = 全市场；如 000001 / 000001.SZ"
+        clearable
+        style="width: 260px"
+      />
+      <span class="hint">可选 · 6 位代码或带后缀</span>
     </CollectCardRow>
 
     <!-- 全量覆盖：无参数，显示采集说明 -->
@@ -67,8 +83,14 @@ const emit = defineEmits<{
 const isIncremental = computed(() => props.item.kind === 'incremental')
 const isFullRefresh = computed(() => props.item.kind === 'full_refresh')
 
+/** daily 走强类型 DTO 路由，额外支持可选 ts_code（只采单只） */
+const isDaily = computed(() => props.serviceName === 'daily')
+
 // ── 时间选择器（仅增量采集） ──────────────────────────────
 const dateRange = ref<[string, string] | null>(null)
+
+/** daily 的可选股票代码（留空 = 全市场） */
+const tsCode = ref('')
 
 /** 增量采集必须先选时间范围（后端 collect() 强制校验） */
 const disabled = computed(
@@ -114,6 +136,7 @@ watch(
   () => props.serviceName,
   () => {
     dateRange.value = null
+    tsCode.value = ''
   },
 )
 
@@ -134,7 +157,26 @@ function start() {
     params.end_date = end
   }
 
+  // daily：可选股票代码（留空 = 全市场）
+  if (isDaily.value) {
+    const code = tsCode.value.trim()
+    if (code && !isValidTsCode(code)) {
+      ElMessage.warning('股票代码格式非法：应为 6 位数字或带 .SH/.SZ/.BJ 后缀')
+      return
+    }
+    if (code) params.ts_code = code
+  }
+
   emit('start', { params })
+}
+
+/** ts_code 格式校验（对齐后端 shared.interface.validators.to_ts_code） */
+function isValidTsCode(code: string): boolean {
+  if (code.includes('.')) {
+    const [num, suffix] = code.split('.')
+    return /^\d{6}$/.test(num) && ['SH', 'SZ', 'BJ'].includes(suffix.toUpperCase())
+  }
+  return /^\d{6}$/.test(code)
 }
 </script>
 
