@@ -79,6 +79,15 @@ class Settings(BaseSettings):
     # 用英文逗号分隔的用户名列表
     SYSTEM_ACCOUNTS: str = ""
 
+    # ── JWT 签名密钥（★ 敏感，禁止提交到 git）──────────────────
+    # 优先级：环境变量/`.env` 的 JWT_PRIVATE_KEY_PEM > 运行时自动生成的文件
+    #   JWT_PRIVATE_KEY_PEM: 多行 PEM 用字面量 \n 连接（.env 单行限制）
+    #   JWT_PUBLIC_KEY_PEM : 同上，留空则由私钥自动推导
+    # ⚠️ 留空 → key_manager 在 `backend/.keys/` 自动生成 RSA 密钥对（开发默认）
+    # ⚠️ 生产环境务必显式配置（容器多副本时自动生成的密钥彼此不匹配 → 验签失败）
+    JWT_PRIVATE_KEY_PEM: str = ""
+    JWT_PUBLIC_KEY_PEM: str = ""
+
 
 _settings: Settings | None = None
 _lock = threading.Lock()

@@ -1,9 +1,13 @@
 ﻿"""JWT 密钥管理
 
-启动时若 `backend/.keys/` 不存在或缺少 RSA 密钥对,首次调用即自动生成
-(2048-bit RSA / PKCS8 PEM),私钥 `chmod 600`。
+密钥来源优先级（★ 敏感信息一律来自环境变量 / `.env`，禁止入库）：
 
-密钥存放在仓库外的运行时目录,不提交到 git（见 backend/.gitignore）。
+1. **环境变量 / `.env`**：`JWT_PRIVATE_KEY_PEM`（可选 `JWT_PUBLIC_KEY_PEM`）
+   —— 生产环境推荐：容器多副本共享同一份密钥，避免自动生成的密钥彼此不匹配。
+2. **运行时文件**：`backend/.keys/jwt_private.pem`（不存在则自动生成 2048-bit RSA / PKCS8 PEM，私钥 chmod 600）。
+3. **自动生成**：首次调用 `_ensure_keys()` 时生成并落盘到 `.keys/`。
+
+⚠️ `.keys/` 目录与 `*.pem` 均已在 `.gitignore` 中，禁止提交到 git。
 """
 from __future__ import annotations
 
@@ -26,9 +30,61 @@ _public_key: rsa.RSAPublicKey | None = None
 _kid: str | None = None
 
 
+def _pem_from_settings() -> tuple[str | None, str | None]:
+    """从配置（`.env` / 环境变量）读取 PEM 密钥（支持字面量 `\\n` 换行）。
+
+    ★ `.env` 是单行文本格式，多行 PEM 需写成 ``JWT_PRIVATE_KEY_PEM=-----BEGIN...\\n...``。
+      同时兼容真实换行。
+    ★ 走 `get_settings()` 而非 `os.environ` —— pydantic-settings 只把 `.env`
+      读进 Settings 对象，**不会**写回 `os.environ`。
+    """
+    try:
+        from shared.infrastructure.config.settings import get_settings
+
+        settings = get_settings()
+        priv = (settings.JWT_PRIVATE_KEY_PEM or "").strip()
+        pub = (settings.JWT_PUBLIC_KEY_PEM or "").strip()
+    except Exception:  # noqa: BLE001 — 配置不可用时退回 os.environ
+        priv = (os.environ.get("JWT_PRIVATE_KEY_PEM") or "").strip()
+        pub = (os.environ.get("JWT_PUBLIC_KEY_PEM") or "").strip()
+    if not priv:
+        return None, None
+    # 字面量 "\n" → 真实换行
+    priv = priv.replace("\\n", "\n")
+    pub = pub.replace("\\n", "\n")
+    return priv, pub or None
+
+
+def _load_from_env() -> bool:
+    """尝试从环境变量 / `.env` 加载密钥；成功返回 True。"""
+    global _private_key, _public_key, _kid
+
+    priv_pem, pub_pem = _pem_from_settings()
+    if not priv_pem:
+        return False
+    try:
+        _private_key = serialization.load_pem_private_key(
+            priv_pem.encode("utf-8"), password=None, backend=default_backend())
+        if pub_pem:
+            _public_key = serialization.load_pem_public_key(
+                pub_pem.encode("utf-8"), backend=default_backend())
+        else:
+            _public_key = _private_key.public_key()
+        _kid = "env"
+        return True
+    except Exception as e:  # noqa: BLE001 — 配置错误不应让服务起不来，但要明确报错
+        raise RuntimeError(
+            "JWT_PRIVATE_KEY_PEM / JWT_PUBLIC_KEY_PEM 解析失败，请检查 .env 中的 PEM 格式"
+        ) from e
+
+
 def _ensure_keys() -> None:
     """确保 RSA 密钥对存在;若缺失则生成。"""
     global _private_key, _public_key, _kid
+
+    # ① 优先用环境变量 / .env（生产推荐）
+    if _load_from_env():
+        return
 
     _KEY_DIR.mkdir(parents=True, exist_ok=True)
 
