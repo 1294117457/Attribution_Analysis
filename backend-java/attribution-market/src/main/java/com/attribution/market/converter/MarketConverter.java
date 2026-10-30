@@ -45,6 +45,10 @@ public final class MarketConverter {
         vo.setActName(po.getActName());
         vo.setActEntType(po.getActEntType());
         vo.setTotalShares(po.getTotalShares());
+        vo.setFullname(po.getFullname());
+        vo.setEnname(po.getEnname());
+        vo.setCnspell(po.getCnspell());
+        vo.setCurrType(po.getCurrType());
         return vo;
     }
 

@@ -1,10 +1,9 @@
 package com.attribution.concept.vo;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 import lombok.Data;
 
-/** 概念视图对象 */
 @Data
 public class ConceptVO {
     private Integer conceptId;
@@ -12,9 +11,11 @@ public class ConceptVO {
     private String name;
     private String source;
     private String conceptType;
-    private Integer stockCount;
     private String description;
+    private Integer stockCount;
     private Boolean isActive;
-    private LocalDateTime lastSyncedAt;
-    private LocalDateTime firstSeenAt;
+    /** 最近同步时间（timestamptz） */
+    private OffsetDateTime lastSyncedAt;
+    /** 首次发现时间（timestamptz） */
+    private OffsetDateTime firstSeenAt;
 }

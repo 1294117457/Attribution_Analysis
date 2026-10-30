@@ -375,10 +375,6 @@ export const listStocks = (params?: { industry?: string; market?: string }) =>
 export const getStock = (symbol: string) =>
   http.get<StockListItem>(`/stocks/${symbol}`).then(unwrap)
 
-/** DELETE /stocks/{symbol}  删除股票 */
-export const deleteStock = (symbol: string) =>
-  http.delete(`/stocks/${symbol}`).then(unwrap)
-
 // ── K 线采集 & 查询（响应含 17 个指标列）───────────────────────
 // 采集已转后台任务：返回 {task_id, total}，前端轮询 /collect/tasks/{id} 看进度。
 

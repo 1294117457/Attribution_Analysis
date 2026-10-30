@@ -5,7 +5,6 @@ import java.util.Map;
 
 import com.attribution.common.response.PageResult;
 import com.attribution.market.dto.StockPanelQuery;
-import com.attribution.market.dto.StockUpdateRequest;
 import com.attribution.market.vo.StockBriefVO;
 import com.attribution.market.vo.StockInfoVO;
 import com.attribution.market.vo.StockMetaVO;
@@ -20,12 +19,6 @@ public interface StockInfoService {
     StockMetaVO meta();
 
     StockInfoVO get(String symbol);
-
-    StockInfoVO upsert(String symbol, String name, String industry, String market);
-
-    StockInfoVO patch(String symbol, StockUpdateRequest request);
-
-    void delete(String symbol);
 
     PageResult<StockPanelVO> page(StockPanelQuery query);
 

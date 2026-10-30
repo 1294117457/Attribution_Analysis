@@ -6,6 +6,13 @@ import com.baomidou.mybatisplus.annotation.*;
 
 import lombok.Data;
 
+/**
+ * 股票基础信息。
+ *
+ * <p>表 {@code raw_data.fundamental_stock_basic}（**采集库** raw_data）。
+ *
+ * <p>⚠️ 该表由 Collector 独占写入，Java **只读**。
+ */
 @Data
 @TableName("fundamental_stock_basic")
 public class StockInfoPO {
@@ -43,4 +50,20 @@ public class StockInfoPO {
 
     @TableField("act_ent_type")
     private String actEntType;
+
+    /** 公司全称 */
+    @TableField("fullname")
+    private String fullname;
+
+    /** 英文名称 */
+    @TableField("enname")
+    private String enname;
+
+    /** 拼音缩写 */
+    @TableField("cnspell")
+    private String cnspell;
+
+    /** 货币类型 */
+    @TableField("curr_type")
+    private String currType;
 }

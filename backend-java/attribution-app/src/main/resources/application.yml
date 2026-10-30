@@ -12,26 +12,43 @@ spring:
   config:
     import: "optional:file:.env[.properties],optional:file:backend-java/.env[.properties],optional:file:../.env[.properties]"
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/attribution}
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:password}
-    driver-class-name: org.postgresql.Driver
-    # 连接池（HikariCP）——见 docs/规范文档/横切技术规范/基础设施规范.md
-    hikari:
-      # 最大连接数：必须 ≥ 同时可能占用连接的线程数（Tomcat 线程 + 业务线程池并发）
-      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
-      # 最小空闲连接：避免冷启动首个请求要等建连
-      minimum-idle: ${DB_POOL_MIN_IDLE:5}
-      # 获取连接的最大等待时间（毫秒）。超时抛 SQLTransientConnectionException，
-      # 远端 PG 必须短，超时说明连接池已被打满，应尽快暴露而不是无限等待
-      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT:30000}
-      # 空闲连接回收时间（毫秒）。应小于 max-lifetime，否则连接不会被回收
-      idle-timeout: ${DB_POOL_IDLE_TIMEOUT:600000}
-      # 连接最大存活时间（毫秒），应大于 idle-timeout，且小于数据库侧的连接回收时间
-      # （如 idle_in_transaction_session_timeout），避免被 DB 单方面掐断
-      max-lifetime: ${DB_POOL_MAX_LIFETIME:1800000}
-      # 泄漏检测：持有超过该时长（毫秒）的连接会被记录，用于发现忘记 close 的连接
-      leak-detection-threshold: ${DB_POOL_LEAK_DETECTION:60000}
+    # ★ 双数据源（biz = 业务库 attribution，raw = 采集库 raw_data）
+    #   见 docs/开发文档/股票信息模块/step1/股票信息模块开发文档（Step 1 · 双数据源落地 + 表名对齐）.md
+    #   规范：docs/规范文档/多库分工与数据源规范.md
+    dynamic:
+      # 默认数据源 = 业务库；采集表 Mapper 必须显式标 @DS("raw")
+      primary: biz
+      # ★ strict: true —— 未标 @DS 的 Mapper 首次调用直接报错，不静默连错库
+      strict: true
+      datasource:
+        biz:
+          url: ${SPRING_DATASOURCE_BIZ_URL:jdbc:postgresql://localhost:5432/attribution}
+          username: ${DB_USERNAME:postgres}
+          password: ${DB_PASSWORD:password}
+          driver-class-name: org.postgresql.Driver
+        raw:
+          url: ${SPRING_DATASOURCE_RAW_URL:jdbc:postgresql://localhost:5432/raw_data}
+          username: ${DB_USERNAME:postgres}
+          password: ${DB_PASSWORD:password}
+          driver-class-name: org.postgresql.Driver
+      hikari:
+        # 最大连接数：必须 ≥ 同时可能占用连接的线程数（Tomcat 线程 + 业务线程池并发）
+        # ⚠️ 双池合计 = 2 × maximum-pool-size，须 < DB 侧 max_connections
+        maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+        # 最小空闲连接：避免冷启动首个请求要等建连
+        minimum-idle: ${DB_POOL_MIN_IDLE:2}
+        # 获取连接的最大等待时间（毫秒）。超时抛 SQLTransientConnectionException，
+        # 远端 PG 必须短，超时说明连接池已被打满，应尽快暴露而不是无限等待
+        connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT:30000}
+        # 空闲连接回收时间（毫秒）。应小于 max-lifetime，否则连接不会被回收
+        idle-timeout: ${DB_POOL_IDLE_TIMEOUT:600000}
+        # 连接最大存活时间（毫秒），应大于 idle-timeout，且小于数据库侧的连接回收时间
+        # （如 idle_in_transaction_session_timeout），避免被 DB 单方面掐断
+        max-lifetime: ${DB_POOL_MAX_LIFETIME:1800000}
+        # 泄漏检测：持有超过该时长（毫秒）的连接会被记录，用于发现忘记 close 的连接
+        leak-detection-threshold: ${DB_POOL_LEAK_DETECTION:60000}
+        # 空闲连接探活：远端 PG 可能单方面断连，取连接前先 ping 一次
+        pool-pre-ping: true
   data:
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}

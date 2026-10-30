@@ -26,6 +26,7 @@ import com.attribution.concept.entity.ConceptIndexPO;
 import com.attribution.concept.entity.ConceptPO;
 import com.attribution.concept.mapper.ConceptIndexMapper;
 import com.attribution.concept.mapper.ConceptMapper;
+import com.attribution.concept.mapper.ConceptPoolMembershipQueryMapper;
 import com.attribution.concept.mapper.ConceptMemberMapper;
 import com.attribution.concept.service.ConceptService;
 import com.attribution.concept.vo.*;
@@ -40,6 +41,8 @@ public class ConceptServiceImpl implements ConceptService {
     private final ConceptMapper conceptMapper;
     private final ConceptMemberMapper conceptMemberMapper;
     private final ConceptIndexMapper conceptIndexMapper;
+    /** 池归属查询（业务库 attribution，与采集库 Mapper 分开） */
+    private final ConceptPoolMembershipQueryMapper conceptPoolMembershipQueryMapper;
     private final CollectorService collectorService;
 
     static final List<String> CONCEPT_TYPE_ORDER =
@@ -432,8 +435,8 @@ public class ConceptServiceImpl implements ConceptService {
         List<String> symbols = rows.stream().map(ConceptMapper.ConceptMemberRow::getSymbol).toList();
         Map<String, List<PoolMembershipVO>> poolsBySymbol = new HashMap<>();
         if (query.isWithPools() && !symbols.isEmpty())
-            for (ConceptMemberMapper.PoolMembershipRow row :
-                    conceptMemberMapper.selectPoolMemberships(symbols)) {
+            for (com.attribution.concept.mapper.row.ConceptPoolMembershipRow row :
+                    conceptPoolMembershipQueryMapper.selectPoolMemberships(symbols)) {
                 PoolMembershipVO poolVO = new PoolMembershipVO();
                 poolVO.setPoolId(row.getPoolId());
                 poolVO.setName(row.getName());

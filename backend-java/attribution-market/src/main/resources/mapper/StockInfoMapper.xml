@@ -3,37 +3,7 @@
     "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.attribution.market.mapper.StockInfoMapper">
 
-    <!-- 股票所属自选池：批量联查 stock_pool_members + stock_pools -->
-    <select id="selectPoolMemberships" resultType="com.attribution.market.mapper.StockInfoMapper$PoolMembershipRow">
-        SELECT m.symbol AS symbol,
-               p.id     AS pool_id,
-               p.name   AS name,
-               p.pool_type AS pool_type
-        FROM stock_pool_members m
-        JOIN stock_pools p ON p.id = m.pool_id
-        WHERE m.symbol IN
-        <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
-            #{symbol}
-        </foreach>
-          AND (p.is_archived IS NULL OR p.is_archived = false)
-        ORDER BY m.symbol, p.id
-    </select>
-
-    <!-- 股票所属自选池（单只） -->
-    <select id="selectPoolMembershipsBySymbol"
-            resultType="com.attribution.market.mapper.StockInfoMapper$PoolMembershipRow">
-        SELECT m.symbol AS symbol,
-               p.id     AS pool_id,
-               p.name   AS name,
-               p.pool_type AS pool_type
-        FROM stock_pool_members m
-        JOIN stock_pools p ON p.id = m.pool_id
-        WHERE m.symbol = #{symbol}
-          AND (p.is_archived IS NULL OR p.is_archived = false)
-        ORDER BY p.id
-    </select>
-
-    <!-- 股票所属概念：批量联查 fundamental_concept_member + fundamental_concept -->
+    <!-- 股票所属概念：批量联查 fundamental_concept_member + fundamental_concept（采集库 raw_data） -->
     <select id="selectConceptBriefs" resultType="com.attribution.market.mapper.StockInfoMapper$ConceptBriefRow">
         SELECT m.symbol AS symbol,
                c.id     AS concept_id,
@@ -43,9 +13,14 @@
         FROM fundamental_concept_member m
         JOIN fundamental_concept c ON c.id = m.concept_id
         WHERE m.symbol IN
-        <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
-            #{symbol}
-        </foreach>
+        <choose>
+            <when test="symbols != null and symbols.size() > 0">
+                <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
+                    #{symbol}
+                </foreach>
+            </when>
+            <otherwise>NULL</otherwise>
+        </choose>
         ORDER BY m.symbol, c.id
     </select>
 
@@ -65,21 +40,6 @@
         WHERE d.total_mv &gt;= #{minTotalMv}
     </select>
 
-    <!-- K 线记录数 -->
-    <select id="countKline" resultType="long">
-        SELECT COUNT(*) FROM tech_kline_daily WHERE symbol = #{symbol}
-    </select>
-
-    <!-- K 线最早日期 -->
-    <select id="selectMinKlineDate" resultType="java.lang.String">
-        SELECT MIN(date)::text FROM tech_kline_daily WHERE symbol = #{symbol}
-    </select>
-
-    <!-- K 线最晚日期 -->
-    <select id="selectMaxKlineDate" resultType="java.lang.String">
-        SELECT MAX(date)::text FROM tech_kline_daily WHERE symbol = #{symbol}
-    </select>
-
     <!--
         股票面板统计（一次查询替代 Service 层 N+1 逐行查询）。
         每只股票聚合出：K 线数量、K 线起止日期、最新一条 daily_basic 估值、最新合并报表净利率。
@@ -91,11 +51,16 @@
                    COUNT(*)      AS record_count,
                    MIN(date)::text AS kline_start,
                    MAX(date)::text AS kline_end
-            FROM tech_kline_daily
+            FROM tech_daily
             WHERE symbol IN
-            <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
-                #{symbol}
-            </foreach>
+            <choose>
+                <when test="symbols != null and symbols.size() > 0">
+                    <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
+                        #{symbol}
+                    </foreach>
+                </when>
+                <otherwise>NULL</otherwise>
+            </choose>
             GROUP BY symbol
         ),
         latest_basic AS (
@@ -104,22 +69,32 @@
             JOIN (SELECT symbol, MAX(trade_date) AS md
                   FROM fundamental_daily_basic
                   WHERE symbol IN
-                  <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
-                      #{symbol}
-                  </foreach>
+                  <choose>
+                      <when test="symbols != null and symbols.size() > 0">
+                          <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
+                              #{symbol}
+                          </foreach>
+                      </when>
+                      <otherwise>NULL</otherwise>
+                  </choose>
                   GROUP BY symbol) t
               ON t.symbol = d.symbol AND t.md = d.trade_date
         ),
         latest_report AS (
             SELECT r.symbol, r.n_income, r.revenue
-            FROM fundamental_report r
+            FROM fundamental_income r
             JOIN (SELECT symbol, MAX(end_date) AS md
-                  FROM fundamental_report
+                  FROM fundamental_income
                   WHERE report_type = '1'
                     AND symbol IN
-                  <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
-                      #{symbol}
-                  </foreach>
+                  <choose>
+                      <when test="symbols != null and symbols.size() > 0">
+                          <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
+                              #{symbol}
+                          </foreach>
+                      </when>
+                      <otherwise>NULL</otherwise>
+                  </choose>
                   GROUP BY symbol) t
               ON t.symbol = r.symbol AND t.md = r.end_date
             WHERE r.report_type = '1'
@@ -133,7 +108,9 @@
                b.pe_ttm                AS pe_ttm,
                CASE
                    WHEN r.revenue IS NULL OR r.revenue = 0 THEN NULL
-                   ELSE ROUND((r.n_income / r.revenue) * 100, 2)
+                   -- ⚠️ n_income / revenue 都是 double precision，PG 的 round(double, int) 不存在，
+                   --    必须先转 numeric 再 round，否则报 function round(double precision, integer) does not exist
+                   ELSE ROUND(((r.n_income / r.revenue) * 100)::numeric, 2)
                END                     AS profit_margin
         FROM kline k
         LEFT JOIN latest_basic b ON b.symbol = k.symbol

@@ -20,4 +20,12 @@ public class StockInfoVO {
     private String actName;
     private String actEntType;
     private Long totalShares;
+    /** 公司全称 */
+    private String fullname;
+    /** 英文名称 */
+    private String enname;
+    /** 拼音缩写 */
+    private String cnspell;
+    /** 货币类型 */
+    private String currType;
 }

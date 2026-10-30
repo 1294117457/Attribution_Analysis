@@ -6,9 +6,11 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import com.attribution.concept.entity.ConceptPO;
+import com.baomidou.dynamic.datasource.annotation.DS;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 
 @Mapper
+@DS("raw")
 public interface ConceptMapper extends BaseMapper<ConceptPO> {
 
     /** 按股票代码反查所属概念（联查 concept_member + concept） */

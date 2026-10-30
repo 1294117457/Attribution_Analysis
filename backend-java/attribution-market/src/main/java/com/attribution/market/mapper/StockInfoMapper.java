@@ -7,21 +7,22 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import com.attribution.market.entity.StockInfoPO;
+import com.baomidou.dynamic.datasource.annotation.DS;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 
+/**
+ * 股票基础信息 Mapper（**采集库** raw_data）。
+ *
+ * <p>基表 {@code fundamental_stock_basic} 在 raw_data 库，由 Collector 独占写入，Java 只读。
+ *
+ * <p>★ 池归属查询在 {@link PoolMembershipQueryMapper}（业务库），本接口不跨库。
+ */
 @Mapper
+@DS("raw")
 public interface StockInfoMapper extends BaseMapper<StockInfoPO> {
 
     /**
-     * 批量取股票所属自选池（跨表联查 stock_pool_members + stock_pools）。
-     *
-     * @param symbols 股票代码列表
-     * @return 视图行：symbol / pool_id / name / pool_type
-     */
-    List<PoolMembershipRow> selectPoolMemberships(@Param("symbols") List<String> symbols);
-
-    /**
-     * 批量取股票所属概念（跨表联查 fundamental_concept_member + fundamental_concept）。
+     * 批量取股票所属概念（联查 fundamental_concept_member + fundamental_concept，均在 raw_data）。
      *
      * @param symbols 股票代码列表
      * @return 视图行：symbol / concept_id / name / source / concept_type
@@ -34,17 +35,6 @@ public interface StockInfoMapper extends BaseMapper<StockInfoPO> {
     /** 按总市值下限过滤股票代码 */
     List<String> selectSymbolsByMinTotalMv(@Param("minTotalMv") Double minTotalMv);
 
-    /** K 线记录数 */
-    long countKline(@Param("symbol") String symbol);
-
-    /** K 线最早 / 最晚日期 */
-    String selectMinKlineDate(@Param("symbol") String symbol);
-
-    String selectMaxKlineDate(@Param("symbol") String symbol);
-
-    /** 股票所属自选池（单只，供归因分析使用） */
-    List<PoolMembershipRow> selectPoolMembershipsBySymbol(@Param("symbol") String symbol);
-
     /**
      * 批量取股票面板所需的统计指标（一次查询替代 N+1）。
      *
@@ -55,46 +45,6 @@ public interface StockInfoMapper extends BaseMapper<StockInfoPO> {
      * @return 视图行，与入参 symbols 一一对应（无数据时该股票不出现在结果中）
      */
     List<StockStatRow> selectStockStats(@Param("symbols") List<String> symbols);
-
-    /** 股票所属自选池视图行 */
-    class PoolMembershipRow {
-        private String symbol;
-        private Integer poolId;
-        private String name;
-        private String poolType;
-
-        public String getSymbol() {
-            return symbol;
-        }
-
-        public void setSymbol(String symbol) {
-            this.symbol = symbol;
-        }
-
-        public Integer getPoolId() {
-            return poolId;
-        }
-
-        public void setPoolId(Integer poolId) {
-            this.poolId = poolId;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public void setName(String name) {
-            this.name = name;
-        }
-
-        public String getPoolType() {
-            return poolType;
-        }
-
-        public void setPoolType(String poolType) {
-            this.poolType = poolType;
-        }
-    }
 
     /** 概念简略视图行 */
     class ConceptBriefRow {

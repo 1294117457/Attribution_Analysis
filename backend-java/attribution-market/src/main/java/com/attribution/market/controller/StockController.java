@@ -7,12 +7,17 @@ import org.springframework.web.bind.annotation.*;
 
 import com.attribution.collector.client.CollectorService;
 import com.attribution.common.response.ApiResponse;
-import com.attribution.market.dto.StockUpdateRequest;
 import com.attribution.market.service.StockInfoService;
 
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * 股票基础信息接口。
+ *
+ * <p>★ 基础信息表 {@code fundamental_stock_basic} 属采集库 raw_data，由 Collector 独占写入，
+ * Java **只读**（规范：docs/规范文档/多库分工与数据源规范.md §2.1 铁律 3）。
+ * 因此本 Controller **不提供** 新增 / 修改 / 删除接口——需要变更基础信息请走采集同步。
+ */
 @RestController
 @RequestMapping("/api/stocks")
 @RequiredArgsConstructor
@@ -30,33 +35,12 @@ public class StockController {
         return ApiResponse.ok(stockInfoService.get(symbol));
     }
 
-    @PostMapping("/")
-    public ApiResponse<?> upsert(
-            @RequestParam String symbol,
-            @RequestParam String name,
-            @RequestParam(required = false) String industry,
-            @RequestParam(required = false) String market) {
-        return ApiResponse.created(stockInfoService.upsert(symbol, name, industry, market));
-    }
-
     @PostMapping("/sync")
     public ApiResponse<?> sync(@RequestParam(defaultValue = "L") String list_status) {
         Map<String, Object> taskResult =
                 collectorService.createTask(
                         "fundamental", "stock_basic", Map.of("list_status", list_status), "condition");
         return ApiResponse.created(taskResult);
-    }
-
-    @PatchMapping("/{symbol}")
-    public ApiResponse<?> patch(
-            @PathVariable String symbol, @Valid @RequestBody StockUpdateRequest request) {
-        return ApiResponse.ok(stockInfoService.patch(symbol, request));
-    }
-
-    @DeleteMapping("/{symbol}")
-    public ApiResponse<?> delete(@PathVariable String symbol) {
-        stockInfoService.delete(symbol);
-        return ApiResponse.ok(null);
     }
 
     @PostMapping("/sync-daily-basic")

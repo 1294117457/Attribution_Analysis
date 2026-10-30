@@ -15,9 +15,10 @@ import com.attribution.common.mybatis.TopN;
 import com.attribution.common.response.PageResult;
 import com.attribution.market.converter.MarketConverter;
 import com.attribution.market.dto.StockPanelQuery;
-import com.attribution.market.dto.StockUpdateRequest;
 import com.attribution.market.entity.StockInfoPO;
 import com.attribution.market.mapper.StockInfoMapper;
+import com.attribution.market.mapper.StockPoolMembershipQueryMapper;
+import com.attribution.market.mapper.row.StockPoolMembershipRow;
 import com.attribution.market.service.StockInfoService;
 import com.attribution.market.vo.ConceptBriefVO;
 import com.attribution.market.vo.ConceptMainVO;
@@ -35,6 +36,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class StockInfoServiceImpl implements StockInfoService {
     private final StockInfoMapper stockInfoMapper;
+
+    /** 池归属查询（业务库 attribution，与采集库 Mapper 分开） */
+    private final StockPoolMembershipQueryMapper stockPoolMembershipQueryMapper;
 
     /** 概念类型优先级：行业 > 主题 > 事件 > 风格 > 地域 > 其他 */
     static final Map<String, Integer> CONCEPT_TYPE_PRIORITY =
@@ -77,44 +81,6 @@ public class StockInfoServiceImpl implements StockInfoService {
         return MarketConverter.toStockInfoVO(stock);
     }
 
-    @Override
-    public StockInfoVO upsert(String symbol, String name, String industry, String market) {
-        StockInfoPO existing =
-                stockInfoMapper.selectOne(
-                        new LambdaQueryWrapper<StockInfoPO>().eq(StockInfoPO::getSymbol, symbol));
-        if (existing == null) {
-            existing = new StockInfoPO();
-            existing.setSymbol(symbol);
-        }
-        existing.setName(name);
-        existing.setIndustry(industry);
-        existing.setMarket(market);
-        if (existing.getId() == null) stockInfoMapper.insert(existing);
-        else stockInfoMapper.updateById(existing);
-        return MarketConverter.toStockInfoVO(existing);
-    }
-
-    @Override
-    public StockInfoVO patch(String symbol, StockUpdateRequest request) {
-        StockInfoPO existing =
-                stockInfoMapper.selectOne(
-                        new LambdaQueryWrapper<StockInfoPO>().eq(StockInfoPO::getSymbol, symbol));
-        if (existing == null) throw new BusinessException(404, "股票不存在");
-        if (request.getName() != null) existing.setName(request.getName());
-        if (request.getIndustry() != null) existing.setIndustry(request.getIndustry());
-        if (request.getMarket() != null) existing.setMarket(request.getMarket());
-        stockInfoMapper.updateById(existing);
-        return MarketConverter.toStockInfoVO(existing);
-    }
-
-    @Override
-    public void delete(String symbol) {
-        long deleted =
-                stockInfoMapper.delete(
-                        new LambdaQueryWrapper<StockInfoPO>().eq(StockInfoPO::getSymbol, symbol));
-        if (deleted == 0) throw new BusinessException(404, "股票不存在");
-    }
-
     // ── 关联数据装配 ─────────────────────────────────────────
 
     /** 批量取股票所属自选池，按 symbol 分组 */
@@ -122,7 +88,7 @@ public class StockInfoServiceImpl implements StockInfoService {
         Map<String, List<PoolMembershipVO>> poolsBySymbol = new HashMap<>();
         for (String symbol : symbols) poolsBySymbol.put(symbol, new ArrayList<>());
         if (symbols.isEmpty()) return poolsBySymbol;
-        for (StockInfoMapper.PoolMembershipRow row : stockInfoMapper.selectPoolMemberships(symbols)) {
+        for (StockPoolMembershipRow row : stockPoolMembershipQueryMapper.selectPoolMemberships(symbols)) {
             PoolMembershipVO vo = new PoolMembershipVO();
             vo.setPoolId(row.getPoolId());
             vo.setName(row.getName());

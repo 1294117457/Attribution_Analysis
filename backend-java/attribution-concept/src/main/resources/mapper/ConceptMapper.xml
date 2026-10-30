@@ -40,7 +40,7 @@
         SELECT MAX(synced_at)::text FROM fundamental_concept_member
     </select>
 
-    <!-- 概念成员分页（联查 stock_info + daily_basic 最新一条） -->
+    <!-- 概念成员分页（联查 stock_basic + daily_basic 最新一条，均在采集库 raw_data） -->
     <select id="selectMemberRows"
             resultType="com.attribution.concept.mapper.ConceptMapper$ConceptMemberRow">
         SELECT m.symbol AS symbol,
@@ -51,7 +51,7 @@
                d.total_mv AS total_mv,
                d.pe_ttm AS pe_ttm
         FROM fundamental_concept_member m
-        LEFT JOIN fundamental_stock_info s ON s.symbol = m.symbol
+        LEFT JOIN fundamental_stock_basic s ON s.symbol = m.symbol
         LEFT JOIN fundamental_daily_basic d
                ON d.symbol = m.symbol
               AND d.trade_date = (SELECT MAX(trade_date) FROM fundamental_daily_basic WHERE symbol = m.symbol)

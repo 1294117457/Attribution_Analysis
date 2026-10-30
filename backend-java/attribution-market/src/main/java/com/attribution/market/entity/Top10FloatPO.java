@@ -7,6 +7,11 @@ import com.baomidou.mybatisplus.annotation.*;
 
 import lombok.Data;
 
+/**
+ * 十大流通股东。
+ *
+ * <p>表 {@code raw_data.fundamental_top10_floatholders}。
+ */
 @Data
 @TableName("fundamental_top10_floatholders")
 public class Top10FloatPO {
@@ -29,6 +34,10 @@ public class Top10FloatPO {
 
     @TableField("hold_ratio")
     private BigDecimal holdRatio;
+
+    /** 占流通股比例 */
+    @TableField("hold_float_ratio")
+    private BigDecimal holdFloatRatio;
 
     @TableField("hold_change")
     private BigDecimal holdChange;
