@@ -1,11 +1,13 @@
 <!--
-  CollectTaskPane.vue — 采集管理右侧主区（step7 简化版）
+  CollectTaskPane.vue — 采集管理右侧主区（全异步任务式）
 
-  简化前：CollectActionCard + 大日志表 + 分页 + 进度轮询
-  简化后：CollectActionCard（采集模式 + 条件 + 开始采集）+ 最近一次执行结果摘要
-  ── 运行日志 / 进度轮询 / 重跑 / 取消：暂不做（占位即可）
+  按 service 的 strategy 分发到三种形态：
+    strategy='incremental' → CollectActionCard（→ IncrementalCollectCard：只出时间范围）
+    strategy='full'        → CollectActionCard（→ FullCollectCard：只出一个按钮）
+    strategy='realtime'    → RealtimePanel（占位，不建任务）
 
-  实时 service（kind=realtime 或 both）走 RealtimePanel；其他走 CollectActionCard。
+  建任务 → 轮询 getCollectTask 显示进度条 → done/failed 显示终态。
+  重跑 = 同参再建一次（trigger_source='retry' + parent_task_id 指原任务）。
 -->
 <template>
   <main class="task-pane">
@@ -23,30 +25,38 @@
         :service-name="serviceName"
         :item="item"
         :starting="running"
-        @start="runServiceAndWait(serviceName, $event)"
+        @start="startTask(serviceName, $event)"
       />
 
-      <!-- 最近一次执行结果（成功/失败 一次性返回） -->
-      <div v-if="lastResult" class="result-card">
+      <!-- 任务进度（轮询中 / 终态） -->
+      <div v-if="task" class="result-card">
         <div class="result-card__title">
-          <el-icon :color="lastResultColor" class="mr-1">
-            <component :is="lastResultIcon" />
+          <el-icon :color="taskColor" class="mr-1">
+            <component :is="taskIcon" />
           </el-icon>
-          最近一次执行结果
+          任务 {{ task.task_id }} · {{ STATUS_LABEL[task.status] || task.status }}
+          <el-tag v-if="taskStrategy" size="small" effect="plain" class="ml-2">
+            {{ STRATEGY_LABEL[taskStrategy] }}
+          </el-tag>
         </div>
+        <el-progress
+          :percentage="progressPct"
+          :status="progressStatus"
+          :stroke-width="8"
+          class="task-progress"
+        />
         <div class="result-card__stats">
-          <span class="stat"><b class="text-green-600">{{ lastResult.success ?? 0 }}</b> 成功</span>
-          <span class="stat"><b class="text-red-500">{{ lastResult.fail ?? 0 }}</b> 失败</span>
-          <span class="stat"><b class="text-gray-500">{{ lastResult.skip ?? 0 }}</b> 跳过</span>
-          <span class="stat"><b>{{ lastResult.saved ?? 0 }}</b> 写入</span>
-          <span class="stat"><b>{{ lastResult.total ?? 0 }}</b> 总数</span>
+          <span class="stat"><b>{{ task.done ?? 0 }}/{{ task.total ?? 0 }}</b> 步</span>
+          <span class="stat"><b class="text-green-600">{{ task.success ?? 0 }}</b> 成功</span>
+          <span v-if="(task.fail ?? 0) > 0" class="stat"><b class="text-red-500">{{ task.fail }}</b> 失败</span>
+          <span v-if="(task.skip ?? 0) > 0" class="stat"><b>{{ task.skip }}</b> 跳过</span>
+          <span class="stat"><b>{{ task.saved_total ?? 0 }}</b> 写入</span>
         </div>
-        <div v-if="lastResult.message" class="result-card__msg">
-          {{ lastResult.message }}
+        <div v-if="task.message" class="result-card__msg">
+          {{ task.message }}
         </div>
-        <div v-if="lastResultItems.length > 0" class="result-card__items">
-          <div class="result-card__items-title">返回数据（前 5 条）</div>
-          <pre class="result-card__items-body">{{ JSON.stringify(lastResultItems, null, 2) }}</pre>
+        <div class="result-card__actions">
+          <el-button size="small" :disabled="running" @click="retry">重跑（同参数）</el-button>
         </div>
       </div>
     </template>
@@ -54,77 +64,164 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { CircleClose, CircleCheck, InfoFilled } from '@element-plus/icons-vue'
+import { CircleClose, CircleCheck, InfoFilled, Loading } from '@element-plus/icons-vue'
 
 import CollectActionCard from './CollectActionCard.vue'
 import RealtimePanel from './RealtimePanel.vue'
-import type { CatalogItem, CollectStartPayload } from '../api'
-import { runService } from '../api'
+import type {
+  CatalogItem,
+  CollectStartPayload,
+  CollectStrategy,
+  CollectTaskState,
+} from '../api'
+import { createCollectTask, getCollectTask } from '../api'
 
 const props = defineProps<{
   serviceName: string
   item: CatalogItem | null | undefined
 }>()
 
-/** 实时 = kind='realtime'（纯实时，不入库）
- *  - kind='collect' : 走 CollectActionCard（开始采集）
- *  - kind='both'    : 也走 CollectActionCard（开始采集 + 试查入口由 Card 自身处理）
- *  - kind='realtime': 走 RealtimePanel（只显示试查，没有开始采集按钮）
- */
-const isRealtime = computed(() => props.item?.kind === 'realtime')
+/** 实时查询服务（strategy='realtime'）：只显示占位，不建任务 */
+const isRealtime = computed(() => props.item?.strategy === 'realtime')
 
-// ── 最近一次执行结果（本地状态，无后端持久化） ─────────────
-const lastResult = ref<any>(null)
+const STATUS_LABEL: Record<string, string> = {
+  queued: '排队中',
+  running: '执行中',
+  done: '完成',
+  failed: '失败',
+}
+
+const STRATEGY_LABEL: Record<string, string> = {
+  incremental: '增量采集',
+  full: '全量覆盖',
+}
+
+// ── 当前任务状态（轮询维护） ─────────────
+const task = ref<CollectTaskState | null>(null)
 const running = ref(false)
+let timer: ReturnType<typeof setInterval> | null = null
+let lastPayload: CollectStartPayload | null = null
 
-const lastResultColor = computed(() => {
-  const r = lastResult.value
-  if (!r) return '#94a3b8'
-  if (r.fail > 0) return '#ef4444'
-  if (r.success > 0) return '#22c55e'
+/** 当前任务的采集方式（优先 strategy，回退 kind） */
+const taskStrategy = computed<CollectStrategy | ''>(() => {
+  const t = task.value
+  if (!t) return ''
+  return (t.strategy || t.kind || '') as CollectStrategy
+})
+
+/**
+ * 进度百分比。
+ *
+ * ★ 优先用服务端算好的 `progress`（= 已完成步数 / 总步数 * 100），
+ *   兜底用本地算的 done/total —— 两端口径一致，服务端是权威值。
+ */
+const progressPct = computed(() => {
+  const t = task.value
+  if (!t) return 0
+  if (typeof t.progress === 'number' && t.progress > 0) {
+    return Math.min(100, Math.round(t.progress))
+  }
+  if (!t.total) return 0
+  return Math.min(100, Math.round(((t.done || 0) / t.total) * 100))
+})
+
+const progressStatus = computed(() => {
+  const s = task.value?.status
+  if (s === 'done') return 'success'
+  if (s === 'failed') return 'exception'
+  return undefined
+})
+
+const taskColor = computed(() => {
+  const s = task.value?.status
+  if (s === 'failed') return '#ef4444'
+  if (s === 'done') return '#22c55e'
   return '#3b82f6'
 })
 
-const lastResultIcon = computed(() => {
-  const r = lastResult.value
-  if (!r) return InfoFilled
-  if (r.fail > 0) return CircleClose
-  return CircleCheck
+const taskIcon = computed(() => {
+  const s = task.value?.status
+  if (s === 'failed') return CircleClose
+  if (s === 'done') return CircleCheck
+  if (s === 'running' || s === 'queued') return Loading
+  return InfoFilled
 })
 
-const lastResultItems = computed<any[]>(() => {
-  const items = lastResult.value?.items
-  if (Array.isArray(items)) return items.slice(0, 5)
-  return []
-})
-
-/** 触发一次 service.collect()（带 mode + params） */
-async function runServiceAndWait(
-  serviceName: string,
-  payload: CollectStartPayload,
-) {
-  console.log('[CollectTaskPane] runService', serviceName, payload)
-  running.value = true
-  try {
-    const res = await runService(serviceName, payload)
-    lastResult.value = res
-    ElMessage.success(res?.message || '采集完成')
-  } catch (e: any) {
-    lastResult.value = {
-      success: 0,
-      fail: 1,
-      skip: 0,
-      saved: 0,
-      total: 1,
-      message: e?.response?.data?.message || e?.message || '采集失败',
-    }
-    ElMessage.error(lastResult.value.message)
-  } finally {
-    running.value = false
+function stopPolling() {
+  if (timer) {
+    clearInterval(timer)
+    timer = null
   }
 }
+
+async function tick(taskId: string) {
+  try {
+    const state = await getCollectTask(taskId)
+    task.value = state
+    if (state.status === 'done' || state.status === 'failed') {
+      stopPolling()
+      running.value = false
+      if (state.status === 'done') ElMessage.success(state.message || '采集完成')
+      else ElMessage.error(state.message || '采集失败')
+    }
+  } catch (e: any) {
+    stopPolling()
+    running.value = false
+    ElMessage.error(e?.message || '查询任务进度失败')
+  }
+}
+
+/** 开始采集：建任务 → 1s 轮询进度 */
+async function startTask(serviceName: string, payload: CollectStartPayload) {
+  console.log('[CollectTaskPane] createTask', serviceName, payload)
+  stopPolling()
+  running.value = true
+  lastPayload = payload
+  try {
+    const created = await createCollectTask(serviceName, payload)
+    ElMessage.info(`任务已创建 ${created.task_id}，共 ${created.total} 步`)
+    await tick(created.task_id)
+    stopPolling()
+    if (task.value && task.value.status !== 'done' && task.value.status !== 'failed') {
+      running.value = true
+      timer = setInterval(() => tick(created.task_id), 1000)
+    }
+  } catch (e: any) {
+    running.value = false
+    task.value = null
+    ElMessage.error(e?.response?.data?.message || e?.message || '创建任务失败')
+  }
+}
+
+/**
+ * 重跑：同参数再建一次（upsert 幂等，安全）。
+ *
+ * ★ 带上 trigger_source='retry' + parent_task_id（指原任务），
+ *   审计日志能追出「这次是重跑哪次」的链路。
+ */
+function retry() {
+  if (!lastPayload) return
+  startTask(props.serviceName, {
+    ...lastPayload,
+    trigger_source: 'retry',
+    parent_task_id: task.value?.task_id,
+  })
+}
+
+// 切 service 时清掉旧任务状态 + 停轮询
+watch(
+  () => props.serviceName,
+  () => {
+    stopPolling()
+    running.value = false
+    task.value = null
+    lastPayload = null
+  },
+)
+
+onBeforeUnmount(stopPolling)
 </script>
 
 <style scoped>
@@ -150,7 +247,7 @@ async function runServiceAndWait(
   font-size: 13px;
 }
 
-/* ── 最近一次执行结果卡片 ── */
+/* ── 任务进度卡片 ── */
 .result-card {
   background: #fff;
   border: 1px solid #e2e8f0;
@@ -165,6 +262,10 @@ async function runServiceAndWait(
   font-size: 13px;
   font-weight: 600;
   color: #1e293b;
+  margin-bottom: 8px;
+}
+
+.task-progress {
   margin-bottom: 8px;
 }
 
@@ -185,33 +286,16 @@ async function runServiceAndWait(
 
 .result-card__msg {
   font-size: 12px;
-  color: #64748b;
+  color: #64788b;
   background: #f8fafc;
   padding: 6px 10px;
   border-radius: 4px;
   border-left: 3px solid #94a3b8;
 }
 
-.result-card__items {
+.result-card__actions {
   margin-top: 8px;
-}
-
-.result-card__items-title {
-  font-size: 12px;
-  color: #475569;
-  font-weight: 500;
-  margin-bottom: 4px;
-}
-
-.result-card__items-body {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
-  background: #0f172a;
-  color: #e2e8f0;
-  padding: 8px 10px;
-  border-radius: 4px;
-  max-height: 200px;
-  overflow: auto;
-  margin: 0;
+  display: flex;
+  gap: 8px;
 }
 </style>

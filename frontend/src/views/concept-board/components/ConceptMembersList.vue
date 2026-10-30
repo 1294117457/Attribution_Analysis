@@ -154,7 +154,7 @@ async function load() {
       page: page.value,
       page_size: pageSize.value,
     })
-    rows.value = res.items
+    rows.value = res.list
     total.value = res.total
   } catch (e) {
     rows.value = []

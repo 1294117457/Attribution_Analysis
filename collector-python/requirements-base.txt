@@ -1,0 +1,13 @@
+# 大包 / C扩展 / 稳定依赖（几乎不变，Docker 层长期缓存）
+pandas==2.2.3
+sqlalchemy==2.0.35
+asyncpg>=0.30.0
+greenlet>=3.0.3
+psycopg2-binary==2.9.10
+tushare==1.4.3
+tdxpy>=0.2.5
+adata==2.9.5     # 概念数据（同花顺）
+bcrypt>=4.1       # 密码 hash（C 扩展）
+cryptography>=42  # pyjwt[crypto] 的底层依赖（C 扩展）
+python-multipart>=0.0.9   # FastAPI 表单/文件上传（备份 .sql 上传接口）
+

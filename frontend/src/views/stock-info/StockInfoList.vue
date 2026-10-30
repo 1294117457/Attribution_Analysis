@@ -629,7 +629,7 @@ async function loadStocks() {
     if (filters.value.concept_id != null) params.concept_id = filters.value.concept_id
 
     const data = await queryStocks(params)
-    stocks.value = data.items || []
+    stocks.value = data.list || []
     total.value = data.total || 0
   } catch {
     stocks.value = []

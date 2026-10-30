@@ -165,11 +165,11 @@ async function onCollect() {
   if (!props.symbol) return
   collecting.value = true
   try {
-    const r = (await collectKlines({
+    const r = await collectKlines({
       symbol: props.symbol,
       days: props.days ?? 365,
-    })) as unknown as { saved_count: number }
-    ElMessage.success(`已采集 ${r.saved_count} 条`)
+    })
+    ElMessage.success(`采集任务已创建 ${r.task_id}，共 ${r.total} 步（去采集管理页看进度）`)
     await load(props.symbol)
   } catch (e) {
     ElMessage.error('采集失败: ' + (e as Error).message)

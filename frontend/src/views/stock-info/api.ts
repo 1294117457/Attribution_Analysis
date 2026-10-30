@@ -5,12 +5,12 @@ import http, { unwrap, type ApiResponse } from '@/common/utils/http'
 //  类型定义
 // ═══════════════════════════════════════════════════════════════
 
-/** 分页响应 */
+/** 分页响应（后端统一 PageResult：total / list / page / page_size） */
 export interface PaginatedResponse<T> {
   total: number
   page: number
   page_size: number
-  items: T[]
+  list: T[]
 }
 
 /** 池成员关系（列表 / 详情通用）
@@ -380,14 +380,22 @@ export const deleteStock = (symbol: string) =>
   http.delete(`/stocks/${symbol}`).then(unwrap)
 
 // ── K 线采集 & 查询（响应含 17 个指标列）───────────────────────
+// 采集已转后台任务：返回 {task_id, total}，前端轮询 /collect/tasks/{id} 看进度。
 
-/** POST /klines/collect  采集 K 线（只存 OHLCV） */
-export const collectKlines = (body: { symbol: string; days?: number }) =>
-  http.post<CollectResult>('/klines/collect', body).then(unwrap)
+/** 采集任务创建返回 */
+export interface CollectTaskCreated {
+  task_id: string
+  status: string
+  total: number
+}
 
-/** POST /klines/collect/batch  批量采集 */
+/** POST /klines/collect  采集 K 线（转后台任务，立即返回 task_id） */
+export const collectKlines = (body: { symbol: string; days?: number; start_date?: string; end_date?: string }) =>
+  http.post<CollectTaskCreated>('/klines/collect', body).then(unwrap)
+
+/** POST /klines/collect/batch  批量采集（转后台任务，立即返回 task_id） */
 export const collectBatch = (symbols: string[], days = 30) =>
-  http.post<Record<string, CollectResult>>('/klines/collect/batch', null, {
+  http.post<CollectTaskCreated>('/klines/collect/batch', null, {
     params: symbols.flatMap((s) => ['symbols', s]),
     paramsSerializer: (ps) =>
       ps
@@ -717,16 +725,19 @@ export interface MinuteKline {
 export type MinuteInterval = '1min' | '5min' | '15min' | '30min' | '60min'
 
 /** GET /minute-klines/{symbol}  实时获取分钟 K 线（实时接口 stock_minute_kline，15 秒缓存）
- *  days：1min 仅 1（当天），其他周期 1–5 */
+   *  days：1min 仅 1（当天），其他周期 1–5 */
 export const getMinuteKlines = (
   symbol: string,
   params: { interval?: MinuteInterval; days?: number } = {}
 ) =>
   http
-    .get<{ total: number; items: MinuteKline[]; cached: boolean; fetched_at: string | null }>(
-      `/minute-klines/${symbol}`,
-      { params },
-    )
+    .get<{
+      symbol: string
+      interval: string
+      bars: MinuteKline[]
+      cached: boolean
+      fetched_at: string | null
+    }>(`/minute-klines/${symbol}`, { params })
     .then(unwrap)
 
 // ═══════════════════════════════════════════════════════════════════════

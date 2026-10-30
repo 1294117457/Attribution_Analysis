@@ -131,13 +131,16 @@ export interface PoolKlineCollectRequest {
 
 export interface PoolListResponse {
   total: number
-  items: Pool[]
+  page: number
+  page_size: number
+  list: Pool[]
 }
 
 export interface PoolMemberListResponse {
-  pool_id: number
   total: number
-  items: PoolMember[]
+  page: number
+  page_size: number
+  list: PoolMember[]
 }
 
 export interface PoolAddMembersResponse {
@@ -155,9 +158,10 @@ export interface PoolPoolsBySymbolResponse {
 }
 
 export interface PoolOperationListResponse {
-  pool_id: number
   total: number
-  items: PoolOperation[]
+  page: number
+  page_size: number
+  list: PoolOperation[]
 }
 
 export interface PoolOperationCreateResponse {
@@ -186,8 +190,8 @@ export const createPool = (data: PoolCreateRequest) =>
 
 export const listPools = (params?: {
   include_archived?: boolean
-  limit?: number
-  offset?: number
+  page?: number
+  page_size?: number
 }) =>
   http
     .get<PoolListResponse>('/pools', {
@@ -226,7 +230,7 @@ export const removeMembers = (poolId: number, symbols: string[]) =>
 
 export const listMembers = (
   poolId: number,
-  params?: { limit?: number; offset?: number },
+  params?: { page?: number; page_size?: number },
 ) =>
   http.get<PoolMemberListResponse>(`/pools/${poolId}/members`, { params }).then(unwrap)
 
@@ -264,7 +268,7 @@ export const createOperation = (
 
 export const listOperations = (
   poolId: number,
-  params?: { limit?: number; offset?: number },
+  params?: { page?: number; page_size?: number },
 ) =>
   http
     .get<PoolOperationListResponse>(`/pools/${poolId}/operations`, { params })

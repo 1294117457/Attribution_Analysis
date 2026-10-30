@@ -94,8 +94,8 @@ export const useKlineStore = defineStore('kline', () => {
 
     loadingSymbols.value.add(symbol)
     try {
-      const data = (await getKlines(symbol, params)) as unknown as { items?: Kline[] }
-      const items = (data.items || []) as Kline[]
+      const data = (await getKlines(symbol, params)) as unknown as { list?: Kline[] }
+      const items = (data.list || []) as Kline[]
       klineCache.value[cacheKey] = items
       // 顺便刷新单股 K 线缓存 (symbol -> klines)
       klineCache.value[symbol] = items
@@ -105,18 +105,18 @@ export const useKlineStore = defineStore('kline', () => {
     }
   }
 
-  /** 触发 K 线采集（后端会算指标） */
+  /** 触发 K 线采集（转后台任务，返回 task_id；前端去采集管理页看进度） */
   async function collect(
     symbol: string,
     days = 365,
-  ): Promise<{ saved_count: number; total_count: number; message: string }> {
-    const result = (await collectKlines({ symbol, days })) as unknown as { saved_count: number; total_count: number; message: string }
-    // 采集成功后失效该 symbol 的缓存
+  ): Promise<{ task_id: string; total: number; message: string }> {
+    const result = await collectKlines({ symbol, days })
+    // 建任务后失效该 symbol 的缓存（任务完成后前端刷新即拿新数）
     invalidate(symbol)
     return {
-      saved_count: result.saved_count,
-      total_count: result.total_count,
-      message: result.message,
+      task_id: result.task_id,
+      total: result.total,
+      message: `任务已创建 ${result.task_id}`,
     }
   }
 

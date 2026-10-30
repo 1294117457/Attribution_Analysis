@@ -276,7 +276,7 @@ async function reload() {
       keyword: keyword.value || undefined,
       is_active: activeFilter.value,
     })
-    userList.value = res.items
+    userList.value = res.list
     total.value = res.total
   } finally {
     userLoading.value = false
@@ -383,7 +383,7 @@ async function confirmAssignRole() {
     // 刷新当前用户的角色
     if (roleDialog.user) {
       const refreshed = await listUsers({ page: 1, page_size: 200 })
-      const u = refreshed.items.find((x) => x.id === roleDialog.user!.id)
+      const u = refreshed.list.find((x) => x.id === roleDialog.user!.id)
       if (u) roleDialog.user = u
     }
     await reload()
@@ -406,7 +406,7 @@ async function removeRole2(userId: number, roleId: number) {
   ElMessage.success('已解除')
   if (roleDialog.user) {
     const refreshed = await listUsers({ page: 1, page_size: 200 })
-    const u = refreshed.items.find((x) => x.id === roleDialog.user!.id)
+    const u = refreshed.list.find((x) => x.id === roleDialog.user!.id)
     if (u) roleDialog.user = u
   }
   await reload()

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.attribution.concept.mapper.ConceptMapper">
+
+    <!-- 按股票代码反查所属概念 -->
+    <select id="selectBriefsBySymbol" resultType="com.attribution.concept.mapper.ConceptMapper$ConceptBriefRow">
+        SELECT c.id         AS concept_id,
+               c.name       AS name,
+               COALESCE(c.source, 'ths') AS source,
+               COALESCE(c.concept_type, 'other') AS concept_type
+        FROM fundamental_concept_member m
+        JOIN fundamental_concept c ON c.id = m.concept_id
+        WHERE m.symbol = #{symbol}
+        ORDER BY c.id
+    </select>
+
+    <!-- 按股票代码反查概念分组（含入选理由） -->
+    <select id="selectGroupsBySymbol" resultType="com.attribution.concept.mapper.ConceptMapper$ConceptGroupRow">
+        SELECT c.id         AS concept_id,
+               c.index_code AS index_code,
+               c.name       AS name,
+               COALESCE(c.source, 'ths') AS source,
+               COALESCE(c.concept_type, 'other') AS concept_type,
+               c.description AS description,
+               m.reason     AS reason
+        FROM fundamental_concept_member m
+        JOIN fundamental_concept c ON c.id = m.concept_id
+        WHERE m.symbol = #{symbol}
+        ORDER BY c.id
+    </select>
+
+    <!-- 概念成员数 -->
+    <select id="countMembers" resultType="long">
+        SELECT COUNT(*) FROM fundamental_concept_member WHERE concept_id = #{conceptId}
+    </select>
+
+    <!-- 成员最近同步时间 -->
+    <select id="selectMaxSyncedAt" resultType="java.lang.String">
+        SELECT MAX(synced_at)::text FROM fundamental_concept_member
+    </select>
+
+    <!-- 概念成员分页（联查 stock_info + daily_basic 最新一条） -->
+    <select id="selectMemberRows"
+            resultType="com.attribution.concept.mapper.ConceptMapper$ConceptMemberRow">
+        SELECT m.symbol AS symbol,
+               s.name   AS name,
+               s.industry AS industry,
+               s.market AS market,
+               d.close  AS latest_close,
+               d.total_mv AS total_mv,
+               d.pe_ttm AS pe_ttm
+        FROM fundamental_concept_member m
+        LEFT JOIN fundamental_stock_info s ON s.symbol = m.symbol
+        LEFT JOIN fundamental_daily_basic d
+               ON d.symbol = m.symbol
+              AND d.trade_date = (SELECT MAX(trade_date) FROM fundamental_daily_basic WHERE symbol = m.symbol)
+        WHERE m.concept_id = #{conceptId}
+        ORDER BY m.symbol
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+</mapper>

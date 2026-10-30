@@ -138,7 +138,7 @@ async function load() {
       page: 1,
       page_size: 500,
     })
-    boardItems.value = res.items
+    boardItems.value = res.list
     // 如果选中的概念还在新结果里,K 线不重新拉
     // 否则清空 picked
     if (pickedConcept.value) {

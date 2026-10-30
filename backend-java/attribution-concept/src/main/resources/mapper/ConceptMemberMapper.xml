@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.attribution.concept.mapper.ConceptMemberMapper">
+
+    <!-- 股票所属自选池：批量联查 stock_pool_members + stock_pools -->
+    <select id="selectPoolMemberships"
+            resultType="com.attribution.concept.mapper.ConceptMemberMapper$PoolMembershipRow">
+        SELECT m.symbol AS symbol,
+               p.id     AS pool_id,
+               p.name   AS name,
+               p.pool_type AS pool_type
+        FROM stock_pool_members m
+        JOIN stock_pools p ON p.id = m.pool_id
+        WHERE m.symbol IN
+        <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
+            #{symbol}
+        </foreach>
+          AND (p.is_archived IS NULL OR p.is_archived = false)
+        ORDER BY m.symbol, p.id
+    </select>
+
+</mapper>

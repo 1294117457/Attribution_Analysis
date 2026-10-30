@@ -168,12 +168,16 @@ export interface StockListItem {
 
 export interface StockListResponse {
   total: number
-  items: StockListItem[]
+  page: number
+  page_size: number
+  list: StockListItem[]
 }
 
 export interface StockListAllResponse {
   total: number
-  items: StockListItem[]
+  page: number
+  page_size: number
+  list: StockListItem[]
 }
 
 // ── API ──

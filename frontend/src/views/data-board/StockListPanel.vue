@@ -142,7 +142,7 @@ onMounted(async () => {
   loading.value = true
   try {
     const res = await getStockListAll()
-    items.value = res.items
+    items.value = res.list
   } catch (e) {
     console.warn('[StockListPanel] load failed', e)
   } finally {

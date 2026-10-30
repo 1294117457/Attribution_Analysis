@@ -72,11 +72,10 @@ export interface RefreshTokenResponse {
 }
 
 export interface UserListResponse {
-  items: UserInfo[]
+  list: UserInfo[]
   total: number
   page: number
   page_size: number
-  pages: number
 }
 
 export interface Role {

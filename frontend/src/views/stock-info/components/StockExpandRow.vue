@@ -175,7 +175,7 @@ async function loadMinuteKlines(silent = false) {
       interval: minuteInterval.value,
       days: minuteDays.value,
     })
-    minuteKlines.value = res.items ?? []
+    minuteKlines.value = res.bars ?? []
     minuteUpdatedAt.value = res.fetched_at ? `更新于 ${res.fetched_at.slice(11, 19)}` : ''
   } catch (e) {
     if (silent) throw e

@@ -1,0 +1,84 @@
+server:
+  port: ${SERVER_PORT:8080}
+spring:
+  # 本地开发：加载 .env（KEY=VALUE 语法，等价 .properties）
+  #   - 文件不存在时静默跳过（optional:），容器/k8s 部署时不会报错
+  #   - OS 环境变量优先级高于本文件，k8s 注入的变量不会被 .env 覆盖
+  #   - .env 不进镜像（Dockerfile 只 COPY pom.xml 与 src/），本地文件不会泄漏到产物
+  #   - 兼容多种启动目录（相对路径基于进程 CWD）：
+  #       .env            ← CWD = backend-java/（java -jar / mvn spring-boot:run）
+  #       backend-java/.env ← CWD = 仓库根目录
+  #       ../.env         ← CWD = backend-java/attribution-app/
+  config:
+    import: "optional:file:.env[.properties],optional:file:backend-java/.env[.properties],optional:file:../.env[.properties]"
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/attribution}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+    # 连接池（HikariCP）——见 docs/规范文档/横切技术规范/基础设施规范.md
+    hikari:
+      # 最大连接数：必须 ≥ 同时可能占用连接的线程数（Tomcat 线程 + 业务线程池并发）
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+      # 最小空闲连接：避免冷启动首个请求要等建连
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      # 获取连接的最大等待时间（毫秒）。超时抛 SQLTransientConnectionException，
+      # 远端 PG 必须短，超时说明连接池已被打满，应尽快暴露而不是无限等待
+      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT:30000}
+      # 空闲连接回收时间（毫秒）。应小于 max-lifetime，否则连接不会被回收
+      idle-timeout: ${DB_POOL_IDLE_TIMEOUT:600000}
+      # 连接最大存活时间（毫秒），应大于 idle-timeout，且小于数据库侧的连接回收时间
+      # （如 idle_in_transaction_session_timeout），避免被 DB 单方面掐断
+      max-lifetime: ${DB_POOL_MAX_LIFETIME:1800000}
+      # 泄漏检测：持有超过该时长（毫秒）的连接会被记录，用于发现忘记 close 的连接
+      leak-detection-threshold: ${DB_POOL_LEAK_DETECTION:60000}
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      lettuce:
+        # 关闭连接时等待在途命令完成的时长。Redis 是辅助存储，不应长时间阻塞停机
+        shutdown-timeout: 200ms
+        # 注：Lettuce 的连接池（lettuce.pool.*）需要 commons-pool2 依赖才生效。
+        # 本项目未引入该依赖，因此不配置连接池——Lettuce 默认使用共享连接。
+        # 若后续要启用，须先加依赖再同步本文件与《基础设施规范.md》§3.6。
+  mail:
+    host: smtp.qq.com
+    port: 465
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          ssl:
+            enable: true
+  cloud:
+    openfeign:
+      client:
+        config:
+          collector:
+            connect-timeout: 3000
+            read-timeout: 60000
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+    serialization:
+      write-dates-as-timestamps: false
+collector:
+  base-url: ${COLLECTOR_BASE_URL:http://localhost:8001}
+app:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:3000,http://127.0.0.1:3000}
+jwt:
+  secret: ${JWT_SECRET:attribution-dev-secret-key-32bytes-min!!}
+  access-expire: 900
+  refresh-expire: 604800
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  mapper-locations: classpath*:/mapper/**/*.xml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

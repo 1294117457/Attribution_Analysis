@@ -1,15 +1,15 @@
 import http, { unwrap, type ApiResponse } from '@/common/utils/http'
 
 /**
- * 采集管理 API — step7 重构后简化版（仅保留「最基础的全量/条件采集」）
+ * 采集管理 API — 全异步任务式（Java 透传 Collector :8001）
  *
- * 后端路由（contexts/collect/interface/router.py）：
- *   GET  /collect/services                28 service 元数据 catalog（前端左侧目录树数据源）
- *   POST /collect/{facet}/{service_name}  触发一次 service.collect()（mode=full/condition）
+ * 后端路由（Java CollectProxyController + CollectLogController）：
+ *   GET  /collect/services                目录元数据（前端左侧树数据源）
+ *   POST /collect/tasks/{facet}/{name}    建任务，立即返回 {task_id, total}
+ *   GET  /collect/tasks/{task_id}         轮询进度（Redis，Java 透传）
+ *   GET  /collect/tasks?limit=            最近任务（Redis capped list，Java 透传）
+ *   GET  /collect/logs?...                历史审计（Java 查 PG collect_logs）
  *   GET  /collect/query/{name}            实时查询 service.get()（仅 supports_query=true）
- *
- * ⚠️ schedule / log / APScheduler / 取消 / 重跑 相关功能暂时不做（用户要求先跑通基本采集）。
- *    后续如需补齐，再加 listSchedules / listLogs 等函数。
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -18,62 +18,55 @@ import http, { unwrap, type ApiResponse } from '@/common/utils/http'
 
 /** Service 元数据（GET /collect/services 列表项） */
 export interface ServiceItem {
+  /** ★ service 名（= collector 的 name 属性）：日志关联键 + 目录唯一键 */
   name: string
-  facet: string                  // 'tech' / 'capital' / 'fundamental' / 'news' / 'sentiment'
-  sub_facet: string              // 'kline' / 'moneyflow' / 'concept' ...
+  /** ★ 五数据面（唯一分组维度）：tech / capital / fundamental / news / sentiment */
+  facet: string
+  /** ★ 中文显示名 */
   label: string
   description: string
-  default_params: Record<string, any>
-  /** 后端推导的每个 param 的 UI schema（前端按此渲染输入控件） */
-  param_schema: ParamSchema[]
+  /** ★ 采集方式：incremental（增量）/ full（全量覆盖）/ realtime（实时直查，不入库） */
+  strategy: CollectStrategy
+  /** ★ 是否有实时直查入口（与 strategy 正交，替代旧 kind='both' 的读语义） */
+  queryable: boolean
+  /** ★ 增量维度（full / realtime 为 null） */
+  range: CollectRange | null
+  /** ★ 全量覆盖的清理模式（前端据此决定文案与二次确认强度） */
+  clear_mode: 'none' | 'domain'
+  /**
+   * ★ 实际的「步」粒度（进度分母的口径）：
+   *   trade_day → 区间拆成 N 个交易日，每步一天（进度 = 已采天数 / 总天数）
+   *   day       → 区间自理，单步完成
+   *   null      → 非增量（full / realtime）
+   * ⚠️ 与 `range.granularity` 的区别：`range.granularity` 是 service 的**声明**，
+   *    `step_granularity` 是**实际**的拆步结果（有些 service 声明 day 但实现了展开钩子）。
+   */
+  step_granularity: 'day' | 'trade_day' | null
   rate_limit: [string, number, number] | null
   concurrency: number
-  /** service 是否有 get() 入口（query 实时试查） */
-  supports_query: boolean
-  /** 主职责：collect (入库) / realtime (实时查询不入库) / both */
-  kind: 'collect' | 'realtime' | 'both'
   /** 实际 POST 路径 */
   path: string
-  /** 实时查询路径（supports_query=true 时才有） */
+  /** 实时查询路径（queryable=true 时才有） */
   query_path: string | null
 }
 
-/** 单个 param 的 UI schema（后端 _derive_param_schema 推导） */
-export interface ParamSchema {
-  key: string                    // param 名称（如 'symbols' / 'trade_date'）
-  ui: ParamUiType                // 控件类型
-  required: boolean              // 是否必填
-  default?: any                  // 默认值
-  description: string            // 中文描述
-  example?: any                  // 示例值
+/** ★ 采集方式 */
+export type CollectStrategy = 'incremental' | 'full' | 'realtime'
+
+/** ★ 增量维度（由 collector 的 RANGE 声明） */
+export interface CollectRange {
+  start_key: string
+  end_key: string
+  /** day = 区间自理（service 内部处理起止）；trade_day = 按交易日展开（collector 逐日调用） */
+  granularity: 'day' | 'trade_day'
 }
 
-/** UI 控件类型（后端 _infer_param_ui 定义） */
-export type ParamUiType =
-  | 'symbols_list'      // 股票代码列表（多行文本）
-  | 'index_codes_list'  // 概念代码列表（多行文本）
-  | 'str_list'          // 通用字符串列表
-  | 'date_str'          // 日期字符串 YYYY-MM-DD
-  | 'list_status'       // L / D / P 单选
-  | 'exchange_multi'    // 交易所多选
-  | 'interval_kline'    // 分钟周期 1/5/15/30/60
-  | 'period_kline'      // 日/周/月
-  | 'bool_flag'         // 布尔开关
-  | 'minutes_int'       // 整数（回溯分钟）
-  | 'days_int'          // 整数（回溯天数）
-  | 'years_int'         // 整数（回溯年数）
-  | 'limit_int'         // 整数（限制条数）
-  | 'int'               // 通用整数
-  | 'ts_code_str'       // Tushare 代码
-  | 'symbol_str'        // 股票代码
-  | 'index_code_str'    // 概念代码
-  | 'str'               // 通用字符串
-  | 'json'              // JSON 对象（兜底）
-
-/** Service 列表响应 */
+/** Service 列表响应（与后端 PageResult 口径一致：total / list / page / page_size） */
 export interface ServiceListResponse {
   total: number
-  items: ServiceItem[]
+  page: number
+  page_size: number
+  list: ServiceItem[]
 }
 
 /** 拉一次 services（catalog 聚合） */
@@ -100,7 +93,7 @@ function waitForServices(): Promise<ServiceItem[]> {
     // 兜底：若还没调过 listServices，主动拉一次
     listServices()
       .then((res) => {
-        _cachedServices = res.items || []
+        _cachedServices = res.list || []
         if (cachedResolve) {
           cachedResolve(_cachedServices)
           cachedResolve = null
@@ -128,17 +121,23 @@ function buildQueryPath(name: string): string | null {
 // 包装 listServices：拉完自动缓存（保证 useCatalog 已 mount 后再调 runService 能命中）
 export const listServicesCached = async (): Promise<ServiceItem[]> => {
   const res = await listServices()
-  cacheServices(res.items || [])
-  return res.items || []
+  cacheServices(res.list || [])
+  return res.list || []
 }
 
-/** 采集启动 payload（含采集模式：full = 全量 / condition = 条件） */
+/** 采集启动 payload（strategy 决定前端表单形态与写入语义） */
 export interface CollectStartPayload {
-  mode: 'full' | 'condition'
+  /** ★ 采集方式：incremental（增量）/ full（全量覆盖） */
+  strategy: 'incremental' | 'full'
+  /** 采集参数：增量只带 {start_date, end_date}；全量通常为空对象 */
   params: Record<string, any>
+  /** 编排来源：manual（手动）/ retry（重跑） */
+  trigger_source?: 'manual' | 'retry'
+  /** 重跑时指向原任务（审计用，写入 collect_logs.parent_task_id） */
+  parent_task_id?: string
 }
 
-/** 采集执行结果（后端 svc.collect() 返回 CollectResult.to_dict()） */
+/** 采集执行结果（后端 svc.collect() 返回 CollectResult.to_dict()，已下线，仅兼容旧类型） */
 export interface CollectRunResult {
   total: number
   success: number
@@ -150,24 +149,175 @@ export interface CollectRunResult {
   [k: string]: any
 }
 
-/** 手动触发一次 service（POST /collect/{facet}/{name}） */
-export const runService = async (
+/** 后台任务创建返回（POST /collect/tasks/{facet}/{name}） */
+export interface CollectTaskCreated {
+  task_id: string
+  status: string
+  total: number
+  /** ★ 本次执行的采集方式 */
+  strategy?: CollectStrategy
+}
+
+/** 任务进度（GET /collect/tasks/{task_id}，Java 透传 Redis） */
+export interface CollectTaskState {
+  task_id: string
+  facet: string
+  name: string
+  /** ★ 采集方式（与 kind 同义） */
+  strategy?: CollectStrategy
+  kind: string
+  mode: string
+  params: Record<string, any>
+  status: 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | string
+  total: number
+  done: number
+  success: number
+  fail: number
+  /** 跳过的步数（如非交易日无数据） */
+  skip: number
+  saved_total: number
+  progress: number
+  message: string
+  created_at: string
+  started_at: string
+  updated_at: string
+  finished_at: string
+}
+
+/** 手动建任务（POST /collect/tasks/{facet}/{name}，立即返回 task_id） */
+export const createCollectTask = async (
   name: string,
-  payload: CollectStartPayload | Record<string, any> = { mode: 'condition', params: {} },
-): Promise<CollectRunResult> => {
+  payload: CollectStartPayload | Record<string, any> = { strategy: 'incremental', params: {} },
+): Promise<CollectTaskCreated> => {
   if (!_cachedServices || _cachedServices.length === 0) {
     await waitForServices()
   }
-  const path = buildPath(name, `/collect/_unknown/${name}`)
-
-  // 兼容旧调用：直接传 params dict 时自动包成 condition
-  const body: CollectStartPayload = 'params' in (payload as any) && 'mode' in (payload as any)
+  const svc = findServiceByName(name)
+  const facet = svc?.facet || '_unknown'
+  const body: CollectStartPayload = 'params' in (payload as any) && 'strategy' in (payload as any)
     ? (payload as CollectStartPayload)
-    : { mode: 'condition', params: (payload as Record<string, any>) || {} }
-
+    : { strategy: 'incremental', params: (payload as Record<string, any>) || {} }
   return http
-    .post<ApiResponse<CollectRunResult>>(path, body)
+    .post<ApiResponse<CollectTaskCreated>>(`/collect/tasks/${facet}/${name}`, body)
     .then(unwrap)
+}
+
+/** 轮询任务进度（GET /collect/tasks/{task_id}） */
+export const getCollectTask = (taskId: string): Promise<CollectTaskState> =>
+  http.get<ApiResponse<CollectTaskState>>(`/collect/tasks/${taskId}`).then(unwrap)
+
+/** 最近任务列表（GET /collect/tasks?limit=） */
+export const listCollectTasks = (limit = 20): Promise<{ total: number; list: CollectTaskState[] }> =>
+  http.get<ApiResponse<{ total: number; list: CollectTaskState[] }>>('/collect/tasks', { params: { limit } }).then(unwrap)
+
+/** 中断采集任务（POST /collect/tasks/{task_id}/cancel） */
+export const cancelCollectTask = (taskId: string): Promise<{ task_id: string; status: string }> =>
+  http.post<ApiResponse<{ task_id: string; status: string }>>(`/collect/tasks/${taskId}/cancel`).then(unwrap)
+
+/**
+ * 采集历史（GET /collect/logs，Java 查 PG collect_logs）
+ *
+ * ⚠️ ★ 字段名是 **snake_case**，不是 camelCase！
+ * 后端全局 `spring.jackson.property-naming-strategy: SNAKE_CASE`
+ * （见 application.yml）→ Java 的 `taskId` 序列化成 `task_id`。
+ * 本文件之前写成 camelCase（taskId/createdAt/...），
+ * 与真实响应不符 → 前端静默拿到 undefined（TS 不会报错）。
+ * 全项目其他 Java 接口（pools / auth / stock-info / concept-board…）
+ * 的 TS 类型一律是 snake_case，此处与之保持一致。
+ */
+export interface CollectLogRow {
+  task_id: string
+  facet: string
+  name: string
+  kind: string
+  mode: string
+  trigger_source: string
+  trigger_user: string | null
+  params_json: Record<string, any>
+  range_start: string | null
+  range_end: string | null
+  status: string
+  progress: number
+  /** 计数器口径：total/done/success/fail/skip 是「步数」，saved_total 是「行数」 */
+  total: number
+  done: number
+  success: number
+  fail: number
+  skip: number
+  saved_total: number
+  message: string
+  error: string | null
+  detail: Record<string, any>[] | null
+  /** ISO-8601 带时区（如 2026-10-29T14:43:27.926076Z） */
+  created_at: string | null
+  started_at: string | null
+  finished_at: string | null
+  updated_at: string | null
+  duration_ms: number | null
+  cancel_requested: boolean
+  cancelled_at: string | null
+  parent_task_id: string | null
+}
+
+/**
+ * 查询参数走 query string，**不受** Jackson SNAKE_CASE 影响 →
+ * 参数名必须与 Java `CollectLogQuery` 字段名一致（`pageSize` 而非 `page_size`）。
+ *
+ * ⚠️ 响应体则**是** snake_case（全局 SNAKE_CASE 策略）→ 返回字段是 `page_size`。
+ */
+export const listCollectLogs = (params: {
+  facet?: string
+  name?: string
+  status?: string
+  triggerSource?: string
+  /** ★ 按采集方式筛选：incremental / full */
+  kind?: string
+  startDate?: string
+  endDate?: string
+  hasFail?: boolean
+  page?: number
+  pageSize?: number
+} = {}): Promise<{ total: number; list: CollectLogRow[]; page: number; page_size: number }> =>
+  http.get<ApiResponse<{ total: number; list: CollectLogRow[]; page: number; page_size: number }>>(
+    '/collect/logs', { params },
+  ).then(unwrap)
+
+/**
+ * 手动触发一次 service（兼容旧名：内部已转后台任务，不再同步等待结果）。
+ * @deprecated 用 createCollectTask + 轮询 getCollectTask 代替。
+ */
+export const runService = async (
+  name: string,
+  payload: CollectStartPayload | Record<string, any> = { strategy: 'incremental', params: {} },
+): Promise<CollectRunResult> => {
+  const created = await createCollectTask(name, payload)
+  // 兼容旧调用：轮询到终态后拼成 CollectRunResult
+  const final = await pollCollectTask(created.task_id)
+  return {
+    total: final.total,
+    success: final.success,
+    fail: final.fail,
+    skip: 0,
+    saved: final.saved_total,
+    message: final.message,
+  }
+}
+
+/** 轮询任务到终态（done/failed），默认 1s 一次、最多 30 分钟 */
+export const pollCollectTask = async (
+  taskId: string,
+  opts: { intervalMs?: number; timeoutMs?: number; onTick?: (s: CollectTaskState) => void } = {},
+): Promise<CollectTaskState> => {
+  const intervalMs = opts.intervalMs ?? 1000
+  const timeoutMs = opts.timeoutMs ?? 30 * 60 * 1000
+  const started = Date.now()
+  for (;;) {
+    const state = await getCollectTask(taskId)
+    opts.onTick?.(state)
+    if (state.status === 'done' || state.status === 'failed') return state
+    if (Date.now() - started > timeoutMs) throw new Error(`任务 ${taskId} 轮询超时`)
+    await new Promise((r) => setTimeout(r, intervalMs))
+  }
 }
 
 /** service.get() 实时查询（GET /collect/query/{name}?params=<JSON>） */
@@ -191,7 +341,7 @@ export const queryService = async (
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  聚合视图：Catalog — 由 services 列表按 facet/sub_facet 二级聚合
+//  聚合视图：Catalog — 由 services 列表按 facet 单级聚合
 //  （后端不再提供 /collect/catalog，前端自己聚）
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -220,47 +370,23 @@ export const FACET_SORT: Record<string, number> = {
   sentiment: 5,
 }
 
-/** sub_facet 中文标签（前端 UI 副标题） */
-export const SUB_FACET_LABELS: Record<string, string> = {
-  kline: 'K 线',
-  adj: '复权因子',
-  suspend: '停复牌',
-  name: '名称变更',
-  dividend: '分红',
-  moneyflow: '资金流向',
-  margin: '两融',
-  top: '龙虎榜',
-  block: '大宗交易',
-  holder: '股东',
-  hsgt: '沪深港通',
-  limit: '涨跌停',
-  valuation: '估值',
-  fin: '财报',
-  stock: '基础信息',
-  concept: '概念',
-  kline_daily: 'K 线（日）',
-  kline_minute: 'K 线（分）',
-  lhb: '龙虎榜',
-  lhb_inst: '龙虎榜（机构）',
-  north_flow: '北向',
-}
-
 /** 单个 service 在 UI 目录树中的视图（由 ServiceItem 派生） */
 export interface CatalogItem {
   service_name: string
   label: string
   description: string
-  default_params: Record<string, any>
-  /** 后端推导的 param UI schema（CollectActionCard 用） */
-  param_schema: ParamSchema[]
-  /** service 是否有 get() 入口（query 入口） */
-  supports_query: boolean
-  /** 主职责：collect / realtime / both */
-  kind: 'collect' | 'realtime' | 'both'
+  /** ★ 是否有实时直查入口 */
+  queryable: boolean
+  /** ★ 采集方式 */
+  strategy: CollectStrategy
+  /** ★ 增量维度（full / realtime 为 null） */
+  range: CollectRange | null
+  /** ★ 全量覆盖的清理模式 */
+  clear_mode: 'none' | 'domain'
+  /** ★ 实际的拆步粒度（进度分母口径；非增量为 null） */
+  step_granularity: 'day' | 'trade_day' | null
   /** facet（tech/capital/...） */
   facet: string
-  /** sub_facet（kline/...） */
-  sub_facet: string
   /** 实际 POST 路径（去掉 /api 前缀，http baseURL 已带） */
   path: string
   /** 实时查询路径 */
@@ -269,12 +395,13 @@ export interface CatalogItem {
   rate_limit: [string, number, number] | null
 }
 
+/** 目录树分组：五数据面 → service 列表（**只有一级分组**） */
 export interface CatalogGroup {
   facet: string
   label: string
   icon: string
   sort_order: number
-  sub_groups: Record<string, CatalogItem[]>
+  items: CatalogItem[]
 }
 
 export interface Catalog {
@@ -282,7 +409,7 @@ export interface Catalog {
 }
 
 /**
- * 把 service 列表聚合成 facet / sub_facet 二级树。
+ * 把 service 列表聚合成 facet 单级树。
  */
 export function buildCatalog(services: ServiceItem[]): Catalog {
   const groups = new Map<string, CatalogGroup>()
@@ -294,22 +421,19 @@ export function buildCatalog(services: ServiceItem[]): Catalog {
         label: FACET_LABELS[facetKey] || facetKey,
         icon: FACET_ICONS[facetKey] || 'Grid',
         sort_order: FACET_SORT[facetKey] ?? 99,
-        sub_groups: {},
+        items: [],
       })
     }
-    const g = groups.get(facetKey)!
-    const subKey = s.sub_facet || 'other'
-    if (!g.sub_groups[subKey]) g.sub_groups[subKey] = []
-    g.sub_groups[subKey].push({
+    groups.get(facetKey)!.items.push({
       service_name: s.name,
       label: s.label || s.name,
       description: s.description || '',
-      default_params: s.default_params || {},
-      param_schema: s.param_schema || [],
-      supports_query: !!s.supports_query,
-      kind: s.kind || (s.supports_query ? 'both' : 'collect'),
+      queryable: s.queryable,
+      strategy: s.strategy,
+      range: s.range ?? null,
+      clear_mode: s.clear_mode || 'none',
+      step_granularity: s.step_granularity ?? null,
       facet: s.facet,
-      sub_facet: s.sub_facet,
       path: s.path,
       query_path: s.query_path,
       rate_limit: s.rate_limit || null,

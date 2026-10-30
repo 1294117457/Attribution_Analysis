@@ -1,7 +1,7 @@
 <!--
   CatalogTree.vue — 采集管理左侧目录树（step7 重构）
 
-  - 数据源：useCatalog() 返回的 catalog（按 facet/sub_facet 二级聚合）
+  - 数据源：useCatalog() 返回的 catalog（按 facet **单级**聚合：五数据面）
   - 选中：service_name（v-model）
   - 折叠状态持久化到 localStorage
 -->
@@ -32,35 +32,18 @@
           <el-badge v-if="countActive(facet) > 0" :value="countActive(facet)" type="success" />
         </span>
       </div>
-      <div v-show="!isCollapsed(facet.facet)" class="sub-facet-list">
-        <div
-          v-for="(items, subKey) in facet.sub_groups"
-          :key="subKey"
-          class="sub-facet-block"
+      <div v-show="!isCollapsed(facet.facet)" class="facet-items">
+        <button
+          v-for="item in facet.items"
+          :key="item.service_name"
+          class="task-btn"
+          :class="{ active: active === item.service_name }"
+          @click="active = item.service_name"
         >
-          <div
-            class="sub-facet-label"
-            role="button"
-            :aria-expanded="!isCollapsed(`${facet.facet}/${subKey}`)"
-            @click="toggleCollapsed(`${facet.facet}/${subKey}`)"
-          >
-            <el-icon class="collapse-arrow" :class="{ collapsed: isCollapsed(`${facet.facet}/${subKey}`) }"><ArrowDown /></el-icon>
-            {{ SUB_FACET_LABELS[subKey] || subKey }}
-            <span class="sub-facet-count">{{ items.length }}</span>
-          </div>
-          <button
-            v-show="!isCollapsed(`${facet.facet}/${subKey}`)"
-            v-for="item in items"
-            :key="item.service_name"
-            class="task-btn"
-            :class="{ active: active === item.service_name }"
-            @click="active = item.service_name"
-          >
-            <el-tooltip :content="tooltipText(item)" placement="right" :show-after="300" popper-class="task-tip">
-              <span class="task-btn-label">{{ item.label }}</span>
-            </el-tooltip>
-          </button>
-        </div>
+          <el-tooltip :content="tooltipText(item)" placement="right" :show-after="300" popper-class="task-tip">
+            <span class="task-btn-label">{{ item.label }}</span>
+          </el-tooltip>
+        </button>
       </div>
     </div>
   </aside>
@@ -70,7 +53,7 @@
 import { ref } from 'vue'
 import { ArrowDown, TrendCharts, Money, PieChart, Document } from '@element-plus/icons-vue'
 import type { CatalogGroup, CatalogItem } from '../api'
-import { countActive, SUB_FACET_LABELS } from '../composables/useCatalog'
+import { countActive } from '../composables/useCatalog'
 
 defineProps<{
   catalog: CatalogGroup[]
@@ -80,7 +63,7 @@ defineProps<{
 /** 当前选中的 service_name */
 const active = defineModel<string>({ required: true })
 
-// ── 折叠状态（key = facet 或 facet/subKey，持久化到 localStorage） ──
+// ── 折叠状态（key = facet，持久化到 localStorage） ──
 const COLLAPSE_STORAGE_KEY = 'collect-manage:collapsed'
 
 function loadCollapsed(): Set<string> {
@@ -104,19 +87,28 @@ function toggleCollapsed(key: string) {
   localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...next]))
 }
 
-/** 任务按钮的 hover 提示：描述 + 默认参数 + 实时/批量标识 */
+/** 任务按钮的 hover 提示：描述 + 采集方式 */
 function tooltipText(item: CatalogItem): string {
   const lines: string[] = []
   if (item.description) lines.push(item.description)
-  if (item.kind === 'realtime') lines.push('实时查询接口（不写库）')
-  else if (item.kind === 'both') lines.push('支持手动采集 + 实时查询')
-  else lines.push('手动采集（写库）')
-  const keys = Object.keys(item.default_params || {})
-  if (keys.length) {
-    const kv = keys
-      .map((k) => `${k}=${JSON.stringify(item.default_params[k])}`)
-      .join(', ')
-    lines.push(`默认参数：${kv}`)
+  // ★ 采集方式说明（按新契约：strategy 决定形态，queryable 决定能否实时直查）
+  if (item.strategy === 'realtime') {
+    lines.push('实时查询接口（不写库）')
+  } else if (item.strategy === 'incremental') {
+    lines.push(
+      item.range
+        ? `增量采集（${item.range.granularity === 'trade_day' ? '按交易日' : '按区间'}，写库）`
+        : '增量采集（固定窗口，写库）',
+    )
+  } else if (item.strategy === 'full') {
+    lines.push(
+      item.clear_mode === 'domain'
+        ? '全量覆盖采集（覆盖同键数据 + 清除覆盖域外残留）'
+        : '全量采集（覆盖同键数据，保留历史）',
+    )
+  }
+  if (item.queryable && item.strategy !== 'realtime') {
+    lines.push('同时支持实时直查')
   }
   return lines.join('\n') || item.label
 }
@@ -196,44 +188,12 @@ function tooltipText(item: CatalogItem): string {
   transform: rotate(-90deg);
 }
 
-.sub-facet-list {
+.facet-items {
   margin-top: 4px;
   padding-left: 8px;
 }
 
-.sub-facet-block + .sub-facet-block {
-  margin-top: 4px;
-}
-
-/* ── 第二层：sub_facet ── */
-.sub-facet-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  height: 26px;
-  padding: 0 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #475569;
-  background: #f1f5f9;
-  border: 1px solid #cbd5e1;
-  border-radius: 4px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.sub-facet-label:hover {
-  background: #e2e8f0;
-}
-
-.sub-facet-count {
-  margin-left: auto;
-  font-size: 12px;
-  font-weight: 400;
-  color: #94a3b8;
-}
-
-/* ── 第三层：task ── */
+/* ── 第二层：service 按钮 ── */
 .task-btn {
   display: block;
   width: calc(100% - 8px);

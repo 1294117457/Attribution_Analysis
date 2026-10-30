@@ -1,14 +1,15 @@
 <!--
-  CollectManageList.vue — 采集管理（step7 重构后简化版）
+  CollectManageList.vue — 采集管理（全异步任务式）
 
-  简化前：3 个 tab（采集接口 / 调度计划 / 采集历史）
-  简化后：1 个 tab（采集接口），调度计划和采集历史做占位卡片
-  ── 后续如需补回 schedule / log 功能，参考旧版本恢复 el-tab-pane 即可
+  两个 tab：
+  - 采集接口：左树 + 右任务面板（建任务→轮询进度）
+  - 采集历史：CollectHistoryPane（Java 查 PG collect_logs）
 
-  配套：backend/src/contexts/collect/interface/router.py
+  注：原「调度计划」tab（Quartz 占位）已移除 —— collect_schedule / collect_run_log
+  两表已删除、attribution-scheduler 模块已下线，当前无定时采集能力。
 -->
 <template>
-  <PageWrapper>
+    <PageWrapper>
     <template #title>
       <el-icon class="mr-1"><Upload /></el-icon>
       采集管理
@@ -16,26 +17,12 @@
 
     <el-tabs v-model="pageTab" class="page-tabs">
       <el-tab-pane label="采集接口" name="tasks" />
-      <el-tab-pane label="调度计划" name="jobs" />
       <el-tab-pane label="采集历史" name="history" />
     </el-tabs>
 
-    <!-- 调度计划：占位（APScheduler 暂未启用） -->
-    <div v-show="pageTab === 'jobs'" class="placeholder-pane">
-      <el-empty description="调度计划 / APScheduler 暂未启用（后续接入）">
-        <template #image>
-          <el-icon :size="48" color="#cbd5e1"><Clock /></el-icon>
-        </template>
-      </el-empty>
-    </div>
-
-    <!-- 采集历史：占位（运行日志后端未实现） -->
-    <div v-show="pageTab === 'history'" class="placeholder-pane">
-      <el-empty description="采集历史 / 运行日志 后端暂未实现（后续接入）">
-        <template #image>
-          <el-icon :size="48" color="#cbd5e1"><Document /></el-icon>
-        </template>
-      </el-empty>
+    <!-- 采集历史：PG collect_logs 永久审计 -->
+    <div v-show="pageTab === 'history'" class="layout-body">
+      <CollectHistoryPane />
     </div>
 
     <!-- 采集接口：左树 + 右任务面板（核心功能） -->
@@ -55,19 +42,20 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { Upload, Clock, Document } from '@element-plus/icons-vue'
+import { Upload } from '@element-plus/icons-vue'
 
 import PageWrapper from '@/components/PageWrapper.vue'
 import CatalogTree from './components/CatalogTree.vue'
 import CollectTaskPane from './components/CollectTaskPane.vue'
+import CollectHistoryPane from './components/CollectHistoryPane.vue'
 import { useCatalog } from './composables/useCatalog'
 
 const LOG_PREFIX = '[CollectManage]'
 
 const { catalog, loading: catalogLoading, load: loadCatalog, getItem } = useCatalog()
 
-// ── 页面标签：采集接口 / 调度计划（占位）/ 采集历史（占位） ─────
-const pageTab = ref<'tasks' | 'jobs' | 'history'>('tasks')
+// ── 页面标签：采集接口 / 采集历史 ───────────
+const pageTab = ref<'tasks' | 'history'>('tasks')
 
 // ── 当前选中 service_name ──────────────────────────────────
 const activeServiceName = ref<string>('daily_kline')
@@ -93,16 +81,5 @@ onMounted(async () => {
   gap: 16px;
   align-items: stretch;
   overflow: hidden;
-}
-
-/* 占位 tab 的容器（居中显示空状态） */
-.placeholder-pane {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f8fafc;
-  border-radius: 8px;
 }
 </style>

@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.attribution.market.mapper.StockInfoMapper">
+
+    <!-- 股票所属自选池：批量联查 stock_pool_members + stock_pools -->
+    <select id="selectPoolMemberships" resultType="com.attribution.market.mapper.StockInfoMapper$PoolMembershipRow">
+        SELECT m.symbol AS symbol,
+               p.id     AS pool_id,
+               p.name   AS name,
+               p.pool_type AS pool_type
+        FROM stock_pool_members m
+        JOIN stock_pools p ON p.id = m.pool_id
+        WHERE m.symbol IN
+        <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
+            #{symbol}
+        </foreach>
+          AND (p.is_archived IS NULL OR p.is_archived = false)
+        ORDER BY m.symbol, p.id
+    </select>
+
+    <!-- 股票所属自选池（单只） -->
+    <select id="selectPoolMembershipsBySymbol"
+            resultType="com.attribution.market.mapper.StockInfoMapper$PoolMembershipRow">
+        SELECT m.symbol AS symbol,
+               p.id     AS pool_id,
+               p.name   AS name,
+               p.pool_type AS pool_type
+        FROM stock_pool_members m
+        JOIN stock_pools p ON p.id = m.pool_id
+        WHERE m.symbol = #{symbol}
+          AND (p.is_archived IS NULL OR p.is_archived = false)
+        ORDER BY p.id
+    </select>
+
+    <!-- 股票所属概念：批量联查 fundamental_concept_member + fundamental_concept -->
+    <select id="selectConceptBriefs" resultType="com.attribution.market.mapper.StockInfoMapper$ConceptBriefRow">
+        SELECT m.symbol AS symbol,
+               c.id     AS concept_id,
+               c.name   AS name,
+               COALESCE(c.source, 'ths') AS source,
+               COALESCE(c.concept_type, 'other') AS concept_type
+        FROM fundamental_concept_member m
+        JOIN fundamental_concept c ON c.id = m.concept_id
+        WHERE m.symbol IN
+        <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
+            #{symbol}
+        </foreach>
+        ORDER BY m.symbol, c.id
+    </select>
+
+    <!-- 按概念 ID 取成员股票代码 -->
+    <select id="selectSymbolsByConceptId" resultType="java.lang.String">
+        SELECT symbol FROM fundamental_concept_member WHERE concept_id = #{conceptId}
+    </select>
+
+    <!-- 按总市值下限过滤股票代码（取每只股票的最新一条 daily_basic） -->
+    <select id="selectSymbolsByMinTotalMv" resultType="java.lang.String">
+        SELECT d.symbol
+        FROM fundamental_daily_basic d
+        JOIN (SELECT symbol, MAX(trade_date) AS md
+              FROM fundamental_daily_basic
+              GROUP BY symbol) t
+          ON t.symbol = d.symbol AND t.md = d.trade_date
+        WHERE d.total_mv &gt;= #{minTotalMv}
+    </select>
+
+    <!-- K 线记录数 -->
+    <select id="countKline" resultType="long">
+        SELECT COUNT(*) FROM tech_kline_daily WHERE symbol = #{symbol}
+    </select>
+
+    <!-- K 线最早日期 -->
+    <select id="selectMinKlineDate" resultType="java.lang.String">
+        SELECT MIN(date)::text FROM tech_kline_daily WHERE symbol = #{symbol}
+    </select>
+
+    <!-- K 线最晚日期 -->
+    <select id="selectMaxKlineDate" resultType="java.lang.String">
+        SELECT MAX(date)::text FROM tech_kline_daily WHERE symbol = #{symbol}
+    </select>
+
+    <!--
+        股票面板统计（一次查询替代 Service 层 N+1 逐行查询）。
+        每只股票聚合出：K 线数量、K 线起止日期、最新一条 daily_basic 估值、最新合并报表净利率。
+    -->
+    <select id="selectStockStats"
+            resultType="com.attribution.market.mapper.StockInfoMapper$StockStatRow">
+        WITH kline AS (
+            SELECT symbol,
+                   COUNT(*)      AS record_count,
+                   MIN(date)::text AS kline_start,
+                   MAX(date)::text AS kline_end
+            FROM tech_kline_daily
+            WHERE symbol IN
+            <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
+                #{symbol}
+            </foreach>
+            GROUP BY symbol
+        ),
+        latest_basic AS (
+            SELECT d.symbol, d.close, d.total_mv, d.pe_ttm
+            FROM fundamental_daily_basic d
+            JOIN (SELECT symbol, MAX(trade_date) AS md
+                  FROM fundamental_daily_basic
+                  WHERE symbol IN
+                  <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
+                      #{symbol}
+                  </foreach>
+                  GROUP BY symbol) t
+              ON t.symbol = d.symbol AND t.md = d.trade_date
+        ),
+        latest_report AS (
+            SELECT r.symbol, r.n_income, r.revenue
+            FROM fundamental_report r
+            JOIN (SELECT symbol, MAX(end_date) AS md
+                  FROM fundamental_report
+                  WHERE report_type = '1'
+                    AND symbol IN
+                  <foreach collection="symbols" item="symbol" open="(" separator="," close=")">
+                      #{symbol}
+                  </foreach>
+                  GROUP BY symbol) t
+              ON t.symbol = r.symbol AND t.md = r.end_date
+            WHERE r.report_type = '1'
+        )
+        SELECT k.symbol                AS symbol,
+               COALESCE(k.record_count, 0) AS record_count,
+               k.kline_start           AS kline_start,
+               k.kline_end             AS kline_end,
+               b.close                 AS latest_close,
+               b.total_mv              AS total_mv,
+               b.pe_ttm                AS pe_ttm,
+               CASE
+                   WHEN r.revenue IS NULL OR r.revenue = 0 THEN NULL
+                   ELSE ROUND((r.n_income / r.revenue) * 100, 2)
+               END                     AS profit_margin
+        FROM kline k
+        LEFT JOIN latest_basic b ON b.symbol = k.symbol
+        LEFT JOIN latest_report r ON r.symbol = k.symbol
+    </select>
+
+</mapper>

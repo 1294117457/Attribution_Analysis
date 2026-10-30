@@ -30,8 +30,8 @@ export const usePoolStore = defineStore('pool', () => {
   async function fetchPools() {
     loading.value = true
     try {
-      const res = await poolApi.listPools({ limit: 100 })
-      pools.value = res.items
+      const res = await poolApi.listPools({ page: 1, page_size: 100 })
+      pools.value = res.list
     } finally {
       loading.value = false
     }
@@ -127,10 +127,10 @@ export const usePoolStore = defineStore('pool', () => {
   }
 
   /** 拉取操作历史 */
-  async function fetchOperations(poolId: number, limit = 20) {
-    const res = await poolApi.listOperations(poolId, { limit })
-    operations.value = res.items
-    return res.items
+  async function fetchOperations(poolId: number, pageSize = 20) {
+    const res = await poolApi.listOperations(poolId, { page: 1, page_size: pageSize })
+    operations.value = res.list
+    return res.list
   }
 
   /** 发起 K 线采集操作 */

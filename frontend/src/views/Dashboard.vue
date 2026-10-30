@@ -139,7 +139,7 @@ onMounted(async () => {
   loading.value = true
   try {
     const data = await listStocks()
-    allStocks.value = data.items || []
+    allStocks.value = data.list || []
   } finally {
     loading.value = false
   }

@@ -82,8 +82,8 @@ const ranges = [
 async function load() {
   loading.value = true
   try {
-    const data = (await getKlines(props.symbol, { limit: Number(range.value) })) as { items?: Kline[] }
-    klines.value = data.items || []
+    const data = (await getKlines(props.symbol, { limit: Number(range.value) })) as { list?: Kline[] }
+    klines.value = data.list || []
   } catch {
     klines.value = []
   } finally {
@@ -94,8 +94,8 @@ async function load() {
 async function onCollect() {
   collecting.value = true
   try {
-    const r = (await collectKlines({ symbol: props.symbol, days: Number(range.value) })) as unknown as { saved_count: number }
-    ElMessage.success(`已采集 ${r.saved_count} 条`)
+    const r = await collectKlines({ symbol: props.symbol, days: Number(range.value) })
+    ElMessage.success(`采集任务已创建 ${r.task_id}，共 ${r.total} 步（去采集管理页看进度）`)
     await load()
   } catch (e) {
     ElMessage.error('采集失败: ' + (e as Error).message)
